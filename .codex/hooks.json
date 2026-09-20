@@ -1,0 +1,51 @@
+{
+  "description": "Codex-native lifecycle mapping for the canonical hooks under .claude/hooks.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/session-start-hypervisor-reanchor.sh\"",
+            "statusMessage": "Restoring Hypervisor context"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/pre-git-destructive.sh\"",
+            "statusMessage": "Checking Git safety policy"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$(git rev-parse --show-toplevel)/.codex/hooks/apply-patch-adapter.sh\" post",
+            "statusMessage": "Formatting edited files"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/pre-compact-hypervisor-checkpoint.sh\"",
+            "statusMessage": "Saving the Hypervisor checkpoint"
+          }
+        ]
+      }
+    ]
+  }
+}

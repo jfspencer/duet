@@ -1,0 +1,8 @@
+# typos-cli configuration (advisory in scripts/dod.sh when the binary is present).
+[files]
+extend-exclude = ["target/", "Cargo.lock", ".hypervisor/", "*.svg"]
+
+[default.extend-words]
+# identifiers that are not typos
+gpui = "gpui"
+heed = "heed"

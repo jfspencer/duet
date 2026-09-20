@@ -1,0 +1,6 @@
+# Pinned toolchain: every developer, agent, hook, and CI job compiles with the
+# same rustc. Bump deliberately, in its own commit, with `cargo clippy` green.
+[toolchain]
+channel = "1.98.1"
+components = ["rustfmt", "clippy", "rust-src", "rust-analyzer"]
+profile = "minimal"

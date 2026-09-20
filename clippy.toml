@@ -1,0 +1,41 @@
+# Repo-root clippy.toml: the API/dependency-ban layer that complements the
+# declarative `[workspace.lints]` policy in Cargo.toml. Clippy walks up from
+# each crate directory, so this file reaches every workspace member.
+
+msrv = "1.98"
+avoid-breaking-exported-api = false
+# Public API needs `# Errors` / `# Panics` sections; private helpers need a doc line
+# (`missing_docs_in_private_items`) but not the section ceremony.
+check-private-items = false
+
+# Tests may unwrap/expect/print; committed code may not.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-print-in-tests = true
+allow-dbg-in-tests = false
+allow-panic-in-tests = true
+allow-indexing-slicing-in-tests = true
+
+# Complexity ceilings
+cognitive-complexity-threshold = 20
+too-many-arguments-threshold = 6
+too-many-lines-threshold = 120
+type-complexity-threshold = 200
+excessive-nesting-threshold = 4
+
+disallowed-macros = [
+    { path = "std::dbg", reason = "dbg! is debug-only cruft; committed code uses structured logging." },
+    { path = "std::unimplemented", reason = "unimplemented! is a latent runtime panic; return a typed error." },
+    { path = "std::todo", reason = "todo! never lands on main; finish it or return a typed error." },
+]
+
+disallowed-methods = [
+    { path = "std::mem::forget", reason = "mem::forget silently leaks the resource a Drop was meant to reclaim." },
+    { path = "std::env::set_var", reason = "process-global mutation races every other thread; pass configuration explicitly." },
+    { path = "std::env::remove_var", reason = "process-global mutation races every other thread; pass configuration explicitly." },
+    { path = "std::process::exit", reason = "return std::process::ExitCode from main so destructors and buffered output run." },
+]
+
+# Proper nouns clippy's `doc_markdown` lint would otherwise demand backticks
+# around. `".."` KEEPS clippy's default list.
+doc-valid-idents = ["GPUI", "LMDB", "macOS", "OpenCode", "Codex", ".."]

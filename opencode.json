@@ -1,0 +1,12 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "openrouter/deepseek/deepseek-v4.1-flash",
+  "small_model": "openrouter/deepseek/deepseek-v4.1-flash",
+  "subagent_depth": 2,
+  "instructions": ["CLAUDE.md"],
+  "permission": {
+    "read": {
+      "**/target/**": "deny"
+    }
+  }
+}

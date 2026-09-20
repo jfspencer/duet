@@ -1,0 +1,19 @@
+# Workspace-local cargo configuration. Checked in so every developer, agent,
+# hook, and CI job builds under the same flags.
+
+[build]
+# Every warning is an error, locally and in CI. Registry dependencies are
+# unaffected (cargo caps their lints).
+rustflags = ["-D", "warnings"]
+rustdocflags = ["-D", "warnings"]
+
+[alias]
+# `cargo xtask <cmd>` runs the repo automation crate.
+xtask = "run --quiet --package xtask --"
+# `cargo plan-db <cmd> <plan-dir> ...` runs the LMDB plan store CLI from source.
+plan-db = "run --quiet --release --package plan-db --"
+# The lint invocation the gate uses.
+lint = "clippy --workspace --all-targets --locked -- -D warnings"
+
+[term]
+color = "auto"

@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+  RUSTDOCFLAGS: "-D warnings"
+
+jobs:
+  dod:
+    name: Definition of Done (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Linux system dependencies for GPUI
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-xcb-dev \
+            libxcb1-dev libxcb-shape0-dev libxcb-xfixes0-dev libasound2-dev \
+            libfontconfig1-dev libfreetype6-dev libssl-dev libgit2-dev \
+            libvulkan-dev mesa-vulkan-drivers pkg-config cmake clang mold
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny,cargo-machete,cargo-nextest,typos-cli
+      - name: Definition of Done
+        run: scripts/dod.sh
+        env:
+          NEXTEST_PROFILE: ci

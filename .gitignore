@@ -1,0 +1,24 @@
+# Rust
+/target/
+**/target/
+*.pdb
+
+# macOS
+.DS_Store
+
+# Agent runtime state (per-session, never shared)
+.hypervisor/
+.claude/worktrees/
+.claude/artifacts/
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.claude/scratch/
+.codex/scratch/
+*.local.toml
+*.log
+
+# Editors
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json

@@ -1,0 +1,5 @@
+settings.local.json
+worktrees/
+artifacts/
+scratch/
+scheduled_tasks.lock

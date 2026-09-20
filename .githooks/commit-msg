@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Versioned commit-msg hook: no commit carries AI attribution (root CLAUDE.md, Git workflow).
+# Rejects a `Co-Authored-By: Claude ...` trailer, a "Generated with Claude Code" line, or the
+# robot emoji banner. Comment lines (`#`) are ignored; quoted prose is not special-cased, so a
+# message that needs to MENTION the trailer spells it differently.
+set -euo pipefail
+msg_file="$1"
+if grep -v '^#' "$msg_file" | grep -qiE 'co-authored-by:.*(claude|anthropic)|generated with \[?claude code|🤖'; then
+  printf 'commit-msg: rejected. The message carries AI attribution (a Co-Authored-By: Claude trailer, a "Generated with Claude Code" line, or a robot emoji). Remove it; root CLAUDE.md, Git workflow.\n' >&2
+  exit 1
+fi
+exit 0

@@ -1,0 +1,12 @@
+# Stable rustfmt options only: an unstable option prints a warning on every
+# `cargo fmt` run and silently does nothing. `cargo fmt --all --check` is part
+# of the commit gate (scripts/dod.sh).
+edition = "2024"
+style_edition = "2024"
+max_width = 100
+newline_style = "Unix"
+use_field_init_shorthand = true
+use_try_shorthand = true
+reorder_imports = true
+reorder_modules = true
+match_block_trailing_comma = true

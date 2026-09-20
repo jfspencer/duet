@@ -1,0 +1,14 @@
+# cargo-nextest profile. scripts/dod.sh prefers nextest when installed and
+# falls back to `cargo test`.
+[profile.default]
+fail-fast = false
+retries = 0
+slow-timeout = { period = "30s", terminate-after = 2 }
+status-level = "fail"
+final-status-level = "flaky"
+
+[profile.ci]
+fail-fast = false
+retries = 0
+status-level = "all"
+failure-output = "immediate-final"

@@ -1,0 +1,69 @@
+# cargo-deny: the canonical dependency, license, advisory, and source policy for
+# every crate in this workspace. Run `cargo deny check` (part of scripts/dod.sh).
+
+[graph]
+# Default features only. `all-features` would pull every tree-sitter grammar
+# gpui-kit can optionally enable, which is not what we build or ship.
+all-features = false
+
+[advisories]
+version = 2
+yanked = "deny"
+# RUSTSEC ids are denied by default. Accept one ONLY here, with a one-line
+# justification and a removal condition. Every entry below is an
+# unmaintained-only notice (NOT a vulnerability) on a transitive dependency of
+# gpui-kit 0.6.4 that no consumer can replace. Re-check each on every gpui-kit
+# bump and drop it the moment the tree no longer carries the crate.
+ignore = [
+  # instant 0.1 — via notify-types (file watching in gpui-component). Drop when notify moves off it.
+  "RUSTSEC-2024-0384",
+  # paste 1.0 — via metal, pulp/exr (image), gpui-component macros. No successor release; drop when they migrate.
+  "RUSTSEC-2024-0436",
+  # rustls-pemfile — via gpui-pre-reqwest (asset loading in gpui-kit-assets). Drop when reqwest's pin moves to rustls-pki-types.
+  "RUSTSEC-2025-0134",
+  # rustybuzz — via usvg/resvg (SVG icon rasterisation in gpui-pre). Drop when resvg adopts a maintained shaper.
+  "RUSTSEC-2026-0206",
+  # ttf-parser — via fontdb/usvg (font parsing in gpui-pre). Drop when the chain moves to skrifa.
+  "RUSTSEC-2026-0192",
+]
+
+[licenses]
+version = 2
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Unicode-3.0",
+  "Unicode-DFS-2016",
+  "Zlib",
+  "MPL-2.0",
+  "CC0-1.0",
+  "BSL-1.0",
+  "OFL-1.1",
+  "0BSD",
+  "CDLA-Permissive-2.0",
+  "Ubuntu-font-1.0",
+  # bzip2 and libbzip2 License v1.0.6 — carried by libbz2-rs-sys via async-compression in gpui's HTTP client. Permissive (BSD-like).
+  "bzip2-1.0.6",
+]
+confidence-threshold = 0.9
+unused-allowed-license = "allow"
+# First-party crates are `publish = false`; the allow-list governs third parties.
+private = { ignore = true }
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+deny = [
+  # openssl drags a C toolchain and a second TLS stack into a desktop binary.
+  { crate = "openssl-sys", reason = "use rustls; a native TLS stack is a build-portability and audit hazard" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

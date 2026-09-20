@@ -1,0 +1,4 @@
+settings.local.json
+*.local.toml
+*.log
+scratch/

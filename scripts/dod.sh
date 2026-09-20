@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# scripts/dod.sh — the ONLY Definition of Done gate.
+#
+# The native git hooks (.githooks/pre-commit, .githooks/pre-push) exec this
+# script, and CI runs it verbatim. No Claude hook runs the DoD, and no agent
+# hand-runs it as a ritual: make the change, `git commit`, and the hook runs it.
+#
+#   scripts/dod.sh          run every gate
+#   scripts/dod.sh --plan   print the gate list and exit 0 (read-only dry run)
+#
+# Required tools: rustup (rust-toolchain.toml pins the channel), cargo-deny,
+# cargo-machete. Optional: cargo-nextest (preferred test runner), typos,
+# shellcheck. `scripts/bootstrap.sh` installs the required set.
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+GATES=(
+  "fmt        cargo fmt --all --check"
+  "clippy     cargo clippy --workspace --all-targets --locked -- -D warnings"
+  "doc        cargo doc --workspace --no-deps --document-private-items --locked"
+  "test       cargo nextest run --workspace --locked (or cargo test --workspace --locked)"
+  "doctest    cargo test --doc --workspace --locked (when a library target exists)"
+  "deny       cargo deny check"
+  "machete    cargo machete"
+  "agents     cargo xtask sync-agents --check"
+  "hooks      bash -n on every shell hook and script (shellcheck when installed)"
+  "typos      typos (advisory; when installed)"
+)
+
+if [[ "${1:-}" == "--plan" ]]; then
+  printf 'Definition of Done gates (scripts/dod.sh):\n'
+  for g in "${GATES[@]}"; do printf '  %s\n' "$g"; done
+  exit 0
+fi
+
+step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
+need() {
+  command -v "$1" >/dev/null 2>&1 || {
+    printf 'dod: required tool "%s" is missing. Run scripts/bootstrap.sh.\n' "$1" >&2
+    exit 1
+  }
+}
+
+need cargo
+need cargo-deny
+need cargo-machete
+
+step "fmt: cargo fmt --all --check"
+cargo fmt --all --check
+
+step "clippy: cargo clippy --workspace --all-targets --locked -- -D warnings"
+cargo clippy --workspace --all-targets --locked -- -D warnings
+
+step "doc: cargo doc --workspace --no-deps --document-private-items --locked"
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --document-private-items --locked
+
+if command -v cargo-nextest >/dev/null 2>&1; then
+  step "test: cargo nextest run --workspace --locked"
+  cargo nextest run --workspace --locked --profile "${NEXTEST_PROFILE:-default}"
+else
+  step "test: cargo test --workspace --locked (install cargo-nextest for the faster runner)"
+  cargo test --workspace --locked
+fi
+
+# `cargo test --doc` errors when no crate has a library target; doctests only exist on libs.
+if cargo metadata --no-deps --format-version 1 | grep -qE '"kind":\["(lib|rlib|proc-macro)"\]'; then
+  step "doctest: cargo test --doc --workspace --locked"
+  cargo test --doc --workspace --locked
+else
+  step "doctest: skipped (no library targets in the workspace)"
+fi
+
+step "deny: cargo deny check"
+cargo deny check
+
+step "machete: cargo machete"
+cargo machete
+
+step "agents: cargo xtask sync-agents --check"
+cargo xtask sync-agents --check
+
+step "hooks: bash -n"
+while IFS= read -r -d '' f; do
+  bash -n "$f"
+done < <(find .claude/hooks .codex/hooks .claude/plan-coordination scripts .githooks -type f \( -name '*.sh' -o -name 'pre-commit' -o -name 'pre-push' -o -name 'commit-msg' \) -print0 2>/dev/null)
+if command -v shellcheck >/dev/null 2>&1; then
+  find .claude/hooks .codex/hooks .claude/plan-coordination scripts -type f -name '*.sh' -print0 2>/dev/null \
+    | xargs -0 shellcheck -x -S warning
+fi
+
+if command -v typos >/dev/null 2>&1; then
+  step "typos (advisory)"
+  typos || printf 'dod: typos reported findings (advisory).\n' >&2
+fi
+
+printf '\n\033[1;32mDefinition of Done: every gate passed.\033[0m\n'

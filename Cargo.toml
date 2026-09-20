@@ -1,0 +1,172 @@
+# Workspace manifest. Every crate inherits `[workspace.package]` and
+# `[workspace.lints]` (`lints.workspace = true`). The lint policy here is the
+# strictest coherent set the stable toolchain supports; `.cargo/config.toml`
+# adds `-D warnings`, so every `warn` below is an error at build time too.
+#
+# A crate may relax ONE lint at ONE site with `#[expect(lint, reason = "...")]`.
+# `#[allow]` is denied (`clippy::allow_attributes`), and a crate-level
+# `#![allow]` or an edit to this table is a defect, not a fix.
+
+[workspace]
+resolver = "3"
+members = ["crates/*", "tools/*"]
+default-members = ["crates/duet", "tools/plan-db", "tools/xtask"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.98"
+license = "MIT"
+repository = "https://github.com/thisjustosay/duet"
+authors = ["James Spencer"]
+publish = false
+
+[workspace.dependencies]
+# The app
+gpui-kit = "0.6.4"
+# Shared tooling deps
+anyhow = "1.0.104"
+clap = { version = "4.6.7", features = ["derive"] }
+heed = { version = "0.22.1", default-features = false }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+thiserror = "2.0.20"
+toml = "1.1.6"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+# ---------------------------------------------------------------------------
+# Lints
+# ---------------------------------------------------------------------------
+[workspace.lints.rust]
+# `deny`, not `forbid`, so `tools/plan-db` can `#[expect(unsafe_code)]` the ONE
+# unsafe call the LMDB binding requires (`EnvOpenOptions::open`). The app crate
+# re-tightens this to `#![forbid(unsafe_code)]` in its root.
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+missing_docs = "deny"
+missing_debug_implementations = "deny"
+missing_copy_implementations = "warn"
+rust_2018_idioms = { level = "deny", priority = -1 }
+rust_2024_compatibility = { level = "deny", priority = -1 }
+future_incompatible = { level = "deny", priority = -1 }
+nonstandard_style = { level = "deny", priority = -1 }
+unreachable_pub = "deny"
+unnameable_types = "deny"
+unused_qualifications = "deny"
+unused_import_braces = "deny"
+unused_lifetimes = "deny"
+unused_macro_rules = "deny"
+unused_extern_crates = "deny"
+redundant_lifetimes = "deny"
+let_underscore_drop = "deny"
+trivial_casts = "deny"
+trivial_numeric_casts = "deny"
+variant_size_differences = "warn"
+meta_variable_misuse = "deny"
+non_ascii_idents = "deny"
+unit_bindings = "deny"
+unused_results = "allow" # builder-style UI code returns values by design; clippy::let_underscore_must_use covers the real cases
+
+[workspace.lints.rustdoc]
+all = { level = "deny", priority = -1 }
+missing_crate_level_docs = "deny"
+private_doc_tests = "deny"
+unescaped_backticks = "deny"
+
+[workspace.lints.clippy]
+# Groups (priority -1 so the named lints below win).
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+cargo = { level = "deny", priority = -1 }
+# cargo-deny owns the duplicate-version policy (`[bans] multiple-versions`);
+# gpui's dependency tree carries diamonds no consumer can fix.
+multiple_crate_versions = "allow"
+# `module_name_repetitions` forbids `duet::app::App`-shaped names that the
+# gpui idiom (`Root`, `Window`, `Context`) makes natural. Keep it off.
+module_name_repetitions = "allow"
+# `redundant_pub_crate` (nursery) and `unreachable_pub` (rustc) contradict each
+# other inside a binary crate: nothing is reachable from a bin root, so every
+# cross-module item is `pub(crate)`, which the nursery lint then calls redundant.
+# `unreachable_pub` is the one that catches real mistakes; keep it, drop this.
+redundant_pub_crate = "allow"
+
+# --- restriction group: hand-picked, each one a house rule -----------------
+# Panics and escape hatches
+unwrap_used = "deny"
+expect_used = "deny"
+unwrap_in_result = "deny"
+panic = "deny"
+panic_in_result_fn = "deny"
+todo = "deny"
+unimplemented = "deny"
+unreachable = "deny"
+indexing_slicing = "deny"
+string_slice = "deny"
+exit = "deny"
+mem_forget = "deny"
+as_conversions = "deny"
+integer_division = "deny"
+# Output discipline: a binary writes through a locked handle it owns, never print!
+print_stdout = "deny"
+print_stderr = "deny"
+dbg_macro = "deny"
+# Lint hygiene: `#[expect(..., reason)]` is the only accepted suppression
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+# Unsafe hygiene
+undocumented_unsafe_blocks = "deny"
+unnecessary_safety_comment = "deny"
+unnecessary_safety_doc = "deny"
+multiple_unsafe_ops_per_block = "deny"
+# Documentation
+missing_docs_in_private_items = "deny"
+missing_assert_message = "deny"
+# Structure
+mod_module_files = "deny"
+tests_outside_test_module = "deny"
+wildcard_enum_match_arm = "deny"
+rest_pat_in_fully_bound_structs = "deny"
+same_name_method = "deny"
+shadow_unrelated = "deny"
+let_underscore_must_use = "deny"
+let_underscore_untyped = "deny"
+str_to_string = "deny"
+rc_buffer = "deny"
+rc_mutex = "deny"
+verbose_file_reads = "deny"
+large_include_file = "deny"
+lossy_float_literal = "deny"
+map_err_ignore = "deny"
+empty_drop = "deny"
+empty_structs_with_brackets = "deny"
+if_then_some_else_none = "deny"
+try_err = "deny"
+semicolon_if_nothing_returned = "deny"
+redundant_type_annotations = "deny"
+renamed_function_params = "deny"
+suspicious_xor_used_as_pow = "deny"
+
+# ---------------------------------------------------------------------------
+# Profiles
+# ---------------------------------------------------------------------------
+[profile.dev]
+debug = "line-tables-only"
+opt-level = 0
+overflow-checks = true
+debug-assertions = true
+
+# gpui is heavy; optimise dependencies even in dev so the app is usable.
+[profile.dev.package."*"]
+opt-level = 2
+debug = false
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+debug = false
+overflow-checks = true # keep integer overflow loud in release builds too

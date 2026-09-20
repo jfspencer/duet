@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Versioned pre-commit hook: the Definition of Done gate. Never bypass with --no-verify.
+exec "$(git rev-parse --show-toplevel)/scripts/dod.sh"

@@ -1,0 +1,27 @@
+[package]
+name = "plan-db"
+description = "LMDB-backed plan store CLI shared by the Hypervisor and Orchestrator agents."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "plan-db"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }
+heed = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+serde_json = { workspace = true }
