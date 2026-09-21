@@ -19,11 +19,22 @@ scripts/dod.sh        the ONLY Definition of Done gate (fmt, clippy, doc, tests,
 
 ```sh
 scripts/bootstrap.sh     # toolchain, cargo-deny, cargo-machete, cargo-nextest, typos, plan-db, git hooks
-cargo run -p duet        # open the app
+cargo run -p duet        # run the executable directly
 scripts/dod.sh --plan    # see the gate
 ```
 
 `rust-toolchain.toml` pins the compiler. `Cargo.toml` carries the strict `[workspace.lints]` policy, `.cargo/config.toml` makes every warning an error, `clippy.toml` holds the API bans, `deny.toml` the dependency policy, `rustfmt.toml` the formatter.
+
+On macOS, build and open the application bundle to use the Duet icon in Finder and the Dock:
+
+```sh
+scripts/package-macos.sh
+open target/debug/Duet.app
+```
+
+Use `scripts/package-macos.sh --release` for a release bundle. The script prints the bundle path and respects Cargo's target directory.
+The bundle uses the approved icon in `crates/duet/assets/icons/duet.icns`.
+Direct `cargo run` launches the executable without macOS bundle metadata or its application icon.
 
 ## Agents
 
