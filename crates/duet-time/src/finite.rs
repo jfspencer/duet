@@ -40,6 +40,11 @@ impl Finite {
 
     /// Build a finite value at compile time, for the workspace constants.
     ///
+    /// The supported call is the `finite!` macro, which takes a literal alone.
+    /// This function is the expansion of that macro and not a call site of its
+    /// own, so it carries `#[doc(hidden)]`. It stays `pub`, because the
+    /// constants that expand the macro live in other crates.
+    ///
     /// `Finite::new` returns an `Option` and `expect` is denied, so a `const`
     /// cannot go through it. This `const fn` asserts instead. In a `const`
     /// item the assertion runs at compile time, so a constant that is not
@@ -47,10 +52,12 @@ impl Finite {
     /// canonicalizes a negative zero and changes no other finite value.
     ///
     /// # Panics
-    /// It panics when `value` is a `NaN` or an infinity. Every caller binds the
-    /// result to a `const` item, so the assertion runs at compile time and no
-    /// binary carries the panic.
+    /// It panics when `value` is a `NaN` or an infinity. The macro binds the
+    /// argument to a literal and every caller binds the result to a `const`
+    /// item, so the assertion runs at compile time and no binary carries the
+    /// panic.
     #[must_use]
+    #[doc(hidden)]
     pub const fn from_finite_const(value: f64) -> Self {
         assert!(value.is_finite(), "a `Finite` constant must be finite");
         Self(value + 0.0)

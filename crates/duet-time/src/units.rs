@@ -142,6 +142,10 @@ impl SuperClock {
     }
 }
 
+/// The sample rates that the superclock rate divides exactly, from section 2.1
+/// of `roadmap/duet-v1/architecture.md`.
+const SUPPORTED_SAMPLE_RATES: [u32; 6] = [44_100, 48_000, 88_200, 96_000, 176_400, 192_000];
+
 /// A device sample rate. The type makes a zero divisor impossible.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct SampleRate(NonZeroU32);
@@ -157,6 +161,18 @@ impl SampleRate {
     #[must_use]
     pub const fn get(self) -> NonZeroU32 {
         self.0
+    }
+
+    /// Whether the superclock rate divides exactly by this rate.
+    ///
+    /// The type accepts every non-zero rate, because a device may report one
+    /// the kernel does not name. At a rate outside this set the superclock
+    /// division leaves a remainder, so a sample count and a superclock count
+    /// do not round trip. A caller that opens a device tests the rate here and
+    /// decides once, off the audio thread.
+    #[must_use]
+    pub fn is_supported(self) -> bool {
+        SUPPORTED_SAMPLE_RATES.contains(&self.0.get())
     }
 }
 
@@ -324,8 +340,27 @@ impl GainDb {
 }
 
 /// A 24-bit signed sample, held in the low three bytes of an `i32`.
+///
+/// `#[serde(try_from = "i32")]` routes deserialization through `new`, so a
+/// stored value outside the 24-bit range is refused with a serde error. A
+/// derived `Deserialize` would write the inner field directly, and the
+/// suppression reason on `convert::i24_to_f32` reads the range as a fact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
+#[serde(try_from = "i32")]
 pub struct I24(i32);
+
+impl TryFrom<i32> for I24 {
+    type Error = TimeError;
+
+    /// One sample in the 24-bit range.
+    ///
+    /// # Errors
+    /// Returns `TimeError::NotRepresentable` when `value` is outside the
+    /// 24-bit range.
+    fn try_from(value: i32) -> Result<Self, TimeError> {
+        Self::new(value).ok_or(TimeError::NotRepresentable)
+    }
+}
 
 impl I24 {
     /// The highest 24-bit sample.

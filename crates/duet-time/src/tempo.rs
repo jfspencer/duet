@@ -65,12 +65,42 @@ impl NoteValue {
 }
 
 /// An exact ratio. The tempo holds one so that no float enters the kernel.
+///
+/// `#[serde(try_from = "RatioFields")]` routes deserialization through `new`,
+/// for the reason section 2.6a of `roadmap/duet-v1/architecture.md` states for
+/// `Finite`: a derived `Deserialize` writes the two fields directly and breaks
+/// the canonical form that the derived `Eq` and `Hash` read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "RatioFields")]
 pub struct Ratio {
     /// The numerator, which carries the sign of the ratio.
     numerator: i64,
     /// The denominator, which is always positive.
     denominator: NonZeroI64,
+}
+
+/// The stored fields of a `Ratio`, read before the constructor runs.
+///
+/// It holds the fields of `Ratio` and no invariant, so the derived
+/// `Deserialize` on it writes no bad value and `Ratio::try_from` is the gate.
+#[derive(Debug, Clone, Copy, Deserialize)]
+struct RatioFields {
+    /// The stored numerator.
+    numerator: i64,
+    /// The stored denominator.
+    denominator: NonZeroI64,
+}
+
+impl TryFrom<RatioFields> for Ratio {
+    type Error = TimeError;
+
+    /// The canonical ratio of the stored pair.
+    ///
+    /// # Errors
+    /// Returns the error of `Ratio::new`.
+    fn try_from(fields: RatioFields) -> Result<Self, TimeError> {
+        Self::new(fields.numerator, fields.denominator)
+    }
 }
 
 impl Ratio {
@@ -85,8 +115,8 @@ impl Ratio {
     /// the denominator has no positive 64-bit form. The magnitude of
     /// `i64::MIN` is the one such value.
     pub fn new(numerator: i64, denominator: NonZeroI64) -> Result<Self, TimeError> {
-        let numerator_magnitude = numerator.unsigned_abs();
-        let denominator_magnitude = denominator.get().unsigned_abs();
+        let numerator_magnitude = u128::from(numerator.unsigned_abs());
+        let denominator_magnitude = u128::from(denominator.get().unsigned_abs());
         let divisor = greatest_common_divisor(numerator_magnitude, denominator_magnitude);
         let (Some(reduced_numerator), Some(reduced_denominator)) = (
             numerator_magnitude.checked_div(divisor),
@@ -122,8 +152,10 @@ impl Ratio {
 /// The greatest common divisor of two magnitudes.
 ///
 /// A zero pairs with any value, so `greatest_common_divisor(0, value)` is
-/// `value` and a zero numerator reduces to zero over one.
-const fn greatest_common_divisor(left: u64, right: u64) -> u64 {
+/// `value` and a zero numerator reduces to zero over one. It reads 128-bit
+/// magnitudes, because `reduced_scale` divides the two sides of the tempo
+/// scale and each of those leaves the 64-bit range.
+const fn greatest_common_divisor(left: u128, right: u128) -> u128 {
     let mut larger = left;
     let mut smaller = right;
     while smaller != 0 {
@@ -138,7 +170,7 @@ const fn greatest_common_divisor(left: u64, right: u64) -> u64 {
 ///
 /// # Errors
 /// Returns `TimeError::Overflow` when `magnitude` has no positive 64-bit form.
-fn signed_magnitude(magnitude: u64, negative: bool) -> Result<i64, TimeError> {
+fn signed_magnitude(magnitude: u128, negative: bool) -> Result<i64, TimeError> {
     let Ok(value) = i64::try_from(magnitude) else {
         return Err(TimeError::Overflow);
     };
@@ -150,7 +182,12 @@ fn signed_magnitude(magnitude: u64, negative: bool) -> Result<i64, TimeError> {
 }
 
 /// A tempo, held as an exact ratio so that no float enters the kernel.
+///
+/// `#[serde(try_from = "TempoFields")]` routes deserialization through `new`,
+/// so a stored rate that no constructor would pass is refused with a serde
+/// error instead of reaching a query.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "TempoFields")]
 pub struct Tempo {
     /// The rate in beats per minute.
     beats_per_minute: Ratio,
@@ -160,20 +197,47 @@ pub struct Tempo {
     ramped: bool,
 }
 
+/// The stored fields of a `Tempo`, read before the constructor runs.
+///
+/// The rate is a `Ratio`, so it carries its own gate, and this struct adds
+/// none of its own.
+#[derive(Debug, Clone, Copy, Deserialize)]
+struct TempoFields {
+    /// The stored rate in beats per minute.
+    beats_per_minute: Ratio,
+    /// The stored note value of one beat.
+    beat_unit: NoteValue,
+    /// The stored ramp marker.
+    ramped: bool,
+}
+
+impl TryFrom<TempoFields> for Tempo {
+    type Error = TimeError;
+
+    /// The tempo of the stored fields.
+    ///
+    /// # Errors
+    /// Returns the error of `Tempo::new`.
+    fn try_from(fields: TempoFields) -> Result<Self, TimeError> {
+        Self::new(fields.beats_per_minute, fields.beat_unit, fields.ramped)
+    }
+}
+
 impl Tempo {
     /// A tempo of `beats_per_minute` over `beat_unit`.
     ///
     /// # Errors
     /// Returns `TimeError::NotRepresentable` when the rate is zero or
     /// negative. The scale divides by the rate, so a zero rate names no
-    /// segment and a negative rate runs the timeline backwards. This
-    /// constructor is the one gate, so no query repeats the test.
+    /// segment and a negative rate runs the timeline backwards. Both sides of
+    /// the rate carry the test, so this constructor is the one gate and it
+    /// rests on no invariant of `Ratio::new`. No query repeats the test.
     pub const fn new(
         beats_per_minute: Ratio,
         beat_unit: NoteValue,
         ramped: bool,
     ) -> Result<Self, TimeError> {
-        if beats_per_minute.numerator() <= 0 {
+        if beats_per_minute.numerator() <= 0 || beats_per_minute.denominator().get() <= 0 {
             return Err(TimeError::NotRepresentable);
         }
         Ok(Self {
@@ -348,7 +412,12 @@ impl MeterPoint {
 /// it answers zero, and every same-domain query on it is the identity. A map
 /// that `TempoMapEdit::finish` accepts and that holds a tempo entry is never
 /// empty, so a project map always states a real tempo.
+///
+/// `#[serde(try_from = "TempoMapFields")]` runs the validation of
+/// `TempoMapEdit::finish` on the deserialization path, so a stored document
+/// meets the same gate as a builder and a hand edit cannot walk past it.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "TempoMapFields")]
 pub struct TempoMap {
     /// The tempo entries, ordered by tick.
     tempos: Vec<TempoPoint>,
@@ -356,7 +425,74 @@ pub struct TempoMap {
     meters: Vec<MeterPoint>,
 }
 
+/// The stored lists of a `TempoMap`, read before the validation runs.
+///
+/// The list invariants belong to the map, so this struct carries the two
+/// lists and `TempoMap::try_from` carries the gate.
+#[derive(Debug, Clone, Deserialize)]
+struct TempoMapFields {
+    /// The stored tempo entries.
+    tempos: Vec<TempoPoint>,
+    /// The stored meter entries.
+    meters: Vec<MeterPoint>,
+}
+
+impl TryFrom<TempoMapFields> for TempoMap {
+    type Error = TimeError;
+
+    /// The validated map of the stored lists.
+    ///
+    /// # Errors
+    /// Returns the error of `TempoMapEdit::finish`.
+    fn try_from(fields: TempoMapFields) -> Result<Self, TimeError> {
+        validate_map(&fields.tempos, &fields.meters)?;
+        Ok(Self {
+            tempos: fields.tempos,
+            meters: fields.meters,
+        })
+    }
+}
+
 impl TempoMap {
+    /// The tempo entries, ordered by tick.
+    ///
+    /// `duet-export` and `duet-interchange` write the map to another format,
+    /// and `crates/duet` draws a tempo ruler. Each one reads the list here,
+    /// because `duet-time` holds no `serde_json` edge.
+    #[must_use]
+    pub fn tempos(&self) -> &[TempoPoint] {
+        &self.tempos
+    }
+
+    /// The meter entries, ordered by tick.
+    ///
+    /// `duet-engrave` draws barlines and beam groups from this list.
+    #[must_use]
+    pub fn meters(&self) -> &[MeterPoint] {
+        &self.meters
+    }
+
+    /// The tempo entry that governs `ticks`, or `None` on an empty list.
+    ///
+    /// It reads the entry that `superclock_at` reads, so the two answers can
+    /// never disagree. A tick below the first entry answers the first entry,
+    /// which is the entry whose rate that query uses.
+    #[must_use]
+    pub fn tempo_at(&self, ticks: Ticks) -> Option<TempoPoint> {
+        let index = self.tempos.partition_point(|point| point.ticks() <= ticks);
+        self.tempos.get(index.saturating_sub(1)).copied()
+    }
+
+    /// The meter entry that governs `ticks`, or `None` on an empty list.
+    ///
+    /// It reads the entry that `bbt_at` reads, for the reason `tempo_at`
+    /// states.
+    #[must_use]
+    pub fn meter_at(&self, ticks: Ticks) -> Option<MeterPoint> {
+        let index = self.meters.partition_point(|point| point.ticks() <= ticks);
+        self.meters.get(index.saturating_sub(1)).copied()
+    }
+
     /// The superclock position of a tick position.
     ///
     /// The map reads the last tempo entry at or before `ticks` and scales the
@@ -394,8 +530,14 @@ impl TempoMap {
     /// The address of a tick position.
     ///
     /// The map reads the last meter entry at or before `ticks`. The whole
-    /// address holds at `Bbt::ORIGIN` below the first bar and at `Bbt::LAST`
-    /// above the last bar. An empty map answers `Bbt::ORIGIN`.
+    /// address holds at `Bbt::ORIGIN` below the first bar, and above the last
+    /// bar it holds at the last address the governing meter names. An empty
+    /// map answers `Bbt::ORIGIN`.
+    ///
+    /// The answer never falls as the tick rises, under
+    /// `Bbt::lexicographic_cmp`, on any map that `TempoMapEdit::finish`
+    /// accepts. Both clamps keep that order, and the meter cross-check of
+    /// `finish` keeps it across a segment boundary.
     #[must_use]
     pub fn bbt_at(&self, ticks: Ticks) -> Bbt {
         let index = self.meters.partition_point(|point| point.ticks() <= ticks);
@@ -544,30 +686,79 @@ impl TempoMapEdit {
     /// The validated map.
     ///
     /// The tempo list is validated first, then the meter list. Inside one list
-    /// the first-point rule is checked before the order rule. An empty list is
-    /// legal, and the two lists are validated apart.
+    /// the first-point rule is checked before the order rule, and the order
+    /// rule before the cross-check. An empty list is legal, and the two lists
+    /// are validated apart.
     ///
     /// # Errors
     /// Returns `TimeError::NoFirstPoint` when a list is not empty and its first
     /// entry does not sit at tick zero, at superclock zero, and at
     /// `Bbt::ORIGIN`. Returns `TimeError::UnorderedMap` when the ticks or the
-    /// addresses of a list do not rise, or when a superclock value falls.
+    /// addresses of a list do not rise, when a superclock value falls, or when
+    /// a stored view of an entry disagrees with the arithmetic the map itself
+    /// performs: the clock of a tempo entry, and the address of a meter entry.
     pub fn finish(self) -> Result<TempoMap, TimeError> {
-        validate_list(&self.tempos, |point| PointViews {
-            ticks: point.ticks(),
-            clock: point.clock(),
-            bbt: point.bbt(),
-        })?;
-        validate_list(&self.meters, |point| PointViews {
-            ticks: point.ticks(),
-            clock: point.clock(),
-            bbt: point.bbt(),
-        })?;
+        validate_map(&self.tempos, &self.meters)?;
         Ok(TempoMap {
             tempos: self.tempos,
             meters: self.meters,
         })
     }
+}
+
+/// Refuse a tempo list or a meter list that a query cannot answer.
+///
+/// The builder and the deserialization path share it, so a stored document
+/// meets the gate that a builder meets.
+///
+/// # Errors
+/// Returns `TimeError::NoFirstPoint` or `TimeError::UnorderedMap`.
+fn validate_map(tempos: &[TempoPoint], meters: &[MeterPoint]) -> Result<(), TimeError> {
+    validate_list(
+        tempos,
+        |point| PointViews {
+            ticks: point.ticks(),
+            clock: point.clock(),
+            bbt: point.bbt(),
+        },
+        tempo_pair_agrees,
+    )?;
+    validate_list(
+        meters,
+        |point| PointViews {
+            ticks: point.ticks(),
+            clock: point.clock(),
+            bbt: point.bbt(),
+        },
+        meter_pair_agrees,
+    )
+}
+
+/// Whether the stored clock of `next` is the clock `previous` produces.
+///
+/// `superclock_at` reads the stored clock of the anchor and adds a scaled tick
+/// delta to it. Without this rule the two halves of that answer can disagree
+/// and the query falls as the tick rises.
+fn tempo_pair_agrees(previous: &TempoPoint, next: &TempoPoint) -> bool {
+    let delta_ticks = next.ticks().saturating_sub(previous.ticks());
+    let delta_clock = superclocks_for_ticks(previous.tempo(), delta_ticks.get());
+    next.clock()
+        == previous
+            .clock()
+            .saturating_add(SuperClock::new(delta_clock))
+}
+
+/// Whether the stored address of `next` is the address `previous` produces.
+///
+/// `bbt_at` selects its anchor by tick and `ticks_at_bbt` selects its anchor by
+/// address. Without this rule the two selections name different segments and
+/// the round trip moves the position by a whole bar.
+///
+/// It asks for no bar alignment: a meter entry may start inside a bar, and the
+/// rule is only that the stored address equal the arithmetic answer. The stored
+/// meter clock carries no rule, because no query reads it.
+fn meter_pair_agrees(previous: &MeterPoint, next: &MeterPoint) -> bool {
+    exact_address(*previous, next.ticks()) == Some(next.bbt())
 }
 
 /// The three views of one map entry that the validation reads.
@@ -581,10 +772,12 @@ struct PointViews {
     bbt: Bbt,
 }
 
-/// Refuse a point list that starts off the origin or that is out of order.
+/// Refuse a point list that starts off the origin, that is out of order, or
+/// whose cached views disagree with the map arithmetic.
 ///
-/// `views` reads the three positions of one entry, so the tempo list and the
-/// meter list share one rule.
+/// `views` reads the three positions of one entry and `agrees` cross-checks an
+/// adjacent pair, so the tempo list and the meter list share one rule and each
+/// one states its own cross-check.
 ///
 /// The tick and the address must rise strictly: a duplicate tick names an
 /// entry that no query can reach, and the address lookup of `ticks_at_bbt` is
@@ -594,7 +787,11 @@ struct PointViews {
 ///
 /// # Errors
 /// Returns `TimeError::NoFirstPoint` or `TimeError::UnorderedMap`.
-fn validate_list<P>(points: &[P], views: impl Fn(&P) -> PointViews) -> Result<(), TimeError> {
+fn validate_list<P>(
+    points: &[P],
+    views: impl Fn(&P) -> PointViews,
+    agrees: impl Fn(&P, &P) -> bool,
+) -> Result<(), TimeError> {
     let Some(first) = points.first() else {
         return Ok(());
     };
@@ -614,19 +811,48 @@ fn validate_list<P>(points: &[P], views: impl Fn(&P) -> PointViews) -> Result<()
         if !rises {
             return Err(TimeError::UnorderedMap);
         }
+        if !agrees(previous, next) {
+            return Err(TimeError::UnorderedMap);
+        }
     }
     Ok(())
 }
 
 /// The floor of `value` times `numerator` over `denominator`.
 ///
-/// It answers `None` when an intermediate or the result leaves the range.
+/// The pair divides by its greatest common divisor before the multiply, so an
+/// intermediate that would leave the 128-bit range no longer does when the
+/// quotient itself is in range. Both sides of the tempo scale carry the tick
+/// resolution as a factor, so the reduction covers the reachable class.
+///
+/// It answers `None` when an intermediate or the result still leaves the
+/// range, which a coprime pair of large magnitudes can reach.
 /// `checked_div_euclid` answers `None` for a zero divisor, so the function
 /// needs no precondition and carries no panic primitive.
 fn scale_floor(value: i64, numerator: i128, denominator: i128) -> Option<i64> {
-    let scaled = i128::from(value).checked_mul(numerator)?;
-    let quotient = scaled.checked_div_euclid(denominator)?;
+    let (reduced_numerator, reduced_denominator) = reduced_scale(numerator, denominator);
+    let scaled = i128::from(value).checked_mul(reduced_numerator)?;
+    let quotient = scaled.checked_div_euclid(reduced_denominator)?;
     i64::try_from(quotient).ok()
+}
+
+/// The scale pair divided by the greatest common divisor of its magnitudes.
+///
+/// It answers the pair unchanged when the divisor has no signed 128-bit form
+/// or when a division refuses, so the reduction never changes the value of the
+/// fraction and never introduces a refusal of its own.
+fn reduced_scale(numerator: i128, denominator: i128) -> (i128, i128) {
+    let divisor = greatest_common_divisor(numerator.unsigned_abs(), denominator.unsigned_abs());
+    let Ok(signed_divisor) = i128::try_from(divisor) else {
+        return (numerator, denominator);
+    };
+    let (Some(reduced_numerator), Some(reduced_denominator)) = (
+        numerator.checked_div(signed_divisor),
+        denominator.checked_div(signed_divisor),
+    ) else {
+        return (numerator, denominator);
+    };
+    (reduced_numerator, reduced_denominator)
 }
 
 /// The same value as `scale_floor`, held at the 64-bit bound on a refusal.
@@ -649,6 +875,12 @@ fn saturated_bound(value: i64, numerator: i128, denominator: i128) -> i64 {
 /// the rate denominator, over the rate numerator times the ticks of one beat.
 /// The floor is the rounding rule, because it is monotonic over the whole
 /// 64-bit range and a timeline holds negative positions.
+///
+/// The answer is held at the 64-bit bound when the exact value leaves the
+/// `i64` range, and also when the reduced intermediate still leaves the
+/// 128-bit range. The second case needs a rate whose two reduced sides are
+/// both above about 1e19 together with a tick delta above about 1e18; no
+/// session data reaches it, and the answer is a bound and not a wrong number.
 fn superclocks_for_ticks(tempo: Tempo, delta_ticks: i64) -> i64 {
     let (minute_side, beat_side) = scale_operands(tempo);
     scale_floor_saturating(delta_ticks, minute_side, beat_side)
@@ -714,30 +946,53 @@ fn bar_address(anchor: MeterPoint, ticks: Ticks) -> Option<BarAddress> {
     })
 }
 
-/// The address of `ticks`, held inside the range a `Bbt` can name.
+/// The address of `ticks` when every field fits the range a `Bbt` can name.
 ///
-/// The whole address holds, not the bar alone. A query below the first bar
-/// answers `Bbt::ORIGIN`, and a query above the last bar answers `Bbt::LAST`.
-fn clamped_address(anchor: MeterPoint, ticks: Ticks) -> Bbt {
-    let limit = if ticks.get() < 0 {
-        Bbt::ORIGIN
-    } else {
-        Bbt::LAST
-    };
-    let Some(address) = bar_address(anchor, ticks) else {
-        return limit;
-    };
+/// It answers `None` when the arithmetic or a field leaves that range, which
+/// is the case a clamp then covers.
+fn exact_address(anchor: MeterPoint, ticks: Ticks) -> Option<Bbt> {
+    let address = bar_address(anchor, ticks)?;
     let (Ok(bar_value), Ok(beat_value), Ok(tick_value)) = (
         u32::try_from(address.bar),
         u16::try_from(address.beat_offset.saturating_add(1)),
         u16::try_from(address.tick_in_beat),
     ) else {
-        return limit;
+        return None;
     };
     let (Some(bar), Some(beat)) = (NonZeroU32::new(bar_value), NonZeroU16::new(beat_value)) else {
-        return limit;
+        return None;
     };
-    Bbt::new(bar, beat, tick_value)
+    Some(Bbt::new(bar, beat, tick_value))
+}
+
+/// The address a query holds at when it leaves the range a `Bbt` can name.
+///
+/// The lower limit is `Bbt::ORIGIN`, the first address that exists. The upper
+/// limit is the LAST address the governing meter names: bar `u32::MAX`, its
+/// last beat, and the last tick of that beat. The first address of that bar
+/// would fall below an address a lower tick already answered, so `bbt_at`
+/// would not rise with the tick.
+fn clamp_limit(anchor: MeterPoint, ticks: Ticks) -> Bbt {
+    if ticks.get() < 0 {
+        return Bbt::ORIGIN;
+    }
+    let meter = anchor.meter();
+    let last_tick =
+        u16::try_from(meter.beat_unit().ticks().get().saturating_sub(1)).unwrap_or(u16::MAX);
+    Bbt::new(
+        NonZeroU32::MAX,
+        NonZeroU16::from(meter.beats_per_bar()),
+        last_tick,
+    )
+}
+
+/// The address of `ticks`, held inside the range a `Bbt` can name.
+///
+/// The whole address holds, not the bar alone. A query below the first bar
+/// answers `Bbt::ORIGIN`, and a query above the last bar answers the last
+/// address the governing meter names.
+fn clamped_address(anchor: MeterPoint, ticks: Ticks) -> Bbt {
+    exact_address(anchor, ticks).unwrap_or_else(|| clamp_limit(anchor, ticks))
 }
 
 /// The tick position of `query` under one meter entry.

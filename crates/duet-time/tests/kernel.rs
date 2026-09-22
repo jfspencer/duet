@@ -10,16 +10,17 @@ mod tests {
     use core::num::{NonZeroU8, NonZeroU16, NonZeroU32};
 
     use duet_time::convert::{
-        Rounding, f64_to_f32, i16_to_f32, i24_to_f32, i32_to_f32, muldiv, samples_to_superclock,
+        Rounding, Unit, f64_to_f32, i16_to_f32, i24_to_f32, i32_to_f32, muldiv,
+        sample_clock_to_superclock, samples_to_superclock, superclock_to_sample_clock,
         superclock_to_samples, ticks_to_f64, unit_to_i24, unit_to_i32,
     };
     use duet_time::{
         Bbt, Delta, Finite, I24, Meter, MeterPoint, NoteValue, Position, Ratio, SUPERCLOCK_HZ,
-        SampleRate, Span, SuperClock, TICKS_PER_QUARTER, Tempo, TempoMap, TempoMapEdit, TempoPoint,
-        Ticks, TimeDomain, TimeError, split_tuplet,
+        SampleClock, SampleRate, Span, SuperClock, TICKS_PER_QUARTER, Tempo, TempoMap,
+        TempoMapEdit, TempoPoint, Ticks, TimeDomain, TimeError, finite, split_tuplet,
     };
     use proptest::prelude::{
-        Strategy as _, any, prop_assert, prop_assert_eq, prop_assume, proptest,
+        Strategy as _, any, prop_assert, prop_assert_eq, prop_assert_ne, prop_assume, proptest,
     };
 
     /// The rounding rule of the kernel, computed toward zero and then adjusted.
@@ -362,6 +363,21 @@ mod tests {
 
     /// Superclock ticks of one tick at 90 quarter notes per minute.
     const CLOCK_AT_90: i64 = 98_000;
+
+    /// The tick count of one bar of three quarter notes.
+    const THREE_FOUR_BAR_TICKS: i64 = 5_760;
+
+    /// The first tick of the last bar a `Bbt` can name, under 4/4 at the
+    /// origin. It is `(u32::MAX - 1)` bars of `BAR_TICKS` ticks.
+    const LAST_BAR_TICKS: i64 = 32_985_348_817_920;
+
+    /// A rate at which one tick scales to no superclock tick at all.
+    ///
+    /// The floor of the tempo scale answers zero when the beat side is above
+    /// the minute side, which needs a rate above `8_820_000` quarter notes per
+    /// minute. It is the rate at which two adjacent entries may share one
+    /// superclock value.
+    const EXTREME_RATE: i64 = 9_000_000;
 
     /// A meter entry with the three views the map reads.
     fn meter_point(ticks: i64, clock: i64, address: Bbt, beats_per_bar: u8) -> MeterPoint {
@@ -730,8 +746,13 @@ mod tests {
         let map = quarter_meter_map();
         assert_eq!(
             map.bbt_at(Ticks::new(i64::MAX)),
-            Bbt::LAST,
-            "a tick beyond the last bar holds the whole address at the last bar"
+            bbt(u32::MAX, 4, 1_919),
+            "a tick beyond the last bar holds at the LAST address the governing meter names"
+        );
+        assert_eq!(
+            Bbt::LAST.lexicographic_cmp(map.bbt_at(Ticks::new(i64::MAX))),
+            Ordering::Less,
+            "the first address of the last bar is below the clamp, so it is not the clamp target"
         );
     }
 
@@ -756,17 +777,19 @@ mod tests {
     }
 
     #[test]
-    fn ticks_at_bbt_refuses_an_overflowing_bar() {
-        let far = 9_223_372_036_854_000_000_i64;
+    fn ticks_at_bbt_answers_the_far_bar_of_a_consistent_map() {
+        let start = BAR_TICKS.saturating_mul(3_999_999_999);
         let map = TempoMapEdit::new()
             .push_meter(meter_point(0, 0, Bbt::ORIGIN, 4))
-            .push_meter(meter_point(far, 1, bbt(4_000_000_000, 1, 0), 4))
+            .push_meter(meter_point(start, 1, bbt(4_000_000_000, 1, 0), 4))
             .finish()
-            .expect("the two meter entries rise in every view");
+            .expect("the second entry states the address the first entry produces");
         assert_eq!(
-            map.ticks_at_bbt(bbt(u32::MAX, 1, 0)).err(),
-            Some(TimeError::Overflow),
-            "an address whose tick count leaves the 64-bit range is an overflow"
+            map.ticks_at_bbt(bbt(u32::MAX, 1, 0)),
+            Ok(Ticks::new(
+                start.saturating_add(BAR_TICKS.saturating_mul(294_967_295))
+            )),
+            "the last bar a `Bbt` names is inside the 64-bit range on a consistent map"
         );
     }
 
@@ -947,12 +970,12 @@ mod tests {
     #[test]
     fn tempo_map_accepts_a_non_decreasing_clock() {
         let finished = TempoMapEdit::new()
-            .push_tempo(tempo_point(0, 0, Bbt::ORIGIN, 120))
-            .push_tempo(tempo_point(1, 0, bbt(1, 1, 1), 120))
+            .push_tempo(tempo_point(0, 0, Bbt::ORIGIN, EXTREME_RATE))
+            .push_tempo(tempo_point(1, 0, bbt(1, 1, 1), EXTREME_RATE))
             .finish();
         assert!(
             finished.is_ok(),
-            "two entries whose superclock values are equal are accepted"
+            "at a rate where one tick scales to no superclock tick, two equal superclock values are accepted"
         );
     }
 
@@ -1011,9 +1034,9 @@ mod tests {
         );
         let trimmed = map
             .edit()
-            .remove_tempo_at(Ticks::new(BAR_TICKS))
+            .remove_tempo_at(Ticks::new(BAR_TICKS.saturating_mul(2)))
             .finish()
-            .expect("the remaining entries still rise in every view");
+            .expect("the remaining entries still rise and still agree with the arithmetic");
         assert_ne!(
             trimmed, map,
             "a removed entry leaves a map that differs from the original"
@@ -1132,6 +1155,353 @@ mod tests {
             finished.err(),
             Some(TimeError::NoFirstPoint),
             "finish refuses a tempo list whose first entry is off tick zero"
+        );
+    }
+
+    /// A consistent map of three meter entries, two of which start mid-bar.
+    ///
+    /// Each entry states the address the entry before it produces at that
+    /// tick, so `finish` accepts it, and none of the three starts a bar.
+    fn three_meter_map() -> TempoMap {
+        let second = BAR_TICKS.saturating_mul(4).saturating_add(1_920);
+        let third = second.saturating_add(THREE_FOUR_BAR_TICKS.saturating_mul(3));
+        TempoMapEdit::new()
+            .push_meter(meter_point(0, 0, Bbt::ORIGIN, 4))
+            .push_meter(meter_point(second, 1, bbt(5, 2, 0), 3))
+            .push_meter(meter_point(third, 2, bbt(8, 2, 0), 5))
+            .finish()
+            .expect("each entry states the address the entry before it produces")
+    }
+
+    #[test]
+    fn finish_refuses_a_tempo_clock_the_rate_denies() {
+        let refused = TempoMapEdit::new()
+            .push_tempo(tempo_point(0, 0, Bbt::ORIGIN, 120))
+            .push_tempo(tempo_point(1_920, 1, bbt(2, 1, 0), 120))
+            .finish();
+        assert_eq!(
+            refused.err(),
+            Some(TimeError::UnorderedMap),
+            "a stored clock of 1 where the rate of the entry before it produces 141_120_000 is refused"
+        );
+        let repaired = TempoMapEdit::new()
+            .push_tempo(tempo_point(0, 0, Bbt::ORIGIN, 120))
+            .push_tempo(tempo_point(
+                1_920,
+                1_920_i64.saturating_mul(CLOCK_AT_120),
+                bbt(2, 1, 0),
+                120,
+            ))
+            .finish()
+            .expect("the stored clock is the clock the rate produces");
+        assert!(
+            repaired.superclock_at(Ticks::new(1_920)) > repaired.superclock_at(Ticks::new(1_919)),
+            "the query rises across the segment boundary of a map that finish accepts"
+        );
+    }
+
+    #[test]
+    fn finish_refuses_a_meter_address_the_bar_arithmetic_denies() {
+        let refused = TempoMapEdit::new()
+            .push_meter(meter_point(0, 0, Bbt::ORIGIN, 4))
+            .push_meter(meter_point(15_360, 1, bbt(2, 1, 0), 4))
+            .finish();
+        assert_eq!(
+            refused.err(),
+            Some(TimeError::UnorderedMap),
+            "a second entry that claims bar 2 where the first entry produces bar 3 is refused"
+        );
+    }
+
+    #[test]
+    fn finish_accepts_a_meter_entry_that_starts_inside_a_bar() {
+        let map = three_meter_map();
+        assert_eq!(
+            map.meters().len(),
+            3,
+            "a meter entry needs no bar alignment, only an address the arithmetic produces"
+        );
+    }
+
+    proptest! {
+        /// The strategy draws a tick count from `0..=200_000`.
+        #[test]
+        fn bbt_round_trips_over_a_multi_meter_map(ticks in 0_i64..=200_000) {
+            let map = three_meter_map();
+            prop_assert_eq!(
+                map.ticks_at_bbt(map.bbt_at(Ticks::new(ticks))),
+                Ok(Ticks::new(ticks)),
+                "an address names the tick it came from on a map of three meter entries"
+            );
+        }
+    }
+
+    #[test]
+    fn bbt_at_rises_at_the_top_of_the_range() {
+        let map = quarter_meter_map();
+        for (probe, want) in [
+            (LAST_BAR_TICKS, bbt(u32::MAX, 1, 0)),
+            (LAST_BAR_TICKS.saturating_add(1_920), bbt(u32::MAX, 2, 0)),
+            (
+                LAST_BAR_TICKS.saturating_add(BAR_TICKS),
+                bbt(u32::MAX, 4, 1_919),
+            ),
+        ] {
+            assert_eq!(
+                map.bbt_at(Ticks::new(probe)),
+                want,
+                "the address at tick {probe} is the one the meter names"
+            );
+        }
+        let rising = [
+            LAST_BAR_TICKS,
+            LAST_BAR_TICKS.saturating_add(1_920),
+            LAST_BAR_TICKS.saturating_add(BAR_TICKS),
+        ];
+        for pair in rising.windows(2) {
+            let [low, high] = pair else { continue };
+            assert_ne!(
+                map.bbt_at(Ticks::new(*low))
+                    .lexicographic_cmp(map.bbt_at(Ticks::new(*high))),
+                Ordering::Greater,
+                "the address at tick {high} is not below the address at tick {low}"
+            );
+        }
+    }
+
+    proptest! {
+        /// The strategy draws two arbitrary tick counts with `any::<i64>()`.
+        #[test]
+        fn bbt_at_is_monotonic(first in any::<i64>(), second in any::<i64>()) {
+            let map = quarter_meter_map();
+            let low = Ticks::new(first.min(second));
+            let high = Ticks::new(first.max(second));
+            prop_assert_ne!(
+                map.bbt_at(low).lexicographic_cmp(map.bbt_at(high)),
+                Ordering::Greater,
+                "the address never falls as the tick rises, over the whole 64-bit range"
+            );
+        }
+    }
+
+    #[test]
+    fn tempo_scale_reduces_before_the_multiply() {
+        let rate = Ratio::new(520_833_333_333_333_333, nonzero_i64(59_049_180_329))
+            .expect("the rate reduces inside the range");
+        let tempo = Tempo::new(rate, NoteValue::Quarter, false).expect("the rate is positive");
+        let map = one_tempo_map(tempo);
+        assert_eq!(
+            map.superclock_at(Ticks::new(1_000_000_000_000_000_000))
+                .get(),
+            999_962_439_363_417_600,
+            "a large rate denominator no longer drives the intermediate out of the 128-bit range"
+        );
+        assert_eq!(
+            map.superclock_at(Ticks::new(100_000_000_000_000_000)).get(),
+            99_996_243_936_341_760,
+            "the answer that already fitted the intermediate is unchanged"
+        );
+    }
+
+    #[test]
+    fn tempo_new_tests_both_sides_of_the_rate() {
+        let stored: Ratio = serde_json::from_str(r#"{"numerator":120,"denominator":-1}"#)
+            .expect("the constructor moves the sign to the numerator");
+        assert_eq!(
+            stored.denominator().get(),
+            1,
+            "the stored denominator is positive on the load path"
+        );
+        assert_eq!(stored.numerator(), -120, "the sign moved to the numerator");
+        assert_eq!(
+            Tempo::new(stored, NoteValue::Quarter, false).err(),
+            Some(TimeError::NotRepresentable),
+            "a negative rate names no segment"
+        );
+    }
+
+    #[test]
+    fn deserialization_refuses_a_zero_tempo_rate() {
+        let parsed: Result<Tempo, serde_json::Error> = serde_json::from_str(
+            r#"{"beats_per_minute":{"numerator":0,"denominator":1},"beat_unit":"Quarter","ramped":false}"#,
+        );
+        assert!(
+            parsed.is_err(),
+            "a stored rate of zero is refused on the load path"
+        );
+    }
+
+    #[test]
+    fn deserialization_canonicalizes_a_reducible_ratio() {
+        let parsed: Ratio = serde_json::from_str(r#"{"numerator":2,"denominator":4}"#)
+            .expect("two over four is a legal ratio");
+        assert_eq!(parsed.numerator(), 1, "the numerator is reduced");
+        assert_eq!(parsed.denominator().get(), 2, "the denominator is reduced");
+        assert_eq!(
+            parsed,
+            Ratio::new(1, nonzero_i64(2)).expect("one over two is a legal ratio"),
+            "two ratios of one value are one value on the load path too"
+        );
+    }
+
+    #[test]
+    fn deserialization_refuses_a_negative_tempo_denominator() {
+        let parsed: Result<Tempo, serde_json::Error> = serde_json::from_str(
+            r#"{"beats_per_minute":{"numerator":120,"denominator":-1},"beat_unit":"Quarter","ramped":false}"#,
+        );
+        assert!(
+            parsed.is_err(),
+            "a stored rate that runs the timeline backwards is refused on the load path"
+        );
+    }
+
+    #[test]
+    fn deserialization_refuses_a_sample_outside_the_24_bit_range() {
+        let parsed: Result<I24, serde_json::Error> = serde_json::from_str("2000000000");
+        assert!(
+            parsed.is_err(),
+            "a stored sample far outside the 24-bit range is refused on the load path"
+        );
+        let inside: I24 = serde_json::from_str("8388607").expect("the highest sample is in range");
+        assert_eq!(inside, I24::MAX, "a sample inside the range still parses");
+    }
+
+    #[test]
+    fn deserialization_refuses_a_map_the_builder_refuses() {
+        let document = r#"{"tempos":[],"meters":[{"ticks":5000,"clock":0,"bbt":{"bar":9,"beat":1,"tick":0},"meter":{"beats_per_bar":4,"beat_unit":"Quarter"}}]}"#;
+        let parsed: Result<TempoMap, serde_json::Error> = serde_json::from_str(document);
+        assert!(
+            parsed.is_err(),
+            "the load path meets the gate that TempoMapEdit::finish carries"
+        );
+    }
+
+    #[test]
+    fn tempo_map_json_round_trips() {
+        let map = three_meter_map();
+        let document = serde_json::to_string(&map).expect("the map serializes");
+        let parsed: TempoMap = serde_json::from_str(&document).expect("a valid map parses back");
+        assert_eq!(parsed, map, "a map the builder accepts survives the file");
+    }
+
+    #[test]
+    fn tempo_map_reads_its_own_entries() {
+        let map = three_tempo_map();
+        assert_eq!(
+            map.tempos().len(),
+            3,
+            "the read surface answers every tempo entry"
+        );
+        assert_eq!(
+            map.meters(),
+            &[],
+            "an empty meter list reads as an empty slice"
+        );
+        assert_eq!(
+            map.tempo_at(Ticks::new(BAR_TICKS)).map(TempoPoint::ticks),
+            Some(Ticks::new(BAR_TICKS)),
+            "the lookup answers the entry that sits at the tick"
+        );
+        assert_eq!(
+            map.tempo_at(Ticks::new(BAR_TICKS.saturating_sub(1)))
+                .map(TempoPoint::ticks),
+            Some(Ticks::ZERO),
+            "the lookup answers the last entry at or before the tick"
+        );
+        assert_eq!(
+            TempoMap::default().tempo_at(Ticks::ZERO),
+            None,
+            "an empty list has no governing entry"
+        );
+        let meters = three_meter_map();
+        assert_eq!(
+            meters
+                .meter_at(Ticks::new(BAR_TICKS))
+                .map(|point| point.meter().beats_per_bar().get()),
+            Some(4),
+            "the meter lookup answers the governing meter"
+        );
+        assert_eq!(
+            TempoMap::default().meter_at(Ticks::ZERO),
+            None,
+            "an empty meter list has no governing entry"
+        );
+    }
+
+    #[test]
+    fn span_reads_its_own_delta() {
+        for delta in [
+            Delta::Beats(Ticks::new(960)),
+            Delta::Audio(SuperClock::new(CLOCK_AT_120)),
+        ] {
+            let span = Span::new(Position::Beats(Ticks::ZERO), delta);
+            assert_eq!(
+                span.delta(),
+                delta,
+                "the span answers the delta it was built with for {delta:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn finite_macro_builds_a_constant() {
+        const MIX_SPLIT: Finite = finite!(0.45);
+        assert_eq!(
+            MIX_SPLIT,
+            Finite::new(0.45).expect("the literal is finite"),
+            "the macro and the run-time constructor agree"
+        );
+    }
+
+    #[test]
+    fn unit_to_i24_keeps_the_sign_at_both_bounds() {
+        for (value, want) in [(-1.0_f32, I24::MIN.get() + 1), (1.0_f32, I24::MAX.get())] {
+            assert_eq!(
+                unit_to_i24(Unit::clamped(value)).get(),
+                want,
+                "the full-scale sample {value} answers a value of its own sign"
+            );
+        }
+        assert!(
+            unit_to_i24(Unit::clamped(-0.5)).get() < 0,
+            "a negative sample never answers a positive full scale"
+        );
+    }
+
+    #[test]
+    fn sample_clock_round_trips_through_the_typed_pair() {
+        let rate = SampleRate::new(nonzero_u32(48_000));
+        let clock = SuperClock::new(SUPERCLOCK_HZ.get());
+        let frames = superclock_to_sample_clock(clock, rate, Rounding::Nearest)
+            .expect("one second of superclock ticks is one second of frames");
+        assert_eq!(
+            frames,
+            SampleClock::new(48_000),
+            "one second is 48000 frames at 48 kHz"
+        );
+        assert_eq!(
+            sample_clock_to_superclock(frames, rate),
+            Ok(clock),
+            "the typed pair round trips through the device type"
+        );
+    }
+
+    #[test]
+    fn sample_rate_names_the_six_supported_rates() {
+        for rate in [44_100_u32, 48_000, 88_200, 96_000, 176_400, 192_000] {
+            assert!(
+                SampleRate::new(nonzero_u32(rate)).is_supported(),
+                "the kernel names {rate} as supported"
+            );
+            assert_eq!(
+                SUPERCLOCK_HZ.get().rem_euclid(i64::from(rate)),
+                0,
+                "the superclock rate divides exactly by {rate}"
+            );
+        }
+        assert!(
+            !SampleRate::new(nonzero_u32(44_056)).is_supported(),
+            "a rate the kernel does not name is not supported"
         );
     }
 

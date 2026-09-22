@@ -35,6 +35,17 @@ impl Span {
         self.origin
     }
 
+    /// The signed distance from the origin.
+    ///
+    /// The arm names the domain that authored the distance, which `in_beats`
+    /// and `in_audio` both erase. A tempo edit moves a beat-authored length
+    /// and leaves an audio-authored one, so a caller that stores a `Span` on a
+    /// region reads this to tell the two apart.
+    #[must_use]
+    pub const fn delta(self) -> Delta {
+        self.delta
+    }
+
     /// The position at the end of the distance.
     #[must_use]
     pub fn end(self, map: &TempoMap) -> Position {

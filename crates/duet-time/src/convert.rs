@@ -9,7 +9,7 @@ use core::num::NonZeroI64;
 
 use crate::error::TimeError;
 use crate::finite::Finite;
-use crate::units::{I24, SUPERCLOCK_HZ, SampleRate, SuperClock, Ticks};
+use crate::units::{I24, SUPERCLOCK_HZ, SampleClock, SampleRate, SuperClock, Ticks};
 
 /// The scale that maps a 16-bit sample into the unit range.
 const I16_SCALE: f32 = 32_768.0;
@@ -149,7 +149,11 @@ pub fn i32_to_f32(sample: i32) -> Unit {
 )]
 pub fn unit_to_i24(value: Unit) -> I24 {
     let scaled = (f64::from(value.get()) * UNIT_TO_I24_SCALE).round() as i32;
-    I24::new(scaled).unwrap_or(I24::MAX)
+    match I24::new(scaled) {
+        Some(sample) => sample,
+        None if scaled < 0 => I24::MIN,
+        None => I24::MAX,
+    }
 }
 
 /// A unit sample as a 32-bit integer. The type carries the range.
@@ -217,8 +221,13 @@ pub fn superclock_to_samples(
 
 /// A sample count at a rate as a superclock count.
 ///
-/// The superclock rate divides exactly by every supported sample rate, so the
-/// division leaves no remainder and the rounding mode never changes the answer.
+/// The superclock rate divides exactly by every rate that
+/// `SampleRate::is_supported` accepts, and at such a rate the division leaves
+/// no remainder and the rounding mode never changes the answer. At any other
+/// rate the division has a remainder, `Rounding::Nearest` resolves it, and the
+/// round trip back to a sample count can move by one sample. The caller that
+/// opens the device holds that condition: it tests the rate with
+/// `SampleRate::is_supported` before it runs a stream.
 ///
 /// # Errors
 /// Returns `TimeError::Overflow` when the result leaves the `i64` range.
@@ -230,6 +239,37 @@ pub fn samples_to_superclock(samples: i64, rate: SampleRate) -> Result<SuperCloc
         Rounding::Nearest,
     )?;
     Ok(SuperClock::new(clock))
+}
+
+/// A superclock count as a sample counter at the device edge.
+///
+/// It is `superclock_to_samples` with the device type on the answer. The two
+/// forms exist together, because `SampleClock` is the one sample-domain value
+/// and this module is the one place it meets a superclock count. A caller at
+/// the device edge takes this form and wraps nothing by hand.
+///
+/// # Errors
+/// Returns `TimeError::Overflow` when the result leaves the `i64` range.
+pub fn superclock_to_sample_clock(
+    clock: SuperClock,
+    rate: SampleRate,
+    rounding: Rounding,
+) -> Result<SampleClock, TimeError> {
+    superclock_to_samples(clock, rate, rounding).map(SampleClock::new)
+}
+
+/// A sample counter at the device edge as a superclock count.
+///
+/// It is `samples_to_superclock` with the device type on the input, and it
+/// carries the same rate condition.
+///
+/// # Errors
+/// Returns `TimeError::Overflow` when the result leaves the `i64` range.
+pub fn sample_clock_to_superclock(
+    samples: SampleClock,
+    rate: SampleRate,
+) -> Result<SuperClock, TimeError> {
+    samples_to_superclock(samples.get(), rate)
 }
 
 /// A finite double as a single, with no error path.

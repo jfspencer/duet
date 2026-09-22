@@ -29,9 +29,13 @@ impl Bbt {
         tick: 0,
     };
 
-    /// The last bar an address can name, at its first beat and its first tick.
+    /// The FIRST address of the last bar an address can name.
     ///
-    /// `TempoMap::bbt_at` holds its answer here at the top of the range.
+    /// It is not a clamp target. A clamp to it would answer an address below
+    /// one that a lower tick already gave, so `TempoMap::bbt_at` would fall as
+    /// the tick rises. That query builds its upper limit from the governing
+    /// meter instead, because the last beat and the last tick of a bar need a
+    /// meter that this type does not hold.
     pub const LAST: Self = Self {
         bar: NonZeroU32::MAX,
         beat: NonZeroU16::MIN,
