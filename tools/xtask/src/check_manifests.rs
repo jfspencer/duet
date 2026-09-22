@@ -1,5 +1,5 @@
-//! Refuse a member manifest with no `[lints] workspace = true` line and no
-//! non-empty `description`.
+//! Refuse a member manifest with no `[lints] workspace = true` line, or with
+//! no non-empty `description`.
 //!
 //! `clippy::cargo_common_metadata` cannot fire under `publish = false`, so no
 //! lint covers either condition. A member that omits the lint table sits
@@ -37,6 +37,9 @@ impl Condition {
 
 /// Run the manifest guard over every member `cargo metadata --no-deps` reports.
 ///
+/// The root is the workspace root the caller resolves from the current
+/// directory, so the guard reads the workspace it runs inside.
+///
 /// # Errors
 /// Returns an error when `cargo metadata` cannot run or when its output is not
 /// the expected JSON.
@@ -51,6 +54,7 @@ pub(crate) fn run(root: &Path) -> anyhow::Result<Outcome> {
         },
     };
     let mut findings = 0_usize;
+    let scanned = manifests.len();
     for manifest in manifests {
         let Ok(text) = fs::read_to_string(&manifest) else {
             writeln!(out, "FAIL: cannot read {}", manifest.display())?;
@@ -75,6 +79,7 @@ pub(crate) fn run(root: &Path) -> anyhow::Result<Outcome> {
             )?;
         }
     }
+    writeln!(out, "MEMBERS: {scanned}   FINDINGS: {findings}")?;
     Ok(if findings == 0 {
         Outcome::Clean
     } else {
