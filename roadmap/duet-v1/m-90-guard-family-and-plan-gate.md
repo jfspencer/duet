@@ -524,6 +524,7 @@ cargo nextest run -p xtask --test probes --no-tests=fail
 cargo xtask check-roster roadmap/duet-v1/architecture.md "$TMPDIR/roster-m90" . --generate-only
 typos
 cargo xtask check-conversions
+cargo xtask check-conversions --appendix roadmap/duet-v1/architecture.md
 cargo xtask check-placement roadmap/duet-v1/architecture.md
 cargo xtask check-plan-graph roadmap/duet-v1 --check-manifest
 ```
@@ -531,7 +532,11 @@ cargo xtask check-plan-graph roadmap/duet-v1 --check-manifest
 `bash scripts/dod.sh --plan` lists a `plan` line and a `typos` line with no `advisory` word. The
 whole probe binary passes. The roster command exits 0 and prints
 `ROSTER COMPILE:   skipped (--generate-only)`. `typos` exits 0 and prints nothing.
-`check-conversions` exits 0 and prints `REASON TEXT BAD: 0`. `check-placement` exits 0 and prints
+`check-conversions` with NO argument exits 0 and prints `REASON TEXTS:    skipped (no --appendix)`,
+which is the path-conditional skip of rule CG9 part 6; the skip PRINTS and it is never silent. The
+same command WITH `--appendix roadmap/duet-v1/architecture.md` exits 0 and prints
+`REASON TEXTS:    7     REASON TEXT BAD: 0`, and that second form is the one the Completion line
+above names. `check-placement` exits 0 and prints
 `REGISTER BAD: 0     FLOOR SLACK: 0` and `PROBE BAD: 0`. `--check-manifest` exits 0. Then commit on
 a branch `chunk/m90-guard-family-and-plan-gate`.
 
