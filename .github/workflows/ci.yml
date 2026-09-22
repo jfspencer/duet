@@ -62,7 +62,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Detect a roadmap change
+      - name: Detect a change to the plan or to its guards
         id: filter
         run: |
           base="${{ github.base_ref }}"
@@ -73,7 +73,7 @@ jobs:
           else
             changed="roadmap/"
           fi
-          if printf '%s\n' "$changed" | grep -q '^roadmap/'; then
+          if printf '%s\n' "$changed" | grep -qE '^roadmap/|^tools/xtask/'; then
             echo "roadmap=true" >> "$GITHUB_OUTPUT"
           else
             echo "roadmap=false" >> "$GITHUB_OUTPUT"
