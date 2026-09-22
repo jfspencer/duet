@@ -16,8 +16,14 @@ path = "src/main.rs"
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true }
+md-5 = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }
 
 [lints]
 workspace = true
+
+# The `md-5` package builds a library named `md5`, so cargo-machete's name scan
+# cannot see `use md5::...` and reports the dependency as unused.
+[package.metadata.cargo-machete]
+ignored = ["md-5"]

@@ -45,6 +45,9 @@ allow = [
   "OFL-1.1",
   "0BSD",
   "CDLA-Permissive-2.0",
+  # Unlicense — carried by midly, which chunk X3 needs for MIDI file import (Appendix B.4).
+  # No crate in the tree carries it yet. Remove this entry if chunk X3 drops midly.
+  "Unlicense",
   "Ubuntu-font-1.0",
   # bzip2 and libbzip2 License v1.0.6 — carried by libbz2-rs-sys via async-compression in gpui's HTTP client. Permissive (BSD-like).
   "bzip2-1.0.6",

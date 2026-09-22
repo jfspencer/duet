@@ -1,0 +1,13 @@
+[package]
+name = "duet-time"
+description = "The Duet time kernel: beat and audio positions, the tempo map, and the one conversion module."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

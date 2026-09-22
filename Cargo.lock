@@ -1612,6 +1612,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "duet-time"
+version = "0.1.0"
+
+[[package]]
 name = "dunce"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8875,6 +8879,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "md-5",
  "serde_json",
  "toml 1.1.6+spec-1.1.0",
 ]

@@ -136,9 +136,12 @@ __claude_hook_strip_env_vars() {
   # bash 3.2 compatible: copy array contents into a local via indirect
   # `eval`, since `local -n` nameref requires bash 4.3+ and macOS still
   # ships bash 3.2. Linux bash 4+/5+ runs this identically. Read-only
-  # access — no write-back needed.
+  # access — no write-back needed. The `local` declaration stands on its
+  # own line, so a reader and a static analyser both see the assignment;
+  # the `eval` then fills the array that already exists.
   local __toks_name="$1"
-  eval "local __toks=( \"\${${__toks_name}[@]}\" )"
+  local __toks=()
+  eval "__toks=( \"\${${__toks_name}[@]}\" )"
   START_IDX=0
   while [[ $START_IDX -lt ${#__toks[@]} ]] \
     && [[ "${__toks[$START_IDX]}" =~ ^[A-Z_][A-Z0-9_]*= ]]; do
