@@ -261,9 +261,9 @@ mod tests {
         for sample in i16::MIN..=i16::MAX {
             let scaled = i64::from(unit_to_i32(i16_to_f32(sample)));
             let want = i64::from(sample) * 65_536;
-            assert!(
-                (scaled - want).abs() <= 1,
-                "the 16-bit round trip stays inside one 32-bit step for {sample}"
+            assert_eq!(
+                scaled, want,
+                "both scales are powers of two, so the 16-bit round trip of {sample} is exact"
             );
         }
     }
@@ -350,12 +350,38 @@ mod tests {
         i64::from(unit_to_i32(i32_to_f32(sample))) - i64::from(sample)
     }
 
+    /// The four 32-bit samples that attain the drift bound, each with the
+    /// signed drift of one round trip.
+    ///
+    /// An exhaustive scan of all 4,294,967,296 values finds a maximum absolute
+    /// drift of exactly 64, and many samples attain it. ADR-0007 decision 4
+    /// names these four. The proptest above draws 1,000 cases, so it reaches
+    /// none of them; this table is the committed record of the measurement.
+    const I32_DRIFT_BOUND_SAMPLES: [(i32, i64); 4] = [
+        (-2_147_483_584, -64),
+        (1_073_741_888, -64),
+        (1_195_673_408, -64),
+        (1_946_040_768, 64),
+    ];
+
     #[test]
     fn convert_i32_round_trip_at_the_boundaries() {
         for sample in [i32::MIN, i32::MIN + 1, -1, 0, 1, i32::MAX] {
             assert!(
                 i32_round_trip_drift(sample).abs() <= I32_ROUND_TRIP_DRIFT,
                 "the 32-bit round trip of {sample} stays inside the bound {I32_ROUND_TRIP_DRIFT}"
+            );
+        }
+        for (sample, want) in I32_DRIFT_BOUND_SAMPLES {
+            assert_eq!(
+                i32_round_trip_drift(sample),
+                want,
+                "the 32-bit round trip of {sample} drifts by exactly {want}"
+            );
+            assert_eq!(
+                want.abs(),
+                I32_ROUND_TRIP_DRIFT,
+                "the sample {sample} attains the bound {I32_ROUND_TRIP_DRIFT}"
             );
         }
     }
@@ -478,7 +504,7 @@ mod tests {
             assert_ne!(
                 rate.get().get(),
                 0,
-                "every supported rate passes the non_zero_u32 path with a non-zero value"
+                "the type of the rate field makes a zero rate unrepresentable"
             );
         }
     }

@@ -149,10 +149,12 @@ pub fn i32_to_f32(sample: i32) -> Unit {
 
 /// A unit sample as a 24-bit integer. The type carries the range.
 ///
-/// The scale factor is two to the power of 23. A unit value of -1.0 makes
-/// exactly `I24::MIN`, so the negative arm of the match is unreachable. The arm
-/// stays, because a match over an `Option` must be total. A unit value of
-/// exactly +1.0 makes one above `I24::MAX`, and the last arm clamps it.
+/// The scale factor is two to the power of 23, so a unit value of -1.0 makes
+/// exactly `I24::MIN` and the negative arm of the match is unreachable. The arm
+/// stays as a defence in depth: it names the answer the clamp must give at the
+/// low end, so a later edit of the scale factor keeps the function correct at
+/// both ends, which no type in the signature checks. A unit value at or above
+/// `1.0 - 2^-24` makes a product above `I24::MAX`, and the last arm clamps it.
 #[must_use]
 #[expect(
     clippy::as_conversions,
@@ -170,10 +172,12 @@ pub fn unit_to_i24(value: Unit) -> I24 {
 
 /// A unit sample as a 32-bit integer. The type carries the range.
 ///
-/// The scale factor is two to the power of 31. A unit value of -1.0 makes
-/// exactly `i32::MIN`, so the negative arm of the match is unreachable. The arm
-/// stays, because a match over a `Result` must be total. A unit value of
-/// exactly +1.0 makes one above `i32::MAX`, and the last arm clamps it.
+/// The scale factor is two to the power of 31, so a unit value of -1.0 makes
+/// exactly `i32::MIN` and the negative arm of the match is unreachable. The arm
+/// stays as a defence in depth: it names the answer the clamp must give at the
+/// low end, so a later edit of the scale factor keeps the function correct at
+/// both ends, which no type in the signature checks. A unit value of exactly
+/// +1.0 makes one above `i32::MAX`, and the last arm clamps it.
 #[must_use]
 #[expect(
     clippy::as_conversions,
