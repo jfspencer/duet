@@ -15,9 +15,17 @@ const MAX_SAMPLE: i32 = 8_388_607;
 
 /// A non-zero constant, built at compile time.
 ///
-/// `NonZeroI64::new` returns an `Option`, and `expect` is denied. A `const fn`
-/// match gives the same compile-time check with a total fallback arm.
+/// `NonZeroI64::new` returns an `Option`, and `expect` is denied. House
+/// form 5 of architecture section 12.3 asserts instead: in a `const` item
+/// the assertion runs at compile time, so a zero fails the build and no
+/// binary carries the panic. The `None` arm stays, because a match over an
+/// `Option` must be total, and the assertion makes that arm unreachable.
+///
+/// # Panics
+/// It panics when `value` is zero. Every caller binds the result to a
+/// `const` item, so the assertion runs at compile time.
 const fn non_zero(value: i64) -> NonZeroI64 {
+    assert!(value != 0, "a non-zero constant must not be zero");
     match NonZeroI64::new(value) {
         Some(checked) => checked,
         None => NonZeroI64::MIN,
@@ -145,7 +153,12 @@ impl SuperClock {
 /// A non-zero 32-bit constant, built at compile time.
 ///
 /// It is the 32-bit form of `non_zero`, and it states the same reason.
+///
+/// # Panics
+/// It panics when `value` is zero. Every caller binds the result to a
+/// `const` item, so the assertion runs at compile time.
 const fn non_zero_u32(value: u32) -> NonZeroU32 {
+    assert!(value != 0, "a non-zero constant must not be zero");
     match NonZeroU32::new(value) {
         Some(checked) => checked,
         None => NonZeroU32::MIN,

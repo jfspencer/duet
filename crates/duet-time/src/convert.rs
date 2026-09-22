@@ -24,10 +24,17 @@ const I24_SCALE: f32 = 8_388_608.0;
 const I32_SCALE: f32 = 32_768.0 * 65_536.0;
 
 /// The scale that maps a unit sample onto the 24-bit range.
-const UNIT_TO_I24_SCALE: f64 = 8_388_607.0;
+///
+/// It is two to the power of 23, which is the divisor `I24_SCALE` uses, so the
+/// 24-bit round trip is exact for all 16,777,216 values (ADR-0007).
+const UNIT_TO_I24_SCALE: f64 = 8_388_608.0;
 
 /// The scale that maps a unit sample onto the 32-bit range.
-const UNIT_TO_I32_SCALE: f64 = 2_147_483_647.0;
+///
+/// It is two to the power of 31, written as a product because each factor
+/// prints exactly and the whole value does not. It is the divisor `I32_SCALE`
+/// uses (ADR-0007).
+const UNIT_TO_I32_SCALE: f64 = 32_768.0 * 65_536.0;
 
 /// The magnitude at which an `f64` stops holding every integer (B44).
 const EXACT_F64_INTEGER_BOUND: i64 = 9_007_199_254_740_992;
@@ -123,7 +130,7 @@ pub fn i16_to_f32(sample: i16) -> Unit {
 #[expect(
     clippy::as_conversions,
     clippy::cast_precision_loss,
-    reason = "a 24-bit integer fits the f32 mantissa exactly, so the conversion is lossless and the result is in the unit range"
+    reason = "a 24-bit integer fits the f32 mantissa exactly and the divisor is 2^23, which is a power of two, so the conversion is lossless and the result is in the unit range"
 )]
 pub fn i24_to_f32(sample: I24) -> Unit {
     Unit::clamped(sample.get() as f32 / I24_SCALE)
@@ -134,18 +141,23 @@ pub fn i24_to_f32(sample: I24) -> Unit {
 #[expect(
     clippy::as_conversions,
     clippy::cast_precision_loss,
-    reason = "the loss is below the 24th bit, and the divisor makes the result fall in the unit range; the round-trip proptest states the bound"
+    reason = "a 32-bit integer rounds to the nearest f32, so the loss is below the 24th bit, and the divisor 2^31 is a power of two, which puts the result in the unit range and adds no further loss"
 )]
 pub fn i32_to_f32(sample: i32) -> Unit {
     Unit::clamped(sample as f32 / I32_SCALE)
 }
 
 /// A unit sample as a 24-bit integer. The type carries the range.
+///
+/// The scale factor is two to the power of 23. A unit value of -1.0 makes
+/// exactly `I24::MIN`, so the negative arm of the match is unreachable. The arm
+/// stays, because a match over an `Option` must be total. A unit value of
+/// exactly +1.0 makes one above `I24::MAX`, and the last arm clamps it.
 #[must_use]
 #[expect(
     clippy::as_conversions,
     clippy::cast_possible_truncation,
-    reason = "the `Unit` type carries the range -1.0 to 1.0 and the scale factor is 2^23 - 1, which is `I24::MAX`, so the product lies in -8_388_607.0 to 8_388_607.0 and fits `I24` with no clamp"
+    reason = "the `Unit` type carries the range -1.0 to 1.0 and the scale factor is 2^23, so the rounded product lies in -8_388_608.0 to 8_388_608.0, and `I24::new` refuses the one product above `I24::MAX`, which the match clamps"
 )]
 pub fn unit_to_i24(value: Unit) -> I24 {
     let scaled = (f64::from(value.get()) * UNIT_TO_I24_SCALE).round() as i32;
@@ -157,14 +169,24 @@ pub fn unit_to_i24(value: Unit) -> I24 {
 }
 
 /// A unit sample as a 32-bit integer. The type carries the range.
+///
+/// The scale factor is two to the power of 31. A unit value of -1.0 makes
+/// exactly `i32::MIN`, so the negative arm of the match is unreachable. The arm
+/// stays, because a match over a `Result` must be total. A unit value of
+/// exactly +1.0 makes one above `i32::MAX`, and the last arm clamps it.
 #[must_use]
 #[expect(
     clippy::as_conversions,
     clippy::cast_possible_truncation,
-    reason = "the `Unit` type carries the range -1.0 to 1.0 and the scale factor is 2^31 - 1, which is `i32::MAX`, so the product lies in -2_147_483_647.0 to 2_147_483_647.0 and fits `i32` with no clamp"
+    reason = "the `Unit` type carries the range -1.0 to 1.0 and the scale factor is 2^31, so the rounded product lies in -2_147_483_648.0 to 2_147_483_648.0 and the `as i64` cast is exact, and `i32::try_from` refuses the one product above `i32::MAX`, which the match clamps"
 )]
 pub fn unit_to_i32(value: Unit) -> i32 {
-    (f64::from(value.get()) * UNIT_TO_I32_SCALE).round() as i32
+    let scaled = (f64::from(value.get()) * UNIT_TO_I32_SCALE).round() as i64;
+    match i32::try_from(scaled) {
+        Ok(sample) => sample,
+        Err(_outside_the_range) if scaled < 0 => i32::MIN,
+        Err(_outside_the_range) => i32::MAX,
+    }
 }
 
 /// A double as a single.
@@ -275,18 +297,16 @@ pub fn sample_clock_to_superclock(
 /// A finite double as a single, with no error path.
 ///
 /// It returns no `Result`, and that is the whole reason it exists. The caller
-/// paints a window length in logical pixels and has no error surface to return
-/// one on. A `Finite` is never a `NaN` and never an infinity, so the only loss
-/// the narrowing can carry is a magnitude above the `f32` range, which
-/// saturates to an `f32` infinity. A logical pixel length is far below that
-/// magnitude, so the case is unreachable and the saturation is the documented
-/// behaviour. `f64_to_f32` stays the fallible form for every caller that can
-/// report.
+/// has no error surface to return one on. A `Finite` is never a `NaN` and never
+/// an infinity, so the narrowing carries two losses and no more. It drops the
+/// mantissa bits that an `f32` cannot hold. It saturates to an `f32` infinity
+/// for a magnitude above the `f32` range. `f64_to_f32` stays the fallible form
+/// for every caller that can report.
 #[must_use]
 #[expect(
     clippy::as_conversions,
     clippy::cast_possible_truncation,
-    reason = "the input is a `Finite`, so it is never a NaN and never an infinity; the narrowing saturates to an f32 infinity only above the f32 range, and `LogicalPx` carries a window length in logical pixels, which is far below it"
+    reason = "every constructor of `Finite` refuses a NaN and an infinity, so the input is finite; the narrowing drops mantissa bits, and it saturates to an f32 infinity only above the f32 range, which the documentation of this function states"
 )]
 pub const fn finite_to_f32_saturating(value: Finite) -> f32 {
     value.get() as f32

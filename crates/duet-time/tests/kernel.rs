@@ -274,39 +274,28 @@ mod tests {
         #[test]
         fn convert_i24_round_trip(raw in any::<i32>().prop_map(narrow_to_i24)) {
             let sample = I24::new(raw).expect("the folded value is a 24-bit sample");
-            let back = unit_to_i24(i24_to_f32(sample));
-            let drift = i64::from(back.get()) - i64::from(sample.get());
-            prop_assert!(
-                drift.abs() <= 1,
-                "the 24-bit round trip stays inside one 24-bit step"
+            prop_assert_eq!(
+                unit_to_i24(i24_to_f32(sample)).get(),
+                raw,
+                "the 24-bit round trip answers itself"
             );
-            if i64::from(raw).abs() <= 4_194_304 {
-                prop_assert_eq!(
-                    back.get(),
-                    raw,
-                    "the 24-bit round trip is exact below a half-scale sample"
-                );
-            }
         }
     }
 
     /// The 24-bit boundary samples, each with the answer of one round trip.
     ///
-    /// `any::<i32>()` folded into the 24-bit range gives each of the
-    /// 16,777,216 values a probability near six parts in a hundred million, so
-    /// no gate run reaches a bound. The decode scale is two to the power 23 and
-    /// the encode scale is two to the power 23 minus one, so a sample above
-    /// half scale moves by one step and a sample at or below half scale answers
-    /// itself.
+    /// Both scales are two to the power 23, so every pair is an identity
+    /// (ADR-0007). The table stays beside the exhaustive test of this pair,
+    /// because it names the values a reader checks first.
     const I24_BOUNDARY_ROUND_TRIPS: [(i32, i32); 8] = [
-        (-8_388_608, -8_388_607),
-        (-8_388_607, -8_388_606),
+        (-8_388_608, -8_388_608),
+        (-8_388_607, -8_388_607),
         (-4_194_304, -4_194_304),
         (-1, -1),
         (0, 0),
         (1, 1),
         (4_194_304, 4_194_304),
-        (8_388_607, 8_388_606),
+        (8_388_607, 8_388_607),
     ];
 
     #[test]
@@ -331,15 +320,30 @@ mod tests {
         }
     }
 
-    /// The drift bound of the 32-bit round trip, in three derived terms.
+    #[test]
+    fn convert_i24_round_trip_is_lossless_over_every_sample() {
+        for raw in I24::MIN.get()..=I24::MAX.get() {
+            let Some(sample) = I24::new(raw) else {
+                panic!("every value of the range is a 24-bit sample");
+            };
+            assert_eq!(
+                unit_to_i24(i24_to_f32(sample)).get(),
+                raw,
+                "the 24-bit round trip of {raw} answers itself"
+            );
+        }
+    }
+
+    /// The drift bound of the 32-bit round trip, in one derived term.
     ///
     /// An `f32` carries a 24-bit significand, so the widening of an `i32`
-    /// moves the value by at most its own magnitude times two to the power
-    /// minus 24, which is 128 at the bound of the 32-bit range. The encode
-    /// scale is two to the power 31 minus one and not two to the power 31,
-    /// which moves the answer by at most one more. The rounding to an integer
-    /// adds at most one half.
-    const I32_ROUND_TRIP_DRIFT: i64 = 130;
+    /// moves the value by at most one half of a unit in the last place. The
+    /// widest binade an `i32` reaches is two to the power 30 to two to the
+    /// power 31, where a unit in the last place is 128, so the half is 64.
+    /// Both scales are powers of two, so neither scaling adds a term, and the
+    /// rounding to an integer adds none either, because the product of an
+    /// exact `f32` and two to the power 31 is an integer (ADR-0007).
+    const I32_ROUND_TRIP_DRIFT: i64 = 64;
 
     /// The drift of one 32-bit round trip through the unit range.
     fn i32_round_trip_drift(sample: i32) -> i64 {
@@ -367,6 +371,13 @@ mod tests {
                 "the 32-bit round trip stays inside the bound {}",
                 I32_ROUND_TRIP_DRIFT
             );
+            if i64::from(sample).abs() < 16_777_216 {
+                prop_assert_eq!(
+                    i32_round_trip_drift(sample),
+                    0,
+                    "the 32-bit round trip is exact below a magnitude of 2^24"
+                );
+            }
         }
     }
 
@@ -458,6 +469,18 @@ mod tests {
             MAX_STRIPS * 2 * MAX_SLOTS,
             "MAX_SLOT_METERS is arithmetic over three constants and never a literal"
         );
+        assert_eq!(
+            SampleRate::SUPPORTED.len(),
+            6,
+            "SampleRate::SUPPORTED holds the six rates of section 2.1"
+        );
+        for rate in SampleRate::SUPPORTED {
+            assert_ne!(
+                rate.get().get(),
+                0,
+                "every supported rate passes the non_zero_u32 path with a non-zero value"
+            );
+        }
     }
 
     /// A non-zero 64-bit value for a test fixture.
@@ -1860,7 +1883,7 @@ mod tests {
 
     #[test]
     fn unit_to_i24_keeps_the_sign_at_both_bounds() {
-        for (value, want) in [(-1.0_f32, I24::MIN.get() + 1), (1.0_f32, I24::MAX.get())] {
+        for (value, want) in [(-1.0_f32, I24::MIN.get()), (1.0_f32, I24::MAX.get())] {
             assert_eq!(
                 unit_to_i24(Unit::clamped(value)).get(),
                 want,
