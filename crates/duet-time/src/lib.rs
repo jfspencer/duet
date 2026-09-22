@@ -15,6 +15,7 @@ mod finite;
 mod position;
 mod span;
 mod tempo;
+mod tuplet;
 mod units;
 
 pub use bbt::Bbt;
@@ -23,6 +24,7 @@ pub use finite::Finite;
 pub use position::{Delta, Position, TimeDomain};
 pub use span::Span;
 pub use tempo::{Meter, MeterPoint, NoteValue, Ratio, Tempo, TempoMap, TempoMapEdit, TempoPoint};
+pub use tuplet::{Tuplet, split_tuplet};
 pub use units::{
     BarCount, ChannelCount, ChannelIndex, FrameCount, GainDb, I24, MAX_BOUND_PORTS, MAX_PARAMS,
     MAX_SENDS, MAX_SLOT_METERS, MAX_SLOTS, MAX_STRIPS, SUPERCLOCK_HZ, SampleClock, SampleRate,

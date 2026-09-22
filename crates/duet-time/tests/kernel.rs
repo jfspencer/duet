@@ -16,7 +16,7 @@ mod tests {
     use duet_time::{
         Bbt, Delta, Finite, I24, Meter, MeterPoint, NoteValue, Position, Ratio, SUPERCLOCK_HZ,
         SampleRate, Span, SuperClock, TICKS_PER_QUARTER, Tempo, TempoMap, TempoMapEdit, TempoPoint,
-        Ticks, TimeDomain, TimeError,
+        Ticks, TimeDomain, TimeError, split_tuplet,
     };
     use proptest::prelude::{
         Strategy as _, any, prop_assert, prop_assert_eq, prop_assume, proptest,
@@ -1133,5 +1133,37 @@ mod tests {
             Some(TimeError::NoFirstPoint),
             "finish refuses a tempo list whose first entry is off tick zero"
         );
+    }
+
+    /// Assert the rounding rule of section 2.4 over one span and one divisor.
+    fn assert_tuplet_split(span: i64, divisor: u8) {
+        let parts = NonZeroU8::new(divisor).expect("the divisor is not zero");
+        let split = split_tuplet(Ticks::new(span), parts);
+        assert_eq!(
+            split.len(),
+            usize::from(divisor),
+            "the split holds one entry for each part, at {divisor} over {span}"
+        );
+        let total: i64 = split.iter().map(|part| part.get()).sum();
+        assert_eq!(
+            total, span,
+            "the parts sum to the span exactly, at {divisor} over {span}"
+        );
+        let head = split.first().expect("the split holds at least one part");
+        for part in split.iter().take(usize::from(divisor).saturating_sub(1)) {
+            assert_eq!(
+                part, head,
+                "every part but the last holds the same count, at {divisor} over {span}"
+            );
+        }
+    }
+
+    #[test]
+    fn tuplet_parts_sum_to_span() {
+        for divisor in 2_u8..=13 {
+            for span in 1_i64..=7_680 {
+                assert_tuplet_split(span, divisor);
+            }
+        }
     }
 }
