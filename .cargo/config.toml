@@ -15,5 +15,9 @@ plan-db = "run --quiet --release --package plan-db --"
 # The lint invocation the gate uses.
 lint = "clippy --workspace --all-targets --locked -- -D warnings"
 
+[env]
+# The minimum macOS release this application supports (section 11.4).
+MACOSX_DEPLOYMENT_TARGET = "26.0"
+
 [term]
 color = "auto"

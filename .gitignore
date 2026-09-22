@@ -3,6 +3,9 @@
 **/target/
 *.pdb
 
+# Python bytecode from the plan tools
+__pycache__/
+
 # macOS
 .DS_Store
 

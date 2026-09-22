@@ -38,4 +38,21 @@ disallowed-methods = [
 
 # Proper nouns clippy's `doc_markdown` lint would otherwise demand backticks
 # around. `".."` KEEPS clippy's default list.
-doc-valid-idents = ["GPUI", "LMDB", "macOS", "OpenCode", "Codex", ".."]
+doc-valid-idents = [
+    "GPUI",
+    "LMDB",
+    "macOS",
+    "OpenCode",
+    "Codex",
+    "PipeWire",
+    "CoreAudio",
+    "CoreMIDI",
+    "MusicXML",
+    "SMuFL",
+    "Bravura",
+    "Wayland",
+    "XWayland",
+    "APFS",
+    "RF64",
+    "..",
+]

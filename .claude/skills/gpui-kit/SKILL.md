@@ -233,41 +233,28 @@ simulating input, and checking state, focus, layout and owner callbacks. Use
 `#[gpui_kit::test]` to run tests and `gpui_kit::test` to operate and inspect the UI.
 When asked to add component interaction coverage, describe it as UI integration testing.
 
-For unit tests, GPUI context tests or UI integration tests, read
-[Testing](references/gpui/test.md). It includes dependency setup, a complete
-runnable UI flow, scoped native interactions, frame/async handling and the
-limits of accessibility and geometry assertions. Use the production view and
+For unit tests, GPUI context tests or UI integration tests, read the Testing
+file that the GPUI References table below names. It includes dependency setup,
+a complete runnable UI flow, scoped native interactions, frame/async handling
+and the limits of accessibility and geometry assertions. Use the production view and
 verify the action's outcome through normal Rust assertions.
 
 ## GPUI References
 
 Load the file for the mechanism the task touches. Each file starts with a
-contents line.
+contents line. The File column names a plain topic when this skill carries no
+file for it; read the GPUI Kit site for that topic.
 
-| Topic                       | File                                                   | Load when                                                       |
-| --------------------------- | ------------------------------------------------------ | --------------------------------------------------------------- |
-| Actions & keybindings       | [action.md](references/gpui/action.md)                 | `actions!`, `bind_keys`, `on_action`, `key_context`             |
-| Async & background tasks    | [async.md](references/gpui/async.md)                   | `cx.spawn`, `background_spawn`, `Task`, async I/O               |
-| Context management          | [context.md](references/gpui/context.md)               | `App`, `Window`, `Context<T>`, `AsyncApp`                       |
-| Custom elements (low-level) | [element.md](references/gpui/element.md)               | `Element` trait, `request_layout`, `prepaint`, `paint`          |
-| Entity state                | [entity.md](references/gpui/entity.md)                 | `Entity<T>`, `WeakEntity`, state management                     |
-| Events & subscriptions      | [event.md](references/gpui/event.md)                   | `cx.emit`, `cx.subscribe`, `cx.observe`                         |
-| Focus & keyboard nav        | [focus-handle.md](references/gpui/focus-handle.md)     | `FocusHandle`, `track_focus`, Tab navigation                    |
-| Global state                | [global.md](references/gpui/global.md)                 | `Global` trait, `cx.set_global`, app-wide config                |
-| Layout & styling            | [layout-style.md](references/gpui/layout-style.md)     | `div()`, `h_flex()`, `v_flex()`, flexbox, overflow, positioning |
-| ElementId                   | [element-id.md](references/gpui/element-id.md)         | `ElementId`, `.id()`, uniqueness rules, stateful elements       |
-| Testing                     | [test.md](references/gpui/test.md)                     | `#[gpui_kit::test]`, `TestAppContext`, `VisualTestContext`      |
-
-Deep dives, for when the topic file is not enough:
-
-- **Element trait**: [element-api.md](references/gpui/element-api.md) (complete API, hitbox, events) ·
-  [element-patterns.md](references/gpui/element-patterns.md) (text, interactive, container, composite) ·
-  [element-examples.md](references/gpui/element-examples.md) (full examples) ·
-  [element-best-practices.md](references/gpui/element-best-practices.md) (performance, state, pitfalls) ·
-  [element-advanced.md](references/gpui/element-advanced.md) (custom layouts, async updates, virtual lists)
-- **Entities**: [entity-api.md](references/gpui/entity-api.md) (complete API, lifecycle) ·
-  [entity-patterns.md](references/gpui/entity-patterns.md) (model-view, cross-entity, observer) ·
-  [entity-best-practices.md](references/gpui/entity-best-practices.md) (memory, performance) ·
-  [entity-advanced.md](references/gpui/entity-advanced.md) (collections, registry, debounce, state machines)
-- **Testing**: [test-examples.md](references/gpui/test-examples.md) (organization, setup, assertions, running tests) ·
-  [test-reference.md](references/gpui/test-reference.md) (re-entrancy, property tests, mocking)
+| Topic                       | File                                           | Load when                                                       |
+| --------------------------- | ---------------------------------------------- | --------------------------------------------------------------- |
+| Actions & keybindings       | action.md                                      | `actions!`, `bind_keys`, `on_action`, `key_context`             |
+| Async & background tasks    | async.md                                       | `cx.spawn`, `background_spawn`, `Task`, async I/O               |
+| Context management          | [context.md](references/gpui/context.md)       | `App`, `Window`, `Context<T>`, `AsyncApp`                       |
+| Custom elements (low-level) | element.md                                     | `Element` trait, `request_layout`, `prepaint`, `paint`          |
+| Entity state                | entity.md                                      | `Entity<T>`, `WeakEntity`, state management                     |
+| Events & subscriptions      | event.md                                       | `cx.emit`, `cx.subscribe`, `cx.observe`                         |
+| Focus & keyboard nav        | focus-handle.md                                | `FocusHandle`, `track_focus`, Tab navigation                    |
+| Global state                | global.md                                      | `Global` trait, `cx.set_global`, app-wide config                |
+| Layout & styling            | layout-style.md                                | `div()`, `h_flex()`, `v_flex()`, flexbox, overflow, positioning |
+| ElementId                   | [element-id.md](references/gpui/element-id.md) | `ElementId`, `.id()`, uniqueness rules, stateful elements       |
+| Testing                     | [test.md](references/gpui/test.md)             | `#[gpui_kit::test]`, `TestAppContext`, `VisualTestContext`      |
