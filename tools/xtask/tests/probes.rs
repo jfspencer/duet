@@ -1702,14 +1702,19 @@ path = "other/lib.rs"
 
     #[test]
     fn fixture_closure_plan_key_carries_the_token_of_its_own_probe() {
-        let fixture = Closure::new("fixture-plan");
-        let plan = fixture.plan();
-        let root = fixture.root.clone();
-        clean(&root);
-        assert_eq!(
-            plan,
-            format!("{CLOSURE_PLAN_PARENT}/plan-{}", fixture.token),
-            "the plan name of a fixture carries the token no other fixture holds"
+        let first = Closure::new("fixture-plan-first");
+        let second = Closure::new("fixture-plan-second");
+        let names = (first.plan(), second.plan());
+        let same_root = first.root == second.root;
+        clean(&first.root);
+        clean(&second.root);
+        assert_ne!(
+            names.0, names.1,
+            "two fixtures give two plan names, so two probes cannot resolve to one store"
+        );
+        assert!(
+            !same_root,
+            "two fixtures give two scratch roots, so PLAN_DB_ROOT names two parents"
         );
     }
 

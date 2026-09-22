@@ -413,11 +413,11 @@ enum Stop {
 }
 
 impl Stop {
-    /// The whole line the guard prints for this stop.
-    fn line(&self) -> &str {
+    /// The part of the line that follows the word.
+    fn body(&self) -> &str {
         match self {
-            Self::DuplicateId(line) => line,
-            Self::NoChunkFile => "FAIL: no chunk file found; the guard is fail-closed.",
+            Self::DuplicateId(body) => body,
+            Self::NoChunkFile => "no chunk file found; the guard is fail-closed.",
         }
     }
 
@@ -427,6 +427,28 @@ impl Stop {
             Self::DuplicateId(_) => Outcome::Findings,
             Self::NoChunkFile => Outcome::FailClosed,
         }
+    }
+
+    /// The whole line the guard prints for this stop.
+    ///
+    /// The word comes from [`Self::outcome`] and never from the arm, so a
+    /// later arm cannot print `FINDING:` at exit 2 or `FAIL:` at exit 1.
+    /// ADR 0010 decision 1 binds the word to the exit code.
+    fn line(&self) -> String {
+        format!("{} {}", word(self.outcome()), self.body())
+    }
+}
+
+/// The word one exit code decides (ADR 0010 decision 1).
+///
+/// Exit 1 is a breach of a rule the guard measures about the plan it reads,
+/// and exit 2 is a failure of the guard's own input. [`Outcome::Clean`] takes
+/// the fail-closed word because no [`Stop`] decides it: a stop that somehow
+/// reported a clean run is a defect, and `FAIL:` is the safe answer to one.
+const fn word(outcome: Outcome) -> &'static str {
+    match outcome {
+        Outcome::Findings => "FINDING:",
+        Outcome::Clean | Outcome::FailClosed => "FAIL:",
     }
 }
 
@@ -477,7 +499,7 @@ fn collect_chunks(plan_dir: &Path) -> anyhow::Result<Result<Collected, Stop>> {
         };
         if let Some(first) = collected.chunks.get(id) {
             return Ok(Err(Stop::DuplicateId(format!(
-                "FINDING: duplicate chunk id {id} in {name} and {}",
+                "duplicate chunk id {id} in {name} and {}",
                 first.file_name
             ))));
         }
