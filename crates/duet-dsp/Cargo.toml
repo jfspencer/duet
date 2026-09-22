@@ -1,0 +1,13 @@
+[package]
+name = "duet-dsp"
+description = "The Duet signal kernels: the peak pyramid, the meters, and the allocation-free processor states."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
