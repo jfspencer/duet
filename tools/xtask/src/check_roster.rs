@@ -227,6 +227,11 @@ pub(crate) fn run(
         return Ok(Outcome::FailClosed);
     }
     if fs::create_dir_all(scratch).is_err() {
+        writeln!(
+            out,
+            "FAIL: cannot create the scratch directory {}; the guard is fail-closed.",
+            scratch.display()
+        )?;
         return Ok(Outcome::FailClosed);
     }
     let plan = match target_plan(&mut out, repo, scratch)? {
@@ -376,8 +381,14 @@ const SKIPPED_COMPILE: &str = "ROSTER COMPILE:   skipped (--generate-only)";
 /// Generate the scratch workspace, resolve it, lint it, and measure it.
 ///
 /// The skipped half stops after the generator, which is where the compiler
-/// takes over. It prints [`SKIPPED_COMPILE`] on every path, so a caller reads
-/// the half that ran from the report and never from the exit code alone.
+/// takes over. It prints [`SKIPPED_COMPILE`] on every path THROUGH THIS
+/// FUNCTION, so a caller reads the half that ran from the report and never
+/// from the exit code alone.
+///
+/// The bound of that sentence: the five refusals inside [`run`] come before
+/// this function and print no skip line in either form. Both forms answer
+/// those five the same way and neither has started, so no skipped run can read
+/// as a clean full run, which is the property the line exists to hold.
 ///
 /// # Errors
 /// Returns an error when a write to the output stream fails, or when a file

@@ -108,11 +108,13 @@ jobs:
         run: cargo build --release -p plan-db
       - name: Placement
         run: cargo xtask check-placement roadmap/duet-v1/architecture.md
-      - name: Roster compile
-        run: cargo xtask check-roster roadmap/duet-v1/architecture.md "$RUNNER_TEMP/roster" .
       - name: Plan graph
         run: cargo xtask check-plan-graph roadmap/duet-v1
       - name: Plan manifest drift
         run: cargo xtask check-plan-graph roadmap/duet-v1 --check-manifest
+      - name: Roster compile
+        run: cargo xtask check-roster roadmap/duet-v1/architecture.md "$RUNNER_TEMP/roster" .
+      - name: Reason texts
+        run: cargo xtask check-conversions --appendix roadmap/duet-v1/architecture.md
       - name: Probes
         run: cargo nextest run -p xtask --test probes --no-tests=fail

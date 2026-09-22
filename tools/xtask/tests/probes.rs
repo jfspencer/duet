@@ -4943,7 +4943,7 @@ opt-level = 3
     /// Every line of the synthetic recorded size block.
     fn roster_sizes() -> Vec<String> {
         (0..51)
-            .map(|index| format!("Siz{index:02}      8   8  generic"))
+            .map(|index| format!("Size{index:02}     8   8  generic"))
             .collect()
     }
 
