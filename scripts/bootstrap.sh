@@ -19,13 +19,23 @@ rustup show active-toolchain >/dev/null   # installs the pinned channel + compon
 
 # Linux system packages. PipeWire is the audio server on Linux (section 11.5);
 # ALSA supplies the client and the sequencer interface that PipeWire presents.
+LINUX_PACKAGES="libpipewire-0.3-dev libasound2-dev pkg-config shellcheck"
 if [[ "$(uname -s)" == "Linux" ]]; then
-  if command -v apt-get >/dev/null 2>&1; then
-    sudo apt-get update
-    sudo apt-get install -y --no-install-recommends \
-      libpipewire-0.3-dev libasound2-dev pkg-config shellcheck
+  # Select the privilege escalation rather than assume it. A root container
+  # carries no sudo, and `set -e` would end the bootstrap before the git hooks.
+  SUDO=""
+  if [ "$(id -u)" -ne 0 ]; then
+    if command -v sudo >/dev/null 2>&1; then SUDO="sudo"; fi
+  fi
+  if ! command -v apt-get >/dev/null 2>&1; then
+    printf 'bootstrap: WARN apt-get is missing; install %s by hand\n' "$LINUX_PACKAGES" >&2
+  elif [ "$(id -u)" -ne 0 ] && [ -z "$SUDO" ]; then
+    printf 'bootstrap: WARN sudo is missing and the user is not root; install %s by hand\n' "$LINUX_PACKAGES" >&2
   else
-    printf 'bootstrap: WARN apt-get is missing; install libpipewire-0.3-dev, libasound2-dev, pkg-config, and shellcheck by hand\n' >&2
+    # shellcheck disable=SC2086
+    $SUDO apt-get update \
+      && $SUDO apt-get install -y --no-install-recommends $LINUX_PACKAGES \
+      || printf 'bootstrap: WARN the package install failed; install %s by hand\n' "$LINUX_PACKAGES" >&2
   fi
 else
   command -v shellcheck >/dev/null 2>&1 || printf 'bootstrap: WARN shellcheck is missing; the gate skips the shell lint (brew install shellcheck)\n' >&2

@@ -31,6 +31,7 @@ write_scope:
   - crates/duet-time/Cargo.toml
   - crates/duet-time/src/lib.rs
   - .claude/skills/gpui-kit/SKILL.md
+  - .claude/skills/gpui-kit/references/gpui/
 parallelism: serial-only: SM1 runs the manifest chunk alone before every line chunk of its phase, and SM4 makes every policy file of this cell an Orchestrator adjudication.
 completion: "cargo xtask check-conversions exits 0; cargo xtask check-manifests exits 0; cargo xtask check-plan-graph roadmap/duet-v1 exits 0; bash scripts/dod.sh --plan lists the check-conversions line and the check-manifests line; commit SHA on a branch chunk/m0-manifest-phase-0"
 ---
@@ -94,6 +95,7 @@ defect that escalates, never a resolution.
 | `crates/duet-time/Cargo.toml` | create |
 | `crates/duet-time/src/lib.rs` | create |
 | `.claude/skills/gpui-kit/SKILL.md` | modify |
+| `.claude/skills/gpui-kit/references/gpui/` | create (step 25 restores the files this directory holds) |
 
 ## Types and signatures
 

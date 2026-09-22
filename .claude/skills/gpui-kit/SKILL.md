@@ -242,19 +242,19 @@ verify the action's outcome through normal Rust assertions.
 ## GPUI References
 
 Load the file for the mechanism the task touches. Each file starts with a
-contents line. The File column names a plain topic when this skill carries no
-file for it; read the GPUI Kit site for that topic.
+contents line. A row that states `on the GPUI Kit site` carries no file in this
+skill; read that topic at https://gpui-kit.com.
 
 | Topic                       | File                                           | Load when                                                       |
 | --------------------------- | ---------------------------------------------- | --------------------------------------------------------------- |
-| Actions & keybindings       | action.md                                      | `actions!`, `bind_keys`, `on_action`, `key_context`             |
-| Async & background tasks    | async.md                                       | `cx.spawn`, `background_spawn`, `Task`, async I/O               |
+| Actions & keybindings       | on the GPUI Kit site                           | `actions!`, `bind_keys`, `on_action`, `key_context`             |
+| Async & background tasks    | on the GPUI Kit site                           | `cx.spawn`, `background_spawn`, `Task`, async I/O               |
 | Context management          | [context.md](references/gpui/context.md)       | `App`, `Window`, `Context<T>`, `AsyncApp`                       |
-| Custom elements (low-level) | element.md                                     | `Element` trait, `request_layout`, `prepaint`, `paint`          |
-| Entity state                | entity.md                                      | `Entity<T>`, `WeakEntity`, state management                     |
-| Events & subscriptions      | event.md                                       | `cx.emit`, `cx.subscribe`, `cx.observe`                         |
-| Focus & keyboard nav        | focus-handle.md                                | `FocusHandle`, `track_focus`, Tab navigation                    |
-| Global state                | global.md                                      | `Global` trait, `cx.set_global`, app-wide config                |
-| Layout & styling            | layout-style.md                                | `div()`, `h_flex()`, `v_flex()`, flexbox, overflow, positioning |
+| Custom elements (low-level) | on the GPUI Kit site                           | `Element` trait, `request_layout`, `prepaint`, `paint`          |
+| Entity state                | on the GPUI Kit site                           | `Entity<T>`, `WeakEntity`, state management                     |
+| Events & subscriptions      | on the GPUI Kit site                           | `cx.emit`, `cx.subscribe`, `cx.observe`                         |
+| Focus & keyboard nav        | on the GPUI Kit site                           | `FocusHandle`, `track_focus`, Tab navigation                    |
+| Global state                | on the GPUI Kit site                           | `Global` trait, `cx.set_global`, app-wide config                |
+| Layout & styling            | on the GPUI Kit site                           | `div()`, `h_flex()`, `v_flex()`, flexbox, overflow, positioning |
 | ElementId                   | [element-id.md](references/gpui/element-id.md) | `ElementId`, `.id()`, uniqueness rules, stateful elements       |
 | Testing                     | [test.md](references/gpui/test.md)             | `#[gpui_kit::test]`, `TestAppContext`, `VisualTestContext`      |
