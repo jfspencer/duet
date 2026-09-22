@@ -6,7 +6,7 @@
 //! `roadmap/duet-v1/tools/closure_check.py`, and it keeps every rule, every
 //! printed line, and every exit code that prototype produces.
 //!
-//! The rule has six parts.
+//! The rule has seven parts.
 //!
 //! - `CL1` takes the id list from the review's own headings. No id in this
 //!   guard and no id in the document is typed. The `review_ids` module below
@@ -21,6 +21,10 @@
 //! - `CL1c` reads the stored copy of the review back from the plan store and
 //!   compares its md5 with the file's. There is no way to skip this half: a
 //!   run that reaches the end with the half unrun is a failure that says so.
+//! - `CL1d` reads back the run this section cites, from the revision the
+//!   cut-off below names on. The run that verified a section is a row of the
+//!   store, and the guard holds the section against the exit code that row
+//!   records.
 //! - `CL5` holds the digest of the review file this run was handed against the
 //!   digest the document records beside the block.
 //!
@@ -57,8 +61,21 @@ const STATES: [&str; 3] = ["CLOSED", "PARTIAL", "OPEN"];
 /// The first revision whose review must carry the count sentence.
 const COUNTS_REQUIRED_FROM: u32 = 20;
 
+/// The first revision whose closure section must cite the run that verified it.
+const RUN_KEY_REQUIRED_FROM: u32 = 24;
+
 /// The sentence head that binds a block to its stored copy (`CL1c`).
 const STORE_HEAD: &str = "The review file this block records is stored at plan-store key `";
+
+/// The sentence head that binds a block to the run that verified it (`CL1d`).
+const RUN_HEAD: &str =
+    "The `check-closure` run that verified this block is recorded at plan-store key `";
+
+/// The suffix the store mints for one recorded `check-closure` run (`CL1d`).
+const RUN_SUFFIX: &str = "closure-run";
+
+/// The head of the line a recorded run states its exit code on (`CL1d`).
+const EXIT_HEAD: &str = "EXIT: ";
 
 /// One registered closure block.
 #[derive(Debug, Clone, Copy)]
@@ -131,6 +148,15 @@ struct StoreReport {
     failures: Vec<String>,
 }
 
+/// What the `CL1d` run half produced.
+#[derive(Debug)]
+struct RunReport {
+    /// The word the summary line prints.
+    state: &'static str,
+    /// Every `CL1d` failure, as printable lines.
+    failures: Vec<String>,
+}
+
 /// Run the closure guard over one registered block of the document.
 ///
 /// # Errors
@@ -195,16 +221,19 @@ pub(crate) fn run(document: &Path, review: &Path, block: &str) -> anyhow::Result
         ));
     }
     let report = store_report(window, block, review, document, &wanted_content);
+    let run = run_report(window, revision_number(review, text), document);
     failures.extend(report.failures);
+    failures.extend(run.failures);
     writeln!(
         out,
-        "REVIEW: {}   BLOCK: {block}   GENERATED: {}   ROWS: {}   STORE: {}   STORE COPIES: {}   CLOSURE BAD: {}",
+        "REVIEW: {}   BLOCK: {block}   GENERATED: {}   ROWS: {}   STORE: {}   STORE COPIES: {}   CLOSURE BAD: {}   RUN KEY: {}",
         name_of(review),
         parsed.ids.len(),
         rows.len(),
         report.state,
         report.copies,
-        failures.len()
+        failures.len(),
+        run.state
     )?;
     for line in &failures {
         writeln!(out, "  {line}")?;
@@ -912,8 +941,8 @@ fn quoted_keys(printed: &str) -> Vec<String> {
     found
 }
 
-/// The md5 of the stored review at one plan-store key, or a reason.
-fn store_digest(repo: &Path, plan: &str, key: &str) -> Result<String, String> {
+/// The value the store holds at one plan-store key, or a reason.
+fn store_value(repo: &Path, plan: &str, key: &str) -> Result<Vec<u8>, String> {
     let launcher = launcher_of(repo)?;
     let output = Process::new("bash")
         .arg(&launcher)
@@ -932,7 +961,21 @@ fn store_digest(repo: &Path, plan: &str, key: &str) -> Result<String, String> {
     if output.stdout.is_empty() {
         return Err(format!("the store holds nothing at key `{key}`"));
     }
-    Ok(hex_digest(without_trailing_newlines(&output.stdout)))
+    Ok(output.stdout)
+}
+
+/// The md5 of the stored review at one plan-store key, or a reason.
+fn store_digest(repo: &Path, plan: &str, key: &str) -> Result<String, String> {
+    store_value(repo, plan, key).map(|held| hex_digest(without_trailing_newlines(&held)))
+}
+
+/// The repository and the plan name one store half reads, or a reason.
+fn store_reach(document: &Path) -> Result<(PathBuf, String), String> {
+    let repo =
+        crate::repo_root().ok_or_else(|| "the repository root cannot be located".to_owned())?;
+    let plan =
+        plan_name(document).ok_or_else(|| "the document names no plan directory".to_owned())?;
+    Ok((repo, plan))
 }
 
 /// The stored copies one closure section binds this block to, or a report.
@@ -963,16 +1006,9 @@ fn store_copies(
             )],
         });
     }
-    let reached = crate::repo_root()
-        .ok_or_else(|| "the repository root cannot be located".to_owned())
-        .and_then(|repo| {
-            plan_name(document)
-                .ok_or_else(|| "the document names no plan directory".to_owned())
-                .map(|plan| (repo, plan))
-        })
-        .and_then(|(repo, plan)| {
-            sibling_keys(&repo, &plan, key).map(|copies| (repo, plan, copies))
-        });
+    let reached = store_reach(document).and_then(|(repo, plan)| {
+        sibling_keys(&repo, &plan, key).map(|copies| (repo, plan, copies))
+    });
     reached.map_err(|reason| StoreReport {
         state: "unreachable",
         copies: 0,
@@ -1044,6 +1080,112 @@ fn store_report(
         copies: copies.len(),
         failures,
     }
+}
+
+/// The plan-store key one closure section states for its own run (`CL1d`).
+///
+/// The head carries words of its own, so the `CL1c` sentence one line above
+/// never answers here.
+fn run_key_of(window: &str) -> Option<&str> {
+    for (at, _head) in window.match_indices(RUN_HEAD) {
+        let Some(rest) = window.get(at + RUN_HEAD.len()..) else {
+            continue;
+        };
+        let Some(length) = key_run(rest) else {
+            continue;
+        };
+        let (Some(key), Some(tail)) = (rest.get(..length), rest.get(length..)) else {
+            continue;
+        };
+        if !tail.starts_with("`.") {
+            continue;
+        }
+        return Some(key);
+    }
+    None
+}
+
+/// The revision one review states, as `CL1b` and `CL1d` both read it.
+///
+/// The file name answers first and the title answers when the name states no
+/// review, which is the order `generated` resolves the id prefix in.
+fn revision_number(review: &Path, text: &str) -> Option<u32> {
+    let named = review_ids::prefix_of_path(review).map_or_else(
+        || review_ids::revision_of(text).map(|revision| format!("C{revision}")),
+        Some,
+    )?;
+    let digits: String = named.chars().filter(char::is_ascii_digit).collect();
+    digits.parse().ok()
+}
+
+/// The exit code one recorded run states, or `None`.
+fn exit_word(body: &str) -> Option<&str> {
+    body.lines()
+        .find_map(|line| line.strip_prefix(EXIT_HEAD))
+        .map(str::trim)
+}
+
+/// The `CL1d` report of one block.
+fn run_report(window: &str, revision: Option<u32>, document: &Path) -> RunReport {
+    if revision.is_none_or(|number| number < RUN_KEY_REQUIRED_FROM) {
+        return RunReport {
+            state: "absent",
+            failures: Vec::new(),
+        };
+    }
+    let Some(key) = run_key_of(window) else {
+        return RunReport {
+            state: "unrecorded",
+            failures: vec![
+                "RUN:       the section states no plan-store key for the `check-closure` run that verified it, so the verdict is a claim in prose that no later party can reproduce (CL1d)"
+                    .to_owned(),
+            ],
+        };
+    };
+    if key_suffix(key) != RUN_SUFFIX {
+        return RunReport {
+            state: "wrong-suffix",
+            failures: vec![format!(
+                "RUN:       the section names key `{key}`, whose suffix is not `{RUN_SUFFIX}`; the store mints that suffix for a recorded run and for no other record (CL1d)"
+            )],
+        };
+    }
+    let held = store_reach(document).and_then(|(repo, plan)| store_value(&repo, &plan, key));
+    let body = match held {
+        Ok(body) => String::from_utf8_lossy(&body).into_owned(),
+        Err(reason) => {
+            return RunReport {
+                state: "unreachable",
+                failures: vec![format!(
+                    "RUN:       key `{key}`: {reason}; CL1d is fail-closed"
+                )],
+            };
+        },
+    };
+    exit_failure(key, exit_word(&body)).map_or(
+        RunReport {
+            state: "verified",
+            failures: Vec::new(),
+        },
+        |line| RunReport {
+            state: "failed",
+            failures: vec![line],
+        },
+    )
+}
+
+/// The `CL1d` failure the exit code of one recorded run carries, or `None`.
+fn exit_failure(key: &str, stated: Option<&str>) -> Option<String> {
+    let Some(word) = stated else {
+        return Some(format!(
+            "RUN:       key `{key}`: the recorded run states no `{EXIT_HEAD}` line, so nothing records the verdict of the run this block cites (CL1d)"
+        ));
+    };
+    (word != "0").then(|| {
+        format!(
+            "RUN:       key `{key}`: the recorded run states `{EXIT_HEAD}{word}`, and a closure section cites a run that exited 0 (CL1d)"
+        )
+    })
 }
 
 /// Generate the canonical finding-id list of one review (`CL1`).

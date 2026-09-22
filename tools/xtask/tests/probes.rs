@@ -1734,6 +1734,39 @@ pub fn alpha(value: u64) -> u64 { value }
     /// A plan-store key that carries the suffix of another review (`CL1c`).
     const CLOSURE_OTHER_KEY: &str = "36304kihouge4-review-r21-inner";
 
+    /// The plan-store suffix one recorded `check-closure` run carries (`CL1d`).
+    const CLOSURE_RUN_SUFFIX: &str = "closure-run";
+
+    /// A key that carries the run suffix and that no store answers (`CL1d`).
+    const CLOSURE_ABSENT_RUN_KEY: &str = "11111absentrun1-closure-run";
+
+    /// The revision a review states when it sits below the `CL1d` cut-off.
+    ///
+    /// The review bytes stay the ones the three digest constants record, and
+    /// the file name alone states the revision, so the id prefix and the store
+    /// suffix both follow the name.
+    const CLOSURE_BELOW_REVISION: &str = "23";
+
+    /// The recorded body of one `check-closure` run, as `CL1d` shapes it.
+    ///
+    /// The body opens with `COMMAND: `, `EXIT: ` and `TREE: `, one per line,
+    /// and then holds the stdout of the run.
+    fn recorded_run(exit: i32) -> String {
+        format!(
+            "COMMAND: cargo xtask check-closure architecture.md review.md {CLOSURE_BLOCK}\n\
+             EXIT: {exit}\n\
+             TREE: 0123456789abcdef0123456789abcdef01234567\n\
+             REVIEW: a probe   BLOCK: {CLOSURE_BLOCK}   CLOSURE BAD: 0\n"
+        )
+    }
+
+    /// The one line that binds the block to the run that verified it (`CL1d`).
+    fn run_key_line(key: &str) -> String {
+        format!(
+            "The `check-closure` run that verified this block is recorded at plan-store key `{key}`.\n"
+        )
+    }
+
     /// The repository the closure guard resolves at compile time.
     ///
     /// The guard reads `.claude/plan-coordination/db.sh` of the repository two
@@ -1798,14 +1831,18 @@ pub fn alpha(value: u64) -> u64 { value }
         )
     }
 
-    /// The whole throwaway closure section, which records the minted key.
-    fn closure_block(key: &str) -> String {
+    /// The whole throwaway closure section, which records the minted keys.
+    ///
+    /// The `run` line is the whole `CL1d` run-key line, or an empty text for a
+    /// section that records no run.
+    fn closure_block(key: &str, run: &str) -> String {
         format!(
             "### 1.9 A probe section\n\n\
              #### The revision-16 review, over the frozen document\n\n\
              {CLOSURE_SENTENCE}\n\n\
              {}\n\
-             The review file this block records is stored at plan-store key `{key}` ({CLOSURE_BLOCK}).\n\n\
+             The review file this block records is stored at plan-store key `{key}` ({CLOSURE_BLOCK}).\n\
+             {run}\n\
              <!-- GUARD BLOCK id={CLOSURE_BLOCK} rows>=4 -->\n\
              | Id | Finding | State | Section and mechanism |\n\
              |---|---|---|---|\n\
@@ -1826,10 +1863,15 @@ pub fn alpha(value: u64) -> u64 { value }
         token: String,
         /// The plan-store key the store minted for the review.
         key: String,
+        /// The plan-store key the store minted for the recorded run (`CL1d`).
+        run_key: String,
     }
 
     impl Closure {
         /// Write the review, append it to a throwaway store, and mint its key.
+        ///
+        /// The fixture also records one `check-closure` run that exited 0, so
+        /// the baseline section cites a run the store answers.
         fn new(label: &str) -> Self {
             let root = scratch(label);
             let token = run_token();
@@ -1837,7 +1879,13 @@ pub fn alpha(value: u64) -> u64 { value }
             write_bytes(&review, CLOSURE_REVIEW.as_bytes());
             let plan = format!("{CLOSURE_PLAN_PARENT}/plan-{token}");
             let key = store_append(&root, &plan, &format!("review-{token}"), CLOSURE_REVIEW);
-            Self { root, token, key }
+            let run_key = store_append(&root, &plan, CLOSURE_RUN_SUFFIX, &recorded_run(0));
+            Self {
+                root,
+                token,
+                key,
+                run_key,
+            }
         }
 
         /// The plan directory this fixture owns, under its scratch root.
@@ -1862,14 +1910,35 @@ pub fn alpha(value: u64) -> u64 { value }
             format!("review-{}", self.token)
         }
 
-        /// The baseline closure section, which records the minted key.
+        /// The baseline closure section, which records the minted keys.
         fn block(&self) -> String {
-            closure_block(&self.key)
+            closure_block(&self.key, &run_key_line(&self.run_key))
         }
 
         /// Append one more copy of the review under this fixture's suffix.
         fn append(&self, value: &str) -> String {
             store_append(&self.root, &self.plan(), &self.suffix(), value)
+        }
+
+        /// Record one more `check-closure` run and return the key it minted.
+        fn append_run(&self, body: &str) -> String {
+            store_append(&self.root, &self.plan(), CLOSURE_RUN_SUFFIX, body)
+        }
+
+        /// A second review of this fixture, below the `CL1d` cut-off.
+        ///
+        /// The bytes are the ones the digest constants record and the file
+        /// name states the revision, so the id prefix reads `C23` and the
+        /// store suffix reads `review-r23`. The fixture owns its own scratch
+        /// root and its own plan, so one name for every probe is still one
+        /// store environment per probe.
+        fn below_cut_off(&self) -> (PathBuf, String) {
+            let name = format!("critic-spec-r{CLOSURE_BELOW_REVISION}.md");
+            let path = self.root.join("below").join(name);
+            write_bytes(&path, CLOSURE_REVIEW.as_bytes());
+            let suffix = format!("review-r{CLOSURE_BELOW_REVISION}");
+            let key = store_append(&self.root, &self.plan(), &suffix, CLOSURE_REVIEW);
+            (path, key)
         }
 
         /// Run the guard over one document text and this fixture's review.
@@ -1938,9 +2007,9 @@ pub fn alpha(value: u64) -> u64 { value }
         );
         assert!(
             report.contains(
-                "BLOCK: closure-r16   GENERATED: 4   ROWS: 4   STORE: matches   STORE COPIES: 1   CLOSURE BAD: 0"
+                "BLOCK: closure-r16   GENERATED: 4   ROWS: 4   STORE: matches   STORE COPIES: 1   CLOSURE BAD: 0   RUN KEY: verified"
             ),
-            "the summary states the generated set, the rows, and the stored copy: {report}"
+            "the summary states the generated set, the rows, the stored copy, and the recorded run: {report}"
         );
     }
 
@@ -2196,6 +2265,99 @@ pub fn alpha(value: u64) -> u64 { value }
                 "  STORE:     1 of 2 stored copies of this review differ from the file this run read, `{CLOSURE_CONTENT_DIGEST}`; the first is key `{second}` at md5 `{CLOSURE_DOCTORED_DIGEST}` (CL1c)"
             )),
             "the finding names the doctored copy and both digests: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_run_key_absent_is_a_finding() {
+        let fixture = Closure::new("cl-run-absent");
+        let planted_block = closure_block(&fixture.key, "");
+        let (code, report) = fixture.guard(&planted_block);
+        clean(&fixture.root);
+        assert_eq!(
+            code, 1,
+            "a section at the cut-off that cites no run is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "  RUN:       the section states no plan-store key for the `check-closure` run that verified it, so the verdict is a claim in prose that no later party can reproduce (CL1d)"
+            ),
+            "the finding states that nothing records the run: {report}"
+        );
+        assert!(
+            report.contains("RUN KEY: unrecorded"),
+            "the summary names the state of the run half: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_run_key_wrong_suffix_is_a_finding() {
+        let fixture = Closure::new("cl-run-suffix");
+        let planted_block = closure_block(&fixture.key, &run_key_line(&fixture.key));
+        let (code, report) = fixture.guard(&planted_block);
+        let named = fixture.key.clone();
+        clean(&fixture.root);
+        assert_eq!(
+            code, 1,
+            "a run key outside the run suffix is a finding: {report}"
+        );
+        assert!(
+            report.contains(&format!(
+                "  RUN:       the section names key `{named}`, whose suffix is not `{CLOSURE_RUN_SUFFIX}`; the store mints that suffix for a recorded run and for no other record (CL1d)"
+            )),
+            "the finding names the key and the suffix a run carries: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_run_key_store_does_not_answer_is_a_finding() {
+        let fixture = Closure::new("cl-run-silent");
+        let planted_block = closure_block(&fixture.key, &run_key_line(CLOSURE_ABSENT_RUN_KEY));
+        let (code, report) = fixture.guard(&planted_block);
+        clean(&fixture.root);
+        assert_eq!(
+            code, 1,
+            "a run key the store does not hold is a finding: {report}"
+        );
+        assert!(
+            report.contains(&format!("  RUN:       key `{CLOSURE_ABSENT_RUN_KEY}`:"))
+                && report.contains("; CL1d is fail-closed"),
+            "the finding names the key the store does not answer: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_run_key_failed_run_is_a_finding() {
+        let fixture = Closure::new("cl-run-failed");
+        let failed = fixture.append_run(&recorded_run(1));
+        let planted_block = closure_block(&fixture.key, &run_key_line(&failed));
+        let (code, report) = fixture.guard(&planted_block);
+        clean(&fixture.root);
+        assert_eq!(code, 1, "a recorded run that failed is a finding: {report}");
+        assert!(
+            report.contains(&format!(
+                "  RUN:       key `{failed}`: the recorded run states `EXIT: 1`, and a closure section cites a run that exited 0 (CL1d)"
+            )),
+            "the finding states the exit the record holds: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_run_key_below_the_cut_off_is_clean() {
+        let fixture = Closure::new("cl-run-below");
+        let (review, stored) = fixture.below_cut_off();
+        let planted_block = closure_block(&stored, "")
+            .replace("| C99-", "| C23-")
+            .replace("| N99-", "| N23-");
+        let (code, report) = fixture.guard_with(&planted_block, &review, CLOSURE_BLOCK);
+        clean(&fixture.root);
+        assert_eq!(
+            code, 0,
+            "a section below the cut-off cites no run and is clean: {report}"
+        );
+        assert!(
+            report.contains("CLOSURE BAD: 0   RUN KEY: absent"),
+            "the summary states that the cut-off holds the run half back: {report}"
         );
     }
 
