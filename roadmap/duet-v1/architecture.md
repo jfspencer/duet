@@ -1504,6 +1504,16 @@ pub const FADER_SILENCE_DB: Finite = Finite::from_finite_const(-96.0);
 pub const FADER_CEILING_DB: Finite = Finite::from_finite_const(6.0);
 ```
 
+**Chunk T1 proved the `non_zero` fallback arm wrong, and the Architect owns the repair.** The arm
+substitutes `NonZeroI64::MIN`, which is `i64::MIN`, so a bad constant SHIPS, where
+`Finite::from_finite_const` asserts and a bad constant fails the build. The two constants this block
+builds are positive divisors and positive scale factors everywhere in `duet-time`, so a negative
+value for either would invert the whole timeline. The two compile-time helpers of the workspace
+answer a bad input in opposite ways. The repair is the same assertion `Finite` already uses. The
+body is mandated character for character, so only an edit here may change it. Chunk T1 added a
+second site of the same shape, `duet-time::units::non_zero_u32`, which the repair must cover. Plan
+store `fluid:next_steps_from_T1`, item FU-3 (chunk T1, 2026-09-22).
+
 A test in `duet-time` asserts that both non-zero constants hold their literal values, so a wrong
 fallback arm cannot pass unseen. **Nine of the eleven `duet-command` constants need no such test**:
 each one goes through `Finite::from_finite_const`, which asserts finiteness at compile time, so a
@@ -3362,9 +3372,20 @@ impl TempoMap {
     pub fn cmp(&self, left: Position, right: Position) -> core::cmp::Ordering;
 
     /// Test two positions for equality, across domains when they differ.
-    pub fn eq(&self, left: Position, right: Position) -> bool;
+    pub fn same_instant(&self, left: Position, right: Position) -> bool;
 }
 ```
+
+**The method is named `same_instant` and not `eq`, and the lint policy is the reason.**
+`TempoMap` derives `PartialEq`, so a second method named `eq` trips
+`clippy::same_name_method`, which `[workspace.lints]` denies. That lint reads the NAME alone,
+where the neighbouring `clippy::should_implement_trait` reads the arity and stays silent. Revision
+23 declared `eq` and no rule read the pair, so chunk T1 met a declared shape that the declared
+policy refuses. The rename removes the clash with no suppression, which is what the Appendix B.1
+preamble asks of an implementer. It also serves ADR-0001: structural equality and timeline
+equality are two different questions, and two methods named `eq` hide the difference that the ADR
+says the two names must keep visible. `cmp` needs no rename, because `TempoMap` derives no `Ord`
+(chunk T1, 2026-09-22).
 
 ### 2.8 Bars, beats, and ticks
 
@@ -3399,19 +3420,20 @@ pub struct Tempo { beats_per_minute: Ratio, beat_unit: NoteValue, ramped: bool }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Meter { beats_per_bar: NonZeroU8, beat_unit: NoteValue }
 
-/// One tempo entry. It carries its own position in all three views, so a
-/// lookup never calls back into the map.
+/// One tempo entry. It carries its own position in the two views the beat
+/// and audio queries read, so a lookup never calls back into the map.
 ///
 /// It derives serde, because `score/meta.json` holds the tempo map
 /// (section 3.6). It carries no `extra` bag: `duet-time` has no `serde_json`
 /// edge, and an unknown field on a tempo entry would be a tempo this build
 /// cannot honour, so the reader refuses it (critic W8).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TempoPoint { ticks: Ticks, clock: SuperClock, bbt: Bbt, tempo: Tempo }
+pub struct TempoPoint { ticks: Ticks, clock: SuperClock, tempo: Tempo }
 
-/// One meter entry, with the same three views and the same serde rule.
+/// One meter entry, with the two views the bar queries read and the same
+/// serde rule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MeterPoint { ticks: Ticks, clock: SuperClock, bbt: Bbt, meter: Meter }
+pub struct MeterPoint { ticks: Ticks, bbt: Bbt, meter: Meter }
 
 /// A sorted tempo and meter map.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -3429,8 +3451,22 @@ impl TempoMap {
 }
 ```
 
-Each point holds its own tick, clock, and bar address. A point never asks the map to convert its own
-position. That breaks the circular dependency at the base of the design (Ardour 1).
+Each point holds its own address in the axis its own queries read. A point never asks the map to
+convert its own position. That breaks the circular dependency at the base of the design (Ardour 1).
+
+**An entry carries TWO views and not three, and chunk T1 is the site that says why.** Revision 23
+gave each entry a tick, a clock, and a bar address. A tempo entry's bar address and a meter entry's
+clock are read by NO query: `superclock_at` and `ticks_at` read a tempo entry's tick and clock, and
+`bbt_at` and `ticks_at_bbt` read a meter entry's tick and address. Neither of the two unread views
+can be checked without the OTHER list, so the gate of section 2.9 could not hold them, and the
+strict-rise rule made the TRUE tempo address ILLEGAL whenever the meter list was empty: the gate
+refused the honest map and accepted the false one. The Engineering Critic proved both halves on the
+chunk's own fixtures. A redundant cached value that no gate checks is a second source of truth, and
+`TempoMap::tempos` and `TempoMap::meters` publish it to fifteen consumer crates that cannot repair
+it, because no later chunk writes `duet-time`. The ADR-0001 decision 7 reason is untouched: each
+query still reads the entry's own cached view for its own axis, so no lookup calls back into the
+map. The two removed views never broke that cycle; they created a second, cross-list cycle
+(chunk T1, 2026-09-22).
 
 ### 2.10 Conversion takes the map as an argument
 
@@ -14829,6 +14865,25 @@ Revision 20 stated a lint for none of the twenty rows and never addressed the mu
 | `f64_to_f32` | `as_conversions`, `cast_possible_truncation` | "the function returns an error for a non-finite value and for a magnitude outside the f32 range before it reaches this line" |
 | `ticks_to_f64` | `as_conversions`, `cast_precision_loss` | "the function returns an error at or above 2^53 ticks before it reaches this line, so every integer below that bound converts to an f64 exactly" |
 | `finite_to_f32_saturating` | `as_conversions`, `cast_possible_truncation` | "the input is a `Finite`, so it is never a NaN and never an infinity; the narrowing saturates to an f32 infinity only above the f32 range, and `LogicalPx` carries a window length in logical pixels, which is far below it" |
+
+**Chunk T1 proved two rows of this table wrong, and the Architect owns each repair.** The engineer
+copied both texts correctly; only an edit here may change one.
+
+1. **The `finite_to_f32_saturating` row names a bound that its own body does not carry.** No crate
+   in this workspace declares `LogicalPx`, and the function takes every `Finite` from every crate
+   rather than a `LogicalPx`. This appendix opens with the rule that a reason names an invariant a
+   reader CHECKS in the function body, and a reader of that body sees a `Finite` and no bound.
+   Either declare `LogicalPx` and narrow the parameter, or name an invariant the body carries. Plan
+   store `fluid:next_steps_from_T1`, item FU-2.
+2. **The `i24_to_f32` and `unit_to_i24` rows make an exact 24-bit round trip unreachable.** The
+   first text requires the result to be "in the unit range" and the conversion to be "lossless",
+   which forces a decode divisor of exactly 2^23. The second text fixes the encode factor at
+   2^23 - 1. The composition is therefore `x * (1 - 2^-23)`, which is not the identity for any
+   sample of magnitude 2^22 or above: measured, 8_388_607 answers 8_388_606 and -8_388_608 answers
+   -8_388_607. At unity gain a decode and re-encode moves every sample above half scale by one
+   least significant bit, in the trunk crate of a product whose value is lossless editing. An
+   encode factor of 2^23 with a clamp at a unit value of exactly +1.0 gives an EXACT round trip for
+   all 16,777,216 values. Plan store `fluid:next_steps_from_T1`, item FU-1 (chunk T1, 2026-09-22).
 
 Six complexity suppressions. **Each reason names a COUNT a reader checks in the body**, and not an
 opinion about a split (critic C20-N4). Revision 20 wrote "a split would hide the order between the
