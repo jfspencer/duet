@@ -55,14 +55,23 @@ need cargo-machete
 # the step is reachable at a push and at an amend, where the first two clauses
 # are empty. The union is computed here, above every step, because the first
 # reader of it is the `converts` step and not the `plan` step.
+#
+# Every diff runs under `core.quotePath=false`. With the default, git prints a
+# path that holds a byte outside printable ASCII in quotation marks and with
+# octal escapes, so `roadmap/duet-v1/<accented name>.md` prints as
+# "roadmap/duet-v1/caf\303\251.md", no pattern below matches it, and the step
+# SKIPS a change it must read. A condition that cannot see its own input must
+# not answer no.
+gitdiff() { git -c core.quotePath=false diff "$@"; }
+
 CHANGED_PATHS=""
 DENOMINATOR_UNKNOWN=0
 if git rev-parse --verify --quiet HEAD >/dev/null 2>&1; then
-  CHANGED_PATHS="$(git diff --cached --name-only)"$'\n'"$(git diff --name-only HEAD)"
+  CHANGED_PATHS="$(gitdiff --cached --name-only)"$'\n'"$(gitdiff --name-only HEAD)"
   if git rev-parse --verify --quiet '@{upstream}' >/dev/null 2>&1; then
-    CHANGED_PATHS="$CHANGED_PATHS"$'\n'"$(git diff --name-only '@{upstream}..HEAD')"
+    CHANGED_PATHS="$CHANGED_PATHS"$'\n'"$(gitdiff --name-only '@{upstream}..HEAD')"
   elif merge_base="$(git merge-base origin/main HEAD 2>/dev/null)"; then
-    CHANGED_PATHS="$CHANGED_PATHS"$'\n'"$(git diff --name-only "$merge_base..HEAD")"
+    CHANGED_PATHS="$CHANGED_PATHS"$'\n'"$(gitdiff --name-only "$merge_base..HEAD")"
   else
     DENOMINATOR_UNKNOWN=1
   fi
@@ -146,6 +155,8 @@ fi
 if command -v typos >/dev/null 2>&1; then
   step "typos"
   typos
+else
+  step "typos: skipped (typos is not installed; run scripts/bootstrap.sh)"
 fi
 
 printf '\n\033[1;32mDefinition of Done: every gate passed.\033[0m\n'

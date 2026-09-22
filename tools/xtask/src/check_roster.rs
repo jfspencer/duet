@@ -386,9 +386,10 @@ const SKIPPED_COMPILE: &str = "ROSTER COMPILE:   skipped (--generate-only)";
 /// from the exit code alone.
 ///
 /// The bound of that sentence: the five refusals inside [`run`] come before
-/// this function and print no skip line in either form. Both forms answer
-/// those five the same way and neither has started, so no skipped run can read
-/// as a clean full run, which is the property the line exists to hold.
+/// this function and print no skip line in either form, and a write that fails
+/// leaves this function through `?` before the line reaches the stream. Both
+/// forms answer all six the same way, so no skipped run can read as a clean
+/// full run, which is the property the line exists to hold.
 ///
 /// # Errors
 /// Returns an error when a write to the output stream fails, or when a file

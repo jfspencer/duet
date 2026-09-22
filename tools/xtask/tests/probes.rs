@@ -5147,6 +5147,12 @@ opt-level = 3
             .join("workflows")
     }
 
+    /// The line the skipped half of `check-roster` prints and the full run never does.
+    ///
+    /// A planted run asserts it as well as the clean run, because an exit-1 run
+    /// is where a skipped form and a full form are most confusable.
+    const SKIPPED_COMPILE_LINE: &str = "ROSTER COMPILE:   skipped (--generate-only)";
+
     #[test]
     fn roster_generate_only_clean_document_exits_zero() {
         let (code, report) = roster_generate_only("roster-clean", RosterDefect::Clean);
@@ -5173,6 +5179,10 @@ opt-level = 3
                 .any(|line| line.starts_with("FINDING: the roster holds")),
             "the guard names the first name with no declaration: {report}"
         );
+        assert!(
+            report.contains(SKIPPED_COMPILE_LINE),
+            "a planted run states which half ran, which is where the two forms are most confusable: {report}"
+        );
     }
 
     #[test]
@@ -5184,6 +5194,10 @@ opt-level = 3
                 .lines()
                 .any(|line| line.starts_with("FINDING: the impl block for")),
             "the guard names the declaration the mixed block is for: {report}"
+        );
+        assert!(
+            report.contains(SKIPPED_COMPILE_LINE),
+            "a planted run states which half ran, which is where the two forms are most confusable: {report}"
         );
     }
 
@@ -5199,6 +5213,10 @@ opt-level = 3
                 .lines()
                 .any(|line| line.starts_with("FINDING: the roster parsed")),
             "the guard names both counts and the difference: {report}"
+        );
+        assert!(
+            report.contains(SKIPPED_COMPILE_LINE),
+            "a planted run states which half ran, which is where the two forms are most confusable: {report}"
         );
     }
 
