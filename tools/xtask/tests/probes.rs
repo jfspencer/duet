@@ -1,5 +1,5 @@
-//! Probes for the four `xtask` guards: `check-conversions`, `check-manifests`,
-//! `check-plan-graph`, and `check-closure`.
+//! Probes for the five `xtask` guards: `check-conversions`, `check-manifests`,
+//! `check-plan-graph`, `check-closure`, and `check-placement`.
 //!
 //! A probe plants one defect in a throwaway fixture, runs the guard over that
 //! fixture, and asserts the exit code and the line the guard prints. The guard
@@ -1615,6 +1615,2300 @@ path = "other/lib.rs"
                 ": the file name states no review and the title states no revision; the guard is fail-closed."
             ),
             "the guard states that no id prefix can be generated: {report}"
+        );
+    }
+    /// Every crate the synthetic placement document states in section 1.2.
+    fn placement_crates() -> Vec<String> {
+        let mut found = vec!["duet".to_owned()];
+        found.extend(
+            "abcdefghijklmno"
+                .chars()
+                .map(|mark| format!("duet-a{mark}")),
+        );
+        found
+    }
+
+    /// Every third-party crate a section 1.2 dependency cell of the fixture names.
+    fn placement_third_party() -> Vec<String> {
+        "abcdefghijklm"
+            .chars()
+            .map(|mark| format!("tpa{mark}"))
+            .collect()
+    }
+
+    /// One list of generated names, from a prefix, a width, and a count.
+    fn placement_series(prefix: &str, width: usize, count: usize) -> Vec<String> {
+        (0..count)
+            .map(|index| format!("{prefix}{index:0width$}"))
+            .collect()
+    }
+
+    /// Every external name the section 1.9 verdict table of the fixture decides.
+    fn placement_externals() -> Vec<String> {
+        placement_series("Ext", 1, 34)
+    }
+
+    /// Every framework name section 1.3 of the fixture declares.
+    fn placement_framework() -> Vec<String> {
+        placement_series("Fw", 1, 7)
+    }
+
+    /// Every third-party type name the section 1.2 name map of the fixture maps.
+    fn placement_mapped() -> Vec<String> {
+        placement_series("Qm", 2, 23)
+    }
+
+    /// The candidate drop list of the fixture.
+    fn placement_dropped() -> Vec<String> {
+        [
+            "Clone",
+            "Copy",
+            "Debug",
+            "Default",
+            "Hash",
+            "Ord",
+            "PartialEq",
+            "PartialOrd",
+        ]
+        .iter()
+        .map(|one| (*one).to_owned())
+        .collect()
+    }
+
+    /// Every primitive the section 1.9 trait and size blocks of the fixture name.
+    fn placement_primitives() -> Vec<String> {
+        [
+            "u8", "u16", "u32", "u64", "u128", "usize", "i8", "i16", "i32", "i64", "i128", "isize",
+            "f32", "f64", "bool", "char",
+        ]
+        .iter()
+        .map(|one| (*one).to_owned())
+        .collect()
+    }
+
+    /// Every chunk line of section 13 of the fixture, one letter each.
+    fn placement_lines() -> Vec<String> {
+        "ACDEFGHJKLMNOPQR"
+            .chars()
+            .map(|mark| mark.to_string())
+            .collect()
+    }
+
+    /// Every chunk id of section 13 of the fixture, four to a line.
+    fn placement_chunks() -> Vec<String> {
+        let mut found = Vec::new();
+        for line in placement_lines() {
+            found.extend((1..5_usize).map(|index| format!("{line}{index}")));
+        }
+        found
+    }
+
+    /// Every audio-owned root the fixture declares and marks.
+    fn placement_roots() -> Vec<String> {
+        let mut found = vec!["EngineProcess".to_owned()];
+        found.extend((1..44_usize).map(|index| format!("Aud{index:02}")));
+        found
+    }
+
+    /// Every audio-reachable leaf the fixture declares.
+    fn placement_leaves() -> Vec<String> {
+        placement_series("Leaf", 2, 46)
+    }
+
+    /// Every carrier holder the fixture declares.
+    fn placement_carriers() -> Vec<String> {
+        placement_series("Car", 2, 25)
+    }
+
+    /// Every type a Rust block of the fixture declares.
+    fn placement_declared() -> Vec<String> {
+        let mut found = placement_roots();
+        found.extend(placement_leaves());
+        found.extend(placement_carriers());
+        found
+    }
+
+    /// Every budget the fixture cites from a declaration line, with its value.
+    fn placement_budgets() -> Vec<(String, usize, String)> {
+        (1..10_usize)
+            .map(|index| (format!("B{index}"), 3 + index, format!("CAP_{index:03}")))
+            .collect()
+    }
+
+    /// One markdown row, from its cells.
+    fn md_row(cells: &[&str]) -> String {
+        format!("| {} |", cells.join(" | "))
+    }
+
+    /// One markdown table, from its header and its rows.
+    fn md_table(header: &[&str], rows: Vec<String>) -> Vec<String> {
+        let ruler = format!("|{}|", vec!["---"; header.len()].join("|"));
+        let mut found = vec![md_row(header), ruler];
+        found.extend(rows);
+        found
+    }
+
+    /// One filler markdown table whose first cell carries a generated label.
+    fn md_filler(count: usize, columns: usize, prefix: &str) -> Vec<String> {
+        let header: Vec<String> = (0..columns).map(|index| format!("Head{index}")).collect();
+        let names: Vec<&str> = header.iter().map(String::as_str).collect();
+        let rows = (0..count)
+            .map(|index| {
+                let head = format!("{prefix}{index}");
+                let mut cells = vec![head];
+                cells.extend(vec!["text".to_owned(); columns.saturating_sub(1)]);
+                let borrowed: Vec<&str> = cells.iter().map(String::as_str).collect();
+                md_row(&borrowed)
+            })
+            .collect();
+        md_table(&names, rows)
+    }
+
+    /// One comma-separated list of code spans.
+    fn md_spans(items: &[String]) -> String {
+        items
+            .iter()
+            .map(|one| format!("`{one}`"))
+            .collect::<Vec<String>>()
+            .join(", ")
+    }
+
+    /// One registered block of the synthetic placement document.
+    struct PlacementBlock {
+        /// The id the marker line states.
+        id: &'static str,
+        /// The `####` heading the block sits under.
+        heading: &'static str,
+        /// Whether the block is a table, a text fence, or a Rust fence.
+        kind: &'static str,
+        /// The floor the marker states, which is the row count the block holds.
+        minimum: usize,
+        /// The membership rule the `block-members` block gives the block.
+        member: &'static str,
+        /// Every row the block holds.
+        body: Vec<String>,
+    }
+
+    /// One entry of the fixture block register.
+    fn pblock(
+        id: &'static str,
+        heading: &'static str,
+        kind: &'static str,
+        member: &'static str,
+        body: Vec<String>,
+    ) -> PlacementBlock {
+        let minimum = body
+            .len()
+            .saturating_sub(if kind == "table" { 2 } else { 0 });
+        PlacementBlock {
+            id,
+            heading,
+            kind,
+            minimum,
+            member,
+            body,
+        }
+    }
+
+    /// The section 1.2 crate table of the fixture.
+    fn placement_crate_table() -> Vec<String> {
+        let third = placement_third_party();
+        let joined = third
+            .iter()
+            .map(|one| format!("`{one}`"))
+            .collect::<Vec<String>>()
+            .join(" ");
+        let rows = placement_crates()
+            .iter()
+            .enumerate()
+            .map(|(index, name)| {
+                let deps = if index == 0 {
+                    joined.clone()
+                } else {
+                    "none".to_owned()
+                };
+                md_row(&[&format!("`{name}`"), "member", "a synthetic member", &deps])
+            })
+            .collect();
+        md_table(&["Crate", "Kind", "What it does", "Depends on"], rows)
+    }
+
+    /// The section 1.5 ownership table of the fixture.
+    fn placement_ownership_table() -> Vec<String> {
+        let placed = md_spans(&placement_declared());
+        let mut rows = vec![md_row(&["`duet`", &placed, "9.1"])];
+        rows.extend(
+            placement_crates()
+                .iter()
+                .skip(1)
+                .map(|name| md_row(&[&format!("`{name}`"), "none", "9.1"])),
+        );
+        md_table(&["Crate", "Types", "Declared in"], rows)
+    }
+
+    /// The section 1.3 edge list of the fixture.
+    fn placement_edge_list() -> Vec<String> {
+        let crates = placement_crates();
+        let reached = crates.get(1..5).unwrap_or_default().join(" ");
+        let mut found = vec![format!("duet -> {reached}")];
+        found.extend(crates.iter().skip(1).map(|name| format!("{name} ->")));
+        found.push("the graph ends here".to_owned());
+        found.push("no further target".to_owned());
+        found
+    }
+
+    /// The section 1.6 constant block of the fixture.
+    fn placement_constants() -> Vec<String> {
+        let mut found = vec!["// duet-ab".to_owned()];
+        for (budget, value, constant) in placement_budgets() {
+            found.push(format!("/// {budget} capacity."));
+            found.push(format!("pub const {constant}: usize = {value};"));
+        }
+        let mut index = 0_usize;
+        while found.len() < 122 {
+            found.push(format!("pub const SYN_{index:03}: usize = 1;"));
+            index = index.saturating_add(1);
+        }
+        found
+    }
+
+    /// The section 1.6 budget table of the fixture.
+    fn placement_budget_table() -> Vec<String> {
+        let mut rows: Vec<String> = placement_budgets()
+            .iter()
+            .map(|(budget, value, _constant)| {
+                md_row(&[budget, &value.to_string(), "a synthetic bound", ""])
+            })
+            .collect();
+        rows.extend(
+            (10..149_usize)
+                .map(|index| md_row(&[&format!("B{index}"), "-", "a synthetic bound", ""])),
+        );
+        md_table(&["Id", "Value", "What it bounds", "Used by"], rows)
+    }
+
+    /// The section 1.9 probe table of the fixture.
+    fn placement_probe_table() -> Vec<String> {
+        let mut rows = vec![
+            md_row(&[
+                "`PG2`",
+                "a document that does not open",
+                "`PP2`",
+                "synthetic",
+                "exit 2",
+            ]),
+            md_row(&[
+                "`CG1`",
+                "a cast outside the one file",
+                "`CP1`",
+                "synthetic",
+                "exit 1",
+            ]),
+        ];
+        while rows.len() < 64 {
+            rows.push(md_row(&["-", "a filler row", "-", "synthetic", "exit 0"]));
+        }
+        md_table(
+            &["Rule", "What it plants", "Probe", "How", "Recorded"],
+            rows,
+        )
+    }
+
+    /// The section 1.9 external-verdict table of the fixture.
+    fn placement_external_verdicts() -> Vec<String> {
+        let rows = placement_externals()
+            .iter()
+            .map(|name| {
+                md_row(&[
+                    &format!("`{name}`"),
+                    "`not Copy`",
+                    "`Default`",
+                    "a synthetic entry",
+                ])
+            })
+            .collect();
+        md_table(&["Name", "Verdict", "Traits", "Why"], rows)
+    }
+
+    /// The section 1.9 external-path block of the fixture.
+    fn placement_external_paths() -> Vec<String> {
+        let mut names = placement_externals();
+        names.extend(placement_mapped());
+        names.extend(placement_framework());
+        names.extend(placement_dropped());
+        names
+            .iter()
+            .take(70)
+            .map(|one| format!("{one} tpaaa::{}", one.to_lowercase()))
+            .collect()
+    }
+
+    /// The section 1.9 recorded-size block of the fixture.
+    fn placement_recorded_sizes() -> Vec<String> {
+        let mut names = placement_externals();
+        names.extend(placement_framework());
+        names.extend(placement_primitives());
+        names
+            .iter()
+            .take(51)
+            .map(|one| format!("{one} 4 4"))
+            .collect()
+    }
+
+    /// The section 1.9 primitive trait block of the fixture.
+    fn placement_primitive_traits() -> Vec<String> {
+        let names = placement_primitives();
+        let traits = "Copy Default PartialEq Eq Hash Ord PartialOrd Serialize Deserialize";
+        [(0_usize, 6_usize), (6, 12), (12, 16)]
+            .iter()
+            .map(|(from, upto)| {
+                let listed = names.get(*from..*upto).unwrap_or_default().join(" ");
+                format!("{listed} : {traits}")
+            })
+            .collect()
+    }
+
+    /// The section 5.7 carrier table of the fixture.
+    fn placement_carrier_table() -> Vec<String> {
+        let rows = placement_carriers()
+            .iter()
+            .enumerate()
+            .map(|(index, name)| {
+                md_row(&[
+                    &format!("`msg{index:02}`"),
+                    &format!("`{name}.w`"),
+                    "triple_buffer",
+                    &format!("`{name}.r`"),
+                    "Audio -> Ui",
+                    "the writer overwrites",
+                ])
+            })
+            .collect();
+        md_table(
+            &[
+                "Message",
+                "Write end",
+                "Carrier",
+                "Read end",
+                "Threads",
+                "Overflow",
+            ],
+            rows,
+        )
+    }
+
+    /// The section 13.3 phase table of the fixture.
+    fn placement_phase_table() -> Vec<String> {
+        let lines = placement_lines();
+        let rows = (0..16_usize)
+            .map(|phase| {
+                let listed = lines
+                    .iter()
+                    .map(|line| format!("{line}{}", phase.saturating_add(1)))
+                    .collect::<Vec<String>>()
+                    .join(" ");
+                let (chunks, width) = if phase < 4 {
+                    (listed, "16")
+                } else {
+                    ("none".to_owned(), "0")
+                };
+                md_row(&[
+                    &phase.to_string(),
+                    "a synthetic phase",
+                    "runs",
+                    &chunks,
+                    width,
+                ])
+            })
+            .collect();
+        md_table(&["Phase", "What it does", "State", "Chunks", "Width"], rows)
+    }
+
+    /// The section 13.3 phase-pair exemption block of the fixture.
+    fn placement_phase_pair_exempt() -> Vec<String> {
+        let chunks = placement_chunks();
+        (0..24_usize)
+            .map(|index| {
+                let first = chunks.get(index).cloned().unwrap_or_default();
+                let second = chunks
+                    .get(index.saturating_add(1))
+                    .cloned()
+                    .unwrap_or_default();
+                format!("{first} {second} the pair {first} and {second} shares one line")
+            })
+            .collect()
+    }
+
+    /// One closure-review table of the fixture, with the stated row count.
+    fn placement_closure_rows(count: usize) -> Vec<String> {
+        let rows = (0..count)
+            .map(|index| {
+                md_row(&[
+                    &format!("C{}-W1", index.saturating_add(1)),
+                    "a synthetic finding",
+                    "closed",
+                    "9.1",
+                ])
+            })
+            .collect();
+        md_table(&["Id", "Finding", "State", "Section"], rows)
+    }
+
+    /// The section 9.1 Rust block of the fixture.
+    fn placement_declarations() -> Vec<String> {
+        let mut found = vec![
+            "/// A synthetic function that carries a suppression.".to_owned(),
+            "pub fn probe_fn() -> u32 { 1 }".to_owned(),
+            String::new(),
+        ];
+        let mut reachable = placement_roots().get(1..30).unwrap_or_default().to_vec();
+        reachable.extend(placement_leaves());
+        let fields = reachable
+            .iter()
+            .enumerate()
+            .map(|(index, name)| format!("f{index}: {name}"))
+            .collect::<Vec<String>>()
+            .join(", ");
+        found.push("/// The audio root. **Audio-owned**".to_owned());
+        found.push(format!("pub struct EngineProcess {{ {fields} }}"));
+        found.push(String::new());
+        for name in placement_roots().iter().skip(1) {
+            found.push("/// A synthetic root. **Audio-owned**".to_owned());
+            found.push(format!("pub struct {name} {{ v: u32 }}"));
+            found.push(String::new());
+        }
+        for name in placement_leaves() {
+            found.push("/// A synthetic leaf.".to_owned());
+            found.push(format!("pub struct {name} {{ v: u32 }}"));
+            found.push(String::new());
+        }
+        for name in placement_carriers() {
+            found.push("/// A synthetic carrier holder.".to_owned());
+            found.push(format!(
+                "pub struct {name} {{ w: triple_buffer::Input<u32>, r: triple_buffer::Output<u32> }}"
+            ));
+            found.push(String::new());
+        }
+        found
+    }
+
+    /// The registered blocks of sections 1.2, 1.3, 1.5, and 1.6 of the fixture.
+    fn placement_blocks_plan() -> Vec<PlacementBlock> {
+        let third = placement_third_party();
+        let mapped = placement_mapped();
+        let name_map = (0..23_usize)
+            .map(|index| {
+                let name = mapped.get(index).cloned().unwrap_or_default();
+                let owner = third.get(index % third.len()).cloned().unwrap_or_default();
+                format!("{name} {owner}")
+            })
+            .collect();
+        let limits = placement_budgets()
+            .iter()
+            .take(5)
+            .map(|(_budget, _value, constant)| format!("{constant} duet-ab duet-ab"))
+            .collect();
+        vec![
+            pblock(
+                "crate-table",
+                "The crate dependency table",
+                "table",
+                "not-declared",
+                placement_crate_table(),
+            ),
+            pblock(
+                "carrier-table",
+                "Every cross-thread carrier, and the two ends it needs",
+                "table",
+                "not-declared",
+                placement_carrier_table(),
+            ),
+            pblock(
+                "name-map",
+                "The third-party name map",
+                "text",
+                "not-declared",
+                name_map,
+            ),
+            pblock(
+                "edge-list",
+                "The internal edge list",
+                "text",
+                "not-declared",
+                placement_edge_list(),
+            ),
+            pblock(
+                "framework-types",
+                "Framework types",
+                "text",
+                "external-name",
+                placement_framework(),
+            ),
+            pblock(
+                "ownership-table",
+                "The type ownership table",
+                "table",
+                "not-declared",
+                placement_ownership_table(),
+            ),
+            pblock(
+                "drop-list",
+                "The candidate drop list",
+                "text",
+                "drop-name",
+                placement_dropped(),
+            ),
+            pblock(
+                "constants",
+                "Every workspace constant",
+                "rust",
+                "not-declared",
+                placement_constants(),
+            ),
+            pblock(
+                "shared-limits",
+                "Every shared limit and its enforcers",
+                "text",
+                "not-declared",
+                limits,
+            ),
+            pblock(
+                "budget-table",
+                "Every budget and bound",
+                "table",
+                "not-declared",
+                placement_budget_table(),
+            ),
+        ]
+    }
+
+    /// The registered blocks of section 1.9 of the fixture.
+    fn placement_blocks_registers() -> Vec<PlacementBlock> {
+        let mut found = placement_blocks_tables();
+        found.extend(placement_blocks_names());
+        found
+    }
+
+    /// The register blocks of section 1.9 the guard reads as tables and lists.
+    fn placement_blocks_tables() -> Vec<PlacementBlock> {
+        vec![
+            pblock(
+                "probe-table",
+                "Every rule, its probe, and the recorded result",
+                "table",
+                "not-declared",
+                placement_probe_table(),
+            ),
+            pblock(
+                "external-verdicts",
+                "Every external type, and its verdict",
+                "table",
+                "not-declared",
+                placement_external_verdicts(),
+            ),
+            pblock(
+                "external-paths",
+                "Where every external name comes from",
+                "text",
+                "not-declared",
+                placement_external_paths(),
+            ),
+            pblock(
+                "pins",
+                "The external crate pins the roster compile uses",
+                "text",
+                "not-declared",
+                placement_third_party()
+                    .iter()
+                    .map(|one| format!("{one} 1.0"))
+                    .collect(),
+            ),
+            pblock(
+                "recorded-sizes",
+                "Every size the guard records",
+                "text",
+                "not-declared",
+                placement_recorded_sizes(),
+            ),
+            pblock(
+                "substitutions",
+                "Every substitution the roster compile applies",
+                "text",
+                "sub-id",
+                (1..9_usize)
+                    .map(|index| format!("S{index} a synthetic substitution"))
+                    .collect(),
+            ),
+            pblock(
+                "drop-impls",
+                "Every declaration with a hand-written Drop impl",
+                "text",
+                "declared-name",
+                placement_leaves().get(..3).unwrap_or_default().to_vec(),
+            ),
+            pblock(
+                "impl-sites",
+                "Every impl block the roster compiles",
+                "text",
+                "not-declared",
+                (0..65_usize)
+                    .map(|index| format!("site{index:02} duet"))
+                    .collect(),
+            ),
+        ]
+    }
+
+    /// The name-set blocks of section 1.9 of the fixture.
+    fn placement_blocks_names() -> Vec<PlacementBlock> {
+        let heap = [
+            "Box", "Vec", "String", "Arc", "Rc", "BTreeMap", "BTreeSet", "HashMap", "HashSet",
+            "VecDeque", "Cow", "PathBuf",
+        ];
+        let grow = [
+            "Vec", "String", "HashMap", "HashSet", "BTreeMap", "BTreeSet", "VecDeque", "Cow",
+            "PathBuf", "SmallVec",
+        ];
+        let lock = [
+            "Mutex",
+            "RwLock",
+            "ReentrantLock",
+            "Condvar",
+            "Barrier",
+            "OnceLock",
+            "LazyLock",
+            "MutexGuard",
+            "RwLockReadGuard",
+            "RwLockWriteGuard",
+        ];
+        let owned =
+            |names: &[&str]| -> Vec<String> { names.iter().map(|one| (*one).to_owned()).collect() };
+        vec![
+            pblock(
+                "heap-names",
+                "Every heap-owning name the audio rules refuse",
+                "text",
+                "not-declared",
+                owned(&heap),
+            ),
+            pblock(
+                "grow-names",
+                "Every growable name the audio rules refuse",
+                "text",
+                "not-declared",
+                owned(&grow),
+            ),
+            pblock(
+                "lock-names",
+                "Every lock name the audio rules refuse",
+                "text",
+                "not-declared",
+                owned(&lock),
+            ),
+            pblock(
+                "primitive-traits",
+                "Every primitive trait set the guard uses",
+                "text",
+                "not-declared",
+                placement_primitive_traits(),
+            ),
+            pblock(
+                "primitive-sizes",
+                "Every primitive size the guard uses",
+                "text",
+                "not-declared",
+                placement_primitives()
+                    .iter()
+                    .map(|one| format!("{one} 4 4"))
+                    .collect(),
+            ),
+            pblock(
+                "justified-unknowns",
+                "The justified unknowns",
+                "table",
+                "not-declared",
+                md_filler(2, 4, "unknown"),
+            ),
+            pblock(
+                "block-members",
+                "Every registered block and its membership rule",
+                "text",
+                "block-id",
+                Vec::new(),
+            ),
+            pblock(
+                "rule-blocks",
+                "Which rule reads which block",
+                "table",
+                "not-declared",
+                Vec::new(),
+            ),
+        ]
+    }
+
+    /// The registered blocks of sections 3.5, 5.7, and Appendix B.1 of the fixture.
+    fn placement_blocks_audio() -> Vec<PlacementBlock> {
+        let convert = {
+            let mut rows = vec![md_row(&[
+                "`probe_fn`",
+                "a synthetic reason",
+                "when the port lands",
+            ])];
+            rows.extend((0..6_usize).map(|index| {
+                md_row(&[
+                    &format!("site {index}"),
+                    "a synthetic reason",
+                    "when the port lands",
+                ])
+            }));
+            md_table(&["Site", "Why", "Removal"], rows)
+        };
+        vec![
+            pblock(
+                "vr1-table",
+                "Every VR1 derive and its use",
+                "table",
+                "not-declared",
+                md_filler(27, 3, "vr1"),
+            ),
+            pblock(
+                "audio-owned",
+                "Every audio-owned declaration",
+                "text",
+                "declared-name",
+                placement_roots(),
+            ),
+            pblock(
+                "audio-exempt",
+                "Every audio-owned field the rule exempts",
+                "text",
+                "not-declared",
+                vec!["Aud01.v Ext0 a synthetic exemption".to_owned()],
+            ),
+            pblock(
+                "audio-reachable-leaf",
+                "Every reachable leaf the closure rule allows",
+                "text",
+                "declared-name",
+                placement_leaves(),
+            ),
+            pblock(
+                "audio-asserted",
+                "Every audio-owned root the closure does not reach",
+                "text",
+                "declared-name",
+                placement_roots().get(30..).unwrap_or_default().to_vec(),
+            ),
+            pblock(
+                "snapshot-table",
+                "High-rate traffic: latest value, lock free, no event",
+                "table",
+                "not-declared",
+                md_filler(7, 3, "snap"),
+            ),
+            pblock(
+                "b1-convert",
+                "Conversion suppressions",
+                "table",
+                "not-declared",
+                convert,
+            ),
+            pblock(
+                "b1-complexity",
+                "Complexity suppressions",
+                "table",
+                "not-declared",
+                md_filler(6, 3, "cx"),
+            ),
+            pblock(
+                "b1-copy",
+                "Expectations for missing_copy_implementations",
+                "table",
+                "not-declared",
+                md_filler(4, 3, "cp"),
+            ),
+            pblock(
+                "b1-variant",
+                "Expectations for variant_size_differences",
+                "table",
+                "not-declared",
+                md_filler(3, 3, "vs"),
+            ),
+        ]
+    }
+
+    /// The registered blocks of sections 13 and 14 and Appendix C of the fixture.
+    fn placement_blocks_plan_graph() -> Vec<PlacementBlock> {
+        let reviews: [(&'static str, &'static str, usize); 9] = [
+            (
+                "closure-r16",
+                "The revision-16 review, over the frozen document",
+                46,
+            ),
+            (
+                "closure-r17",
+                "The revision-17 review, over the frozen document",
+                26,
+            ),
+            (
+                "closure-r18",
+                "The revision-18 review, over the frozen document",
+                20,
+            ),
+            (
+                "closure-r19",
+                "The revision-19 review, over the frozen document",
+                45,
+            ),
+            (
+                "closure-r20",
+                "The revision-20 review, over the frozen document",
+                23,
+            ),
+            (
+                "closure-r21-inner",
+                "The revision-21 inner review, over the frozen document",
+                13,
+            ),
+            (
+                "closure-r21",
+                "The revision-21 external review, over the frozen document",
+                45,
+            ),
+            (
+                "closure-r22-inner",
+                "The revision-22 inner review, over the frozen document",
+                35,
+            ),
+            (
+                "closure-r23-inner",
+                "The revision-23 inner review, over the frozen document",
+                31,
+            ),
+        ];
+        let mut found = vec![
+            pblock(
+                "phase-table",
+                "The phase table",
+                "table",
+                "not-declared",
+                placement_phase_table(),
+            ),
+            pblock(
+                "selected-tests",
+                "Every test this section selects by name",
+                "table",
+                "not-declared",
+                md_filler(8, 6, "sel"),
+            ),
+            pblock(
+                "line-map",
+                "Every chunk line and the crate it owns",
+                "text",
+                "not-declared",
+                placement_lines()
+                    .iter()
+                    .map(|one| format!("{one} duet"))
+                    .collect(),
+            ),
+            pblock(
+                "phase-pair-exempt",
+                "Every same-phase crate edge that does not bind",
+                "text",
+                "not-declared",
+                placement_phase_pair_exempt(),
+            ),
+            pblock(
+                "gate-defects",
+                "Six planted gate defects, and the rule that catches each one",
+                "table",
+                "not-declared",
+                md_filler(6, 3, "gate"),
+            ),
+            pblock(
+                "fault-messages",
+                "Every engine fault and the line the user reads",
+                "table",
+                "not-declared",
+                md_filler(16, 3, "fault"),
+            ),
+        ];
+        found.extend(reviews.iter().map(|(id, heading, count)| {
+            pblock(
+                id,
+                heading,
+                "table",
+                "not-declared",
+                placement_closure_rows(*count),
+            )
+        }));
+        found
+    }
+
+    /// Every registered block of the fixture, with its two self-describing rows.
+    fn placement_register() -> Vec<PlacementBlock> {
+        let mut found = placement_blocks_plan();
+        found.extend(placement_blocks_registers());
+        found.extend(placement_blocks_audio());
+        found.extend(placement_blocks_plan_graph());
+        let members: Vec<String> = found
+            .iter()
+            .map(|entry| format!("{} {}", entry.id, entry.member))
+            .collect();
+        let ids: Vec<String> = found.iter().map(|entry| entry.id.to_owned()).collect();
+        let groups: Vec<String> = ids.chunks(2).map(md_spans).collect();
+        let rows: Vec<String> = (0..33_usize)
+            .map(|index| {
+                let cell = groups
+                    .get(index)
+                    .cloned()
+                    .unwrap_or_else(|| "`crate-table`".to_owned());
+                md_row(&[&format!("rule {index}"), &cell])
+            })
+            .collect();
+        for entry in &mut found {
+            if entry.id == "block-members" {
+                entry.body = members.clone();
+                entry.minimum = members.len();
+            }
+            if entry.id == "rule-blocks" {
+                entry.body = md_table(&["Rule", "Blocks"], rows.clone());
+                entry.minimum = 33;
+            }
+        }
+        found
+    }
+
+    /// One registered block of the fixture, as the document writes it.
+    fn placement_render(blocks: &[PlacementBlock], id: &str) -> String {
+        let entry = blocks
+            .iter()
+            .find(|entry| entry.id == id)
+            .unwrap_or_else(|| panic!("the fixture registers `{id}`"));
+        let mut out = vec![
+            format!("#### {}", entry.heading),
+            String::new(),
+            format!("<!-- GUARD BLOCK id={id} rows>={} -->", entry.minimum),
+        ];
+        if entry.kind == "table" {
+            out.extend(entry.body.clone());
+        } else {
+            out.push(format!("```{}", entry.kind));
+            out.extend(entry.body.clone());
+            out.push("```".to_owned());
+        }
+        out.push(String::new());
+        format!("{}\n", out.join("\n"))
+    }
+
+    /// The section 1.7 rule index of the fixture.
+    fn placement_index_table() -> String {
+        let rows = vec![
+            md_row(&["PG2", "opens the document", "1.5"]),
+            md_row(&["PP2", "probes the open", "1.9"]),
+            md_row(&["CG1", "refuses one cast", "1.5"]),
+            md_row(&["CP1", "probes the cast", "1.9"]),
+        ];
+        format!(
+            "{}\n",
+            md_table(&["Id", "Rule, in three words", "Stated in"], rows).join("\n")
+        )
+    }
+
+    /// The section 5.7 thread table of the fixture.
+    fn placement_thread_table() -> String {
+        let rows = vec![
+            md_row(&["Audio", "the engine", "the graph", "allocate"]),
+            md_row(&["Ui", "the shell", "the views", "block"]),
+        ];
+        format!(
+            "{}\n",
+            md_table(&["Thread", "Owner", "Owns", "Never does"], rows).join("\n")
+        )
+    }
+
+    /// The section 13.1 chunk table of the fixture.
+    fn placement_chunk_table() -> String {
+        let pins = placement_third_party()
+            .iter()
+            .map(|one| format!("`{one}`"))
+            .collect::<Vec<String>>()
+            .join(" ");
+        let manifest = format!("`[workspace.dependencies]` only ({pins})");
+        let rows = placement_chunks()
+            .iter()
+            .map(|chunk| {
+                let phase = chunk
+                    .chars()
+                    .last()
+                    .and_then(|mark| mark.to_digit(10))
+                    .unwrap_or(1);
+                let scope = if chunk == "M1" {
+                    manifest.clone()
+                } else {
+                    "the workspace".to_owned()
+                };
+                md_row(&[
+                    chunk,
+                    &phase.saturating_sub(1).to_string(),
+                    "a synthetic chunk",
+                    &scope,
+                    "a synthetic gate",
+                ])
+            })
+            .collect();
+        format!(
+            "{}\n",
+            md_table(&["Chunk", "Phase", "What", "Writes", "Gate"], rows).join("\n")
+        )
+    }
+
+    /// The two appendix pin tables of the fixture.
+    fn placement_pin_tables() -> (String, String) {
+        let third = placement_third_party();
+        let short = third
+            .iter()
+            .map(|one| md_row(&[&format!("`{one}`"), "a synthetic pin", "M1"]))
+            .collect();
+        let long = third
+            .iter()
+            .map(|one| {
+                md_row(&[
+                    &format!("`{one}`"),
+                    "a synthetic pin",
+                    "the workspace",
+                    "M1",
+                ])
+            })
+            .collect();
+        (
+            format!(
+                "{}\n",
+                md_table(&["Pin", "What", "Owner"], short).join("\n")
+            ),
+            format!(
+                "{}\n",
+                md_table(&["Pin", "What", "Where", "Owner"], long).join("\n")
+            ),
+        )
+    }
+
+    /// Sections 1.2 to 1.9 of the fixture document.
+    fn placement_part_one(blocks: &[PlacementBlock]) -> Vec<String> {
+        let render = |id: &str| placement_render(blocks, id);
+        let mut out = vec![
+            "# A synthetic architecture document\n".to_owned(),
+            "## 1. The plan\n".to_owned(),
+            "### 1.2 The crates\n".to_owned(),
+            render("crate-table"),
+            render("name-map"),
+            "### 1.3 The graph\n".to_owned(),
+            render("edge-list"),
+            render("framework-types"),
+            "### 1.5 The placement table\n".to_owned(),
+            render("ownership-table"),
+            render("drop-list"),
+            "### 1.6 The budgets\n".to_owned(),
+            render("budget-table"),
+            render("shared-limits"),
+            "### 1.7 The rule index\n".to_owned(),
+            placement_index_table(),
+            render("constants"),
+            "### 1.9 The registers\n".to_owned(),
+        ];
+        for id in [
+            "probe-table",
+            "external-verdicts",
+            "external-paths",
+            "pins",
+            "recorded-sizes",
+            "substitutions",
+            "drop-impls",
+            "impl-sites",
+            "heap-names",
+            "grow-names",
+            "lock-names",
+            "primitive-traits",
+            "primitive-sizes",
+            "justified-unknowns",
+            "block-members",
+            "rule-blocks",
+        ] {
+            out.push(render(id));
+        }
+        out
+    }
+
+    /// Sections 3.5, 5.7, 9.1, and 2.3 of the fixture document.
+    fn placement_part_two(blocks: &[PlacementBlock]) -> Vec<String> {
+        let render = |id: &str| placement_render(blocks, id);
+        vec![
+            "### 3.5 The value rules\n".to_owned(),
+            render("vr1-table"),
+            "### 5.7 The threads\n".to_owned(),
+            placement_thread_table(),
+            render("audio-owned"),
+            render("audio-exempt"),
+            render("audio-reachable-leaf"),
+            render("audio-asserted"),
+            render("carrier-table"),
+            render("snapshot-table"),
+            "### 9.1 The declarations\n".to_owned(),
+            "```rust".to_owned(),
+            placement_declarations().join("\n"),
+            "```\n".to_owned(),
+            "## 2. The crates in detail\n".to_owned(),
+            "### 2.3 The conversion crate\n".to_owned(),
+            "one functions carry a suppression: `probe_fn`. The rest carry none.\n".to_owned(),
+        ]
+    }
+
+    /// Sections 13 and 14 of the fixture document.
+    fn placement_part_three(blocks: &[PlacementBlock]) -> Vec<String> {
+        let render = |id: &str| placement_render(blocks, id);
+        let zeros = vec!["0"; 16].join(", ");
+        vec![
+            "## 13. The plan graph\n".to_owned(),
+            "### 13.1 The chunk table\n".to_owned(),
+            placement_chunk_table(),
+            "### 13.3 The phases\n".to_owned(),
+            render("phase-table"),
+            render("line-map"),
+            render("phase-pair-exempt"),
+            format!("**Per-phase `Cargo.lock` writer counts, phases 0 to 15: {zeros}**\n"),
+            "**The plan is longer and narrower than revision 5's.** sixteen phases replace \
+four, and the widest phase falls from twenty to sixteen. The alternative rule is stated \
+elsewhere.\n"
+                .to_owned(),
+            render("gate-defects"),
+            render("fault-messages"),
+            "## 14. The measurable completion outcome for version one\n".to_owned(),
+            "The run is measured here.\n".to_owned(),
+            render("selected-tests"),
+        ]
+    }
+
+    /// The appendices of the fixture document.
+    fn placement_part_four(blocks: &[PlacementBlock]) -> Vec<String> {
+        let render = |id: &str| placement_render(blocks, id);
+        let (short, long) = placement_pin_tables();
+        let mut out = vec![
+            "## Appendix A. The glossary\n".to_owned(),
+            "A synthetic glossary.\n".to_owned(),
+            "## Appendix B. The registers\n".to_owned(),
+            "### B.1 The suppressions\n".to_owned(),
+            "Appendix B.1 holds seven suppressions in `duet-time::convert`, six complexity \
+suppressions, four `missing_copy_implementations` expectations, and three \
+`variant_size_differences` expectations.\n"
+                .to_owned(),
+            render("b1-convert"),
+            render("b1-complexity"),
+            render("b1-copy"),
+            render("b1-variant"),
+            "### B.3 The pins\n".to_owned(),
+            short,
+            "### B.4 The features\n".to_owned(),
+            "A synthetic list.\n".to_owned(),
+            "### B.5 The second pin table\n".to_owned(),
+            long,
+            "#### Every timeout the plan states\n".to_owned(),
+            "A synthetic list.\n".to_owned(),
+            "## Appendix C. The closures\n".to_owned(),
+        ];
+        let reviews = [
+            "r16",
+            "r17",
+            "r18",
+            "r19",
+            "r20",
+            "r21-inner",
+            "r21",
+            "r22-inner",
+            "r23-inner",
+        ];
+        for (index, label) in reviews.iter().enumerate() {
+            out.push(format!(
+                "### C.{} The review {label}\n",
+                index.saturating_add(1)
+            ));
+            out.push(render(&format!("closure-{label}")));
+        }
+        out
+    }
+
+    /// The whole synthetic architecture document the placement guard reads clean.
+    fn placement_document() -> String {
+        let blocks = placement_register();
+        let mut parts = placement_part_one(&blocks);
+        parts.extend(placement_part_two(&blocks));
+        parts.extend(placement_part_three(&blocks));
+        parts.extend(placement_part_four(&blocks));
+        parts.join("\n")
+    }
+
+    /// The four plan-tool files `PG29` reads for their own rule ids.
+    fn placement_tools() -> Vec<(&'static str, String)> {
+        vec![
+            ("placement_check.py", "# PG2 rule\n".to_owned()),
+            ("conversion_check.py", "# CG1 rule\n".to_owned()),
+            ("roster_compile.sh", "# PG2 rule\n".to_owned()),
+            ("closure_check.py", "# PG2 rule\n".to_owned()),
+        ]
+    }
+
+    /// Run the placement guard over one synthetic document, and clean up.
+    ///
+    /// The document and the sibling `tools` directory the `PG29` rule reads are
+    /// both written into a scratch directory this probe owns, so no probe reads
+    /// this repository and no probe reads the plan.
+    fn placement_run(
+        label: &str,
+        text: &str,
+        tools: &[(&'static str, String)],
+        write: bool,
+    ) -> (i32, String) {
+        let root = scratch(label);
+        let document = root.join("architecture.md");
+        for (name, body) in tools {
+            write_bytes(&root.join("tools").join(name), body.as_bytes());
+        }
+        if write {
+            write_bytes(&document, text.as_bytes());
+        } else {
+            fs::create_dir_all(&root).expect("scratch root");
+        }
+        let report = xtask(&root, &["check-placement", &document.display().to_string()]);
+        clean(&root);
+        report
+    }
+
+    /// Run the placement guard over one synthetic document with the stated tools.
+    fn placement(label: &str, text: &str) -> (i32, String) {
+        placement_run(label, text, &placement_tools(), true)
+    }
+
+    /// The fixture document with one exact span replaced once.
+    fn plant(text: &str, old: &str, new: &str) -> String {
+        assert!(
+            text.contains(old),
+            "the synthetic document holds the span `{old}` a probe plants into"
+        );
+        text.replacen(old, new, 1)
+    }
+
+    /// The fixture with one declaration added and its names placed by section 1.5.
+    fn plant_declaration(text: &str, declaration: &str, names: &[&str]) -> String {
+        let placed: Vec<String> = names.iter().map(|one| format!("`{one}`")).collect();
+        let text = plant(
+            text,
+            "/// A synthetic carrier holder.",
+            &format!("{declaration}\n/// A synthetic carrier holder."),
+        );
+        plant(&text, "`Car00`", &format!("{}, `Car00`", placed.join(", ")))
+    }
+
+    /// The fixture with three container names decided and dropped.
+    ///
+    /// A container name a field states is a used name, so the drop list has to
+    /// carry it, and the section 1.9 table has to decide it, or `PG4` and `PG18`
+    /// answer before the audio rule the probe is aimed at.
+    fn plant_containers(text: &str) -> String {
+        let text = plant(
+            text,
+            "| `Ext31` | `not Copy` | `Default` | a synthetic entry |",
+            "| `Box` | `not Copy` | `Default` | a synthetic entry |",
+        );
+        let text = plant(
+            &text,
+            "| `Ext32` | `not Copy` | `Default` | a synthetic entry |",
+            "| `Vec` | `not Copy` | `Default` | a synthetic entry |",
+        );
+        let text = plant(
+            &text,
+            "| `Ext33` | `not Copy` | `Default` | a synthetic entry |",
+            "| `Mutex` | `not Copy` | `Default` | a synthetic entry |",
+        );
+        plant(&text, "Debug\nDefault\nHash", "Box\nVec\nMutex")
+    }
+
+    /// The fixture with one external name left undecided and dropped.
+    fn plant_undecided(text: &str) -> String {
+        let text = plant(
+            text,
+            "| `Ext33` | `not Copy` |",
+            "| `Ext33` | `undecided` |",
+        );
+        plant(&text, "Debug\n", "Ext33\n")
+    }
+
+    #[test]
+    fn placement_baseline_reads_the_synthetic_document_clean() {
+        let (code, report) = placement("pg-base", &placement_document());
+        assert_eq!(code, 0, "the synthetic document holds no breach: {report}");
+        assert!(
+            report.contains("BLOCKS:          51     BLOCK BAD: 0"),
+            "every registered block reads: {report}"
+        );
+        assert!(
+            report.contains("UNPLACED:        0     DUPLICATED:   0"),
+            "the placement rules find nothing: {report}"
+        );
+        assert!(
+            report.contains("MEMBER ROWS: 1362     MEMBER BAD: 0"),
+            "every row of every block names a referent: {report}"
+        );
+        assert!(
+            report.contains("CARRIERS:        25     CARRIER FIELDS: 50     CARRIER BAD: 0"),
+            "every carrier row has its two declared ends: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg1_no_argument_exits_two() {
+        let root = scratch("pg-noargument");
+        let (code, _report) = xtask(&root, &["check-placement"]);
+        clean(&root);
+        assert_eq!(code, 2, "a run with no document argument is fail-closed");
+    }
+
+    #[test]
+    fn placement_pg2_document_that_does_not_open_fails_closed() {
+        let (code, report) = placement_run("pg2", "", &placement_tools(), false);
+        assert_eq!(
+            code, 2,
+            "a document that does not open is fail-closed: {report}"
+        );
+        assert!(
+            report.contains("FAIL: cannot open")
+                && report.contains("architecture.md; the guard is fail-closed."),
+            "the guard names the document it cannot open: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg3_comment_where_a_field_belongs_is_a_finding() {
+        let text = plant(
+            &placement_document(),
+            "pub struct Leaf00 { v: u32 }",
+            "pub struct Leaf00 { /* private */ }",
+        );
+        let (code, report) = placement("pg3", &text);
+        assert_eq!(
+            code, 1,
+            "a comment where a field belongs is a finding: {report}"
+        );
+        assert!(
+            report.contains("PLACEHOLDER: duet::Leaf00 has a comment where a field belongs"),
+            "the guard names the declaration whose body states no field: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg4_declared_type_the_table_omits_is_a_finding() {
+        let text = plant(&placement_document(), "`Leaf45`, ", "");
+        let (code, report) = placement("pg4", &text);
+        assert_eq!(
+            code, 1,
+            "a declared type section 1.5 omits is a finding: {report}"
+        );
+        assert!(
+            report.contains("UNPLACED:   Leaf45"),
+            "the guard names the declared type no row places: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg4b_placed_name_no_block_declares_is_a_finding() {
+        let text = plant(&placement_document(), "`Car00`", "`Ghost`, `Car00`");
+        let (code, report) = placement("pg4b", &text);
+        assert_eq!(
+            code, 1,
+            "a placed name with no declaration is a finding: {report}"
+        );
+        assert!(
+            report.contains("UNDECLARED: Ghost is placed by 1.5 and no Rust block declares it"),
+            "the guard names the placed name no Rust block declares: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg5_type_two_blocks_declare_is_a_finding() {
+        let text = plant(
+            &placement_document(),
+            "/// A synthetic carrier holder.",
+            "/// A second declaration.\npub struct Leaf45 { v: u32 }\n\n\
+/// A synthetic carrier holder.",
+        );
+        let (code, report) = placement("pg5", &text);
+        assert_eq!(code, 1, "one type declared twice is a finding: {report}");
+        assert!(
+            report.contains("DUPLICATED: Leaf45"),
+            "the guard names the type two Rust blocks declare: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg6_framework_name_claimed_by_another_crate_is_a_finding() {
+        let text = plant(&placement_document(), "Fw6\n```", "Car00\n```");
+        let (code, report) = placement("pg6", &text);
+        assert_eq!(
+            code, 1,
+            "a framework name a non-application crate claims is a finding: {report}"
+        );
+        assert!(
+            report.contains("MISCLAIMED: Car00 claimed by duet"),
+            "the guard names the framework name and the crate that claims it: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg7_framework_type_in_a_non_application_declaration_is_a_finding() {
+        let text = plant(&placement_document(), "Fw6\n```", "Ext0\n```");
+        let text = plant(
+            &text,
+            "pub struct Leaf45 { v: u32 }",
+            "pub struct Leaf45 { v: u32, g: Ext0 }",
+        );
+        let (code, report) = placement("pg7", &text);
+        assert_eq!(
+            code, 1,
+            "a framework type inside a non-application declaration is a finding: {report}"
+        );
+        assert!(
+            report.contains("FRAMEWORK:  duet::Leaf45 holds Ext0"),
+            "the guard names the declaration and the framework type it holds: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg8_an_enum_arm_name_is_masked_inside_its_own_enum_only() {
+        let masked = plant_declaration(
+            &placement_document(),
+            "/// A synthetic enum.\npub enum Kind { Ghost, Other }\n",
+            &["Kind"],
+        );
+        let (clean_code, clean_report) = placement("pg8-arm", &masked);
+        assert_eq!(
+            clean_code, 0,
+            "an arm name is no type of its own enum: {clean_report}"
+        );
+        let shadowed = plant_declaration(
+            &placement_document(),
+            "/// A synthetic enum.\npub enum Kind { Ghosty, Other }\n\n\
+/// A synthetic struct named like an arm.\npub struct Ghosty { v: u32 }\n",
+            &["Kind"],
+        );
+        let (code, report) = placement("pg8-struct", &shadowed);
+        assert_eq!(
+            code, 1,
+            "a struct named like an arm is still a candidate: {report}"
+        );
+        assert!(
+            report.contains("UNPLACED:   Ghosty"),
+            "the mask is local to the enum that declares the arm: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg9_all_copy_type_with_no_copy_derive_is_a_finding() {
+        let text = plant(
+            &placement_document(),
+            "| `Ext0` | `not Copy` |",
+            "| `Ext0` | `Copy` |",
+        );
+        let text = plant(&text, "Debug\n", "Ext0\n");
+        let text = plant_declaration(
+            &text,
+            "/// An all-Copy body with no Copy derive.\npub struct Cap { a: Ext0 }\n",
+            &["Cap"],
+        );
+        let (code, report) = placement("pg9", &text);
+        assert_eq!(
+            code, 1,
+            "an all-Copy type that derives no Copy is a finding: {report}"
+        );
+        assert!(
+            report.contains("COPY:       duet::Cap needs Copy or an #[expect]"),
+            "the guard names the type that needs the derive or the expectation: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg10_copy_derive_over_a_field_that_is_not_copy_is_a_finding() {
+        let text = plant_declaration(
+            &placement_document(),
+            "/// A Copy derive over a field that is not Copy.\n#[derive(Copy)]\n\
+pub struct Cap { a: Leaf01 }\n",
+            &["Cap"],
+        );
+        let (code, report) = placement("pg10", &text);
+        assert_eq!(
+            code, 1,
+            "a Copy derive over a field that is not Copy is a finding: {report}"
+        );
+        assert!(
+            report.contains("NOT COPY:   duet::Cap derives Copy over Leaf01"),
+            "the guard names the derive and the field that refutes it: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg10b_copy_derive_over_an_undecided_field_is_a_finding() {
+        let text = plant_declaration(
+            &plant_undecided(&placement_document()),
+            "/// A Copy derive over an undecided field.\n#[derive(Copy)]\n\
+pub struct Cap { a: Ext33 }\n",
+            &["Cap"],
+        );
+        let (code, report) = placement("pg10b", &text);
+        assert_eq!(
+            code, 1,
+            "a Copy derive over an undecided field is a finding: {report}"
+        );
+        assert!(
+            report.contains("NOT DECIDED:duet::Cap derives Copy over Ext33"),
+            "the guard names the field whose Copy-ness no row decides: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg11_prose_edge_the_list_does_not_carry_is_a_finding() {
+        let text = plant(
+            &placement_document(),
+            "A synthetic glossary.",
+            "The crate `duet-ae` uses `duet-af` here.",
+        );
+        let (code, report) = placement("pg11", &text);
+        assert_eq!(
+            code, 1,
+            "a prose edge the 1.3 list omits is a finding: {report}"
+        );
+        assert!(
+            report.contains("EDGE MISS:  duet-ae -> duet-af"),
+            "the guard names the two crates of the claim: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg12_dependency_row_that_omits_a_used_crate_is_a_finding() {
+        let text = plant(&placement_document(), " `tpam` |", " |");
+        let text = plant(
+            &text,
+            "| `duet-aa` | member | a synthetic member | none |",
+            "| `duet-aa` | member | a synthetic member | `tpam` |",
+        );
+        let text = plant(
+            &text,
+            "pub struct Leaf45 { v: u32 }",
+            "pub struct Leaf45 { v: u32, q: tpam::Qm12 }",
+        );
+        let (code, report) = placement("pg12", &text);
+        assert_eq!(
+            code, 1,
+            "a 1.2 row that omits a used crate is a finding: {report}"
+        );
+        assert!(
+            report.contains("DEP MISS:   duet uses tpam through Leaf45"),
+            "the guard names the crate, the dependency, and the declaration: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg13_published_snapshot_that_is_not_declared_is_a_finding() {
+        let text = plant(
+            &placement_document(),
+            "| snap0 | text | text |",
+            "| Audio | text | triple_buffer::Output<Ghost> |",
+        );
+        let (code, report) = placement("pg13", &text);
+        assert_eq!(
+            code, 1,
+            "a published type no block declares is a finding: {report}"
+        );
+        assert!(
+            report.contains("SNAPSHOT:   Ghost: no Rust block declares it"),
+            "the guard names the published type it cannot find: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg14_undecidable_field_is_counted_as_unknown() {
+        let (base_code, base_report) = placement("pg14-base", &placement_document());
+        assert_eq!(
+            base_code, 0,
+            "the baseline decides every field: {base_report}"
+        );
+        assert!(
+            base_report.contains("UNKNOWN: 0"),
+            "the baseline counts no undecidable field: {base_report}"
+        );
+        let text = plant_declaration(
+            &plant_undecided(&placement_document()),
+            "/// An undecidable field.\npub struct Cap { a: Ext33 }\n",
+            &["Cap"],
+        );
+        let text = plant(
+            &text,
+            "| unknown0 | text | text | text |",
+            "| unknown0 | text | `Ext33` | text |",
+        );
+        let (code, report) = placement("pg14", &text);
+        assert_eq!(
+            code, 0,
+            "a justified unknown is a count and not a breach: {report}"
+        );
+        assert!(
+            report.contains("UNKNOWN: 1     JUSTIFIED: 1     UNJUSTIFIED: 0"),
+            "the guard counts the undecidable field of any declaration: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg15_declared_in_cell_that_omits_a_section_is_a_finding() {
+        let text = plant(
+            &placement_document(),
+            ", `Car24` | 9.1 |",
+            ", `Car24` | 9.2 |",
+        );
+        let (code, report) = placement("pg15", &text);
+        assert_eq!(
+            code, 1,
+            "a `Declared in` cell that omits a section is a finding: {report}"
+        );
+        assert!(
+            report.contains("REGISTER:   duet declares Aud01 in 9.1, which its cell omits"),
+            "the guard names the crate, the type, and the section: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg16_selected_test_no_chunk_writes_is_a_finding() {
+        let text = plant(
+            &placement_document(),
+            "The run is measured here.",
+            "The run selects test(ghost_test) here.",
+        );
+        let (code, report) = placement("pg16", &text);
+        assert_eq!(
+            code, 1,
+            "a selected test no chunk writes is a finding: {report}"
+        );
+        assert!(
+            report.contains("TEST MISS:  ghost_test: no row in the selected-test table"),
+            "the guard names the test section 14 selects: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg17_undecidable_field_with_no_justified_row_is_a_finding() {
+        let text = plant_declaration(
+            &plant_undecided(&placement_document()),
+            "/// An undecidable field.\npub struct Cap { a: Ext33 }\n",
+            &["Cap"],
+        );
+        let (code, report) = placement("pg17", &text);
+        assert_eq!(code, 1, "an unjustified unknown is a finding: {report}");
+        assert!(
+            report.contains("UNJUSTIFIED:Cap.Ext33 is in no section 1.9 row"),
+            "the guard names the declaration and the undecidable field: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg18_external_token_the_table_omits_is_a_finding() {
+        let text = plant(
+            &placement_document(),
+            "pub struct Leaf45 { v: u32 }",
+            "pub struct Leaf45 { v: u32, g: Ghost }",
+        );
+        let (code, report) = placement("pg18", &text);
+        assert_eq!(
+            code, 1,
+            "an external token no 1.9 row decides is a finding: {report}"
+        );
+        assert!(
+            report.contains("EXTERNAL:   Leaf45 names Ghost, which no 1.9 row decides"),
+            "the guard names the declaration and the token: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg19_derive_closure_break_is_a_finding() {
+        let text = plant_declaration(
+            &placement_document(),
+            "/// A derive over a field with no such trait.\n#[derive(Default)]\n\
+pub struct Cap { a: Leaf01 }\n",
+            &["Cap"],
+        );
+        let (code, report) = placement("pg19", &text);
+        assert_eq!(code, 1, "a derive-closure break is a finding: {report}");
+        assert!(
+            report.contains("CLOSURE:    duet::Cap derives Default over a: Leaf01 has no Default"),
+            "the guard names the trait, the field, and the expression: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg20_field_type_in_an_unreached_crate_is_a_finding() {
+        let text = plant(&placement_document(), "`Leaf01`, ", "");
+        let text = plant(
+            &text,
+            "| `duet-ae` | none | 9.1 |",
+            "| `duet-ae` | `Leaf01` | 9.1 |",
+        );
+        let (code, report) = placement("pg20", &text);
+        assert_eq!(
+            code, 1,
+            "a field type in an unreached crate is a finding: {report}"
+        );
+        assert!(
+            report.contains("REACH:      duet::EngineProcess holds Leaf01, which lives in duet-ae"),
+            "the guard names the declaration, the type, and the crate: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg20b_constant_in_an_unreached_crate_is_a_finding() {
+        let text = plant(
+            &placement_document(),
+            "pub const SYN_000: usize = 1;",
+            "// duet-ae",
+        );
+        let text = plant(
+            &text,
+            "pub const SYN_001: usize = 1;",
+            "pub const CAP_FAR: usize = 2;",
+        );
+        let text = plant(
+            &text,
+            "pub struct Leaf45 { v: u32 }",
+            "pub struct Leaf45 { v: [u32; CAP_FAR] }",
+        );
+        let (code, report) = placement("pg20b", &text);
+        assert_eq!(
+            code, 1,
+            "a constant in an unreached crate is a finding: {report}"
+        );
+        assert!(
+            report.contains("CONST:      duet::Leaf45.v names CAP_FAR, which lives in duet-ae"),
+            "the guard names the field and the crate that declares the constant: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg21_expectation_appendix_b1_omits_is_a_finding() {
+        let text = plant_declaration(
+            &placement_document(),
+            "/// An expectation Appendix B.1 does not list.\n\
+#[expect(missing_copy_implementations, reason = \"a synthetic reason\")]\n\
+pub struct Cap { v: u32 }\n",
+            &["Cap"],
+        );
+        let (code, report) = placement("pg21", &text);
+        assert_eq!(
+            code, 1,
+            "an expectation Appendix B.1 omits is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "B.1:        Cap carries a missing_copy_implementations expectation and \
+Appendix B.1 omits it"
+            ),
+            "the guard names the site and the lint: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg22_hash_derive_with_no_vr1_row_is_a_finding() {
+        let text = plant_declaration(
+            &placement_document(),
+            "/// A Hash derive with no VR1 row.\n#[derive(Hash)]\npub struct Cap { v: u32 }\n",
+            &["Cap"],
+        );
+        let (code, report) = placement("pg22", &text);
+        assert_eq!(
+            code, 1,
+            "a Hash derive the VR1 table omits is a finding: {report}"
+        );
+        assert!(
+            report.contains("VR1:        duet::Cap derives Hash with no VR1 row"),
+            "the guard names the declaration and the derive: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg23_partial_eq_with_no_eq_is_a_finding() {
+        let text = plant_declaration(
+            &placement_document(),
+            "/// A PartialEq derive with no Eq.\n#[derive(PartialEq)]\npub struct Cap { v: u32 }\n",
+            &["Cap"],
+        );
+        let (code, report) = placement("pg23", &text);
+        assert_eq!(
+            code, 1,
+            "a PartialEq derive with no Eq is a finding: {report}"
+        );
+        assert!(
+            report.contains("EQ:         duet::Cap derives PartialEq and every field supplies Eq"),
+            "the guard names the declaration the nursery lint refuses: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg24_wide_arm_spread_is_a_finding() {
+        let text = plant_declaration(
+            &placement_document(),
+            "/// An enum with a wide arm spread.\npub enum Big { Wide([u32; 64]), Narrow(u32) }\n",
+            &["Big"],
+        );
+        let (code, report) = placement("pg24", &text);
+        assert_eq!(
+            code, 1,
+            "an arm spread the lint refuses is a finding: {report}"
+        );
+        assert!(
+            report
+                .contains("VARIANT:    duet::Big: arm Wide is 256 bytes and the next largest is 4"),
+            "the guard names the arm, its size, and the next largest: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg26_heap_inside_audio_owned_state_is_a_finding() {
+        let text = plant(
+            &plant_containers(&placement_document()),
+            "pub struct Aud01 { v: u32 }",
+            "pub struct Aud01 { v: Box<u32> }",
+        );
+        let (code, report) = placement("pg26", &text);
+        assert_eq!(
+            code, 1,
+            "a heap allocation inside audio-owned state is a finding: {report}"
+        );
+        assert!(
+            report.contains("HEAP:       duet::Aud01 holds Box<u32> through v"),
+            "the guard names the root, the expression, and the field path: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg26b_container_that_grows_inside_audio_state_is_a_finding() {
+        let text = plant(
+            &plant_containers(&placement_document()),
+            "pub struct Aud02 { v: u32 }",
+            "pub struct Aud02 { v: Vec<u32> }",
+        );
+        let (code, report) = placement("pg26b", &text);
+        assert_eq!(
+            code, 1,
+            "a container that grows inside audio state is a finding: {report}"
+        );
+        assert!(
+            report.contains("GROW:       duet::Aud02 holds Vec<u32> through v"),
+            "the guard names the root and the container that grows: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg26c_lock_inside_audio_owned_state_is_a_finding() {
+        let text = plant(
+            &plant_containers(&placement_document()),
+            "pub struct Aud03 { v: u32 }",
+            "pub struct Aud03 { v: Mutex<u32> }",
+        );
+        let (code, report) = placement("pg26c", &text);
+        assert_eq!(
+            code, 1,
+            "a lock inside audio-owned state is a finding: {report}"
+        );
+        assert!(
+            report.contains("LOCK:       duet::Aud03 holds Mutex<u32> through v"),
+            "the guard names the root and the lock it holds: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg26d_root_block_and_marker_set_disagree_is_a_finding() {
+        let text = plant(
+            &placement_document(),
+            "/// A synthetic root. **Audio-owned**\npub struct Aud01",
+            "/// A synthetic root.\npub struct Aud01",
+        );
+        let (code, report) = placement("pg26d", &text);
+        assert_eq!(code, 1, "a root with no marker is a finding: {report}");
+        assert!(
+            report.contains(
+                "ROOT:       Aud01: the block names it and its declaration carries no marker"
+            ),
+            "the guard names the root the two sources disagree about: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg26e_reachable_declaration_that_is_no_root_or_leaf_is_a_finding() {
+        let text = plant(&placement_document(), "Leaf45\n```", "Car00\n```");
+        let (code, report) = placement("pg26e", &text);
+        assert_eq!(
+            code, 1,
+            "a break in the audio closure is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "CLOSURE:    Leaf45: EngineProcess reaches it through a declared field and it \
+is neither an audio-owned root nor an audio-reachable leaf"
+            ),
+            "the guard names the declaration the closure reaches: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg26f_asserted_block_and_root_set_disagree_is_a_finding() {
+        let text = plant(&placement_document(), "```text\nAud30", "```text\nLeaf00");
+        let (code, report) = placement("pg26f", &text);
+        assert_eq!(
+            code, 1,
+            "an asserted root the block omits is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "ASSERTED:   Aud30: the root set names it, the closure does not reach it, and \
+the asserted block does not name it"
+            ),
+            "the guard names the root the third source omits: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg27_marker_the_register_disagrees_with_fails_closed() {
+        let text = plant(
+            &placement_document(),
+            "id=drop-list rows>=8",
+            "id=drop-list rows>=9",
+        );
+        let (code, report) = placement("pg27-marker", &text);
+        assert_eq!(
+            code, 2,
+            "a marker the register disagrees with is fail-closed: {report}"
+        );
+        assert!(
+            report.contains(
+                "FAIL: the `drop-list` block of this document: the marker states rows>=9 and \
+the register states 8; the guard is fail-closed (DR7)."
+            ),
+            "the guard names the block and the two counts: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg27_row_that_names_no_referent_is_a_finding() {
+        let text = plant(
+            &placement_document(),
+            "pins not-declared",
+            "pins declared-name",
+        );
+        let (code, report) = placement("pg27-member", &text);
+        assert_eq!(
+            code, 1,
+            "a row that names no referent is a finding: {report}"
+        );
+        assert!(
+            report.contains("MEMBER:     pins: tpaa: no Rust block of this document declares it"),
+            "the guard names the block, the row, and the reason: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg27b_floor_below_the_row_count_is_a_finding() {
+        let text = plant(
+            &placement_document(),
+            "PartialOrd\n```",
+            "PartialOrd\nRc\n```",
+        );
+        let (code, report) = placement("pg27b", &text);
+        assert_eq!(
+            code, 1,
+            "a floor below the row count is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "FLOOR:      drop-list: the block holds 9 rows and the stated floor is 8"
+            ),
+            "the guard names the block, its rows, and its floor: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg28_shared_limit_an_enforcer_cannot_reach_is_a_finding() {
+        let text = plant(
+            &placement_document(),
+            "CAP_004 duet-ab duet-ab",
+            "CAP_004 duet-ab duet-ao",
+        );
+        let (code, report) = placement("pg28", &text);
+        assert_eq!(
+            code, 1,
+            "an enforcer that cannot reach the owner is a finding: {report}"
+        );
+        assert!(
+            report.contains("LIMIT:      CAP_004: duet-ao: duet-ao does not reach duet-ab"),
+            "the guard names the constant, the enforcer, and the owner: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg29_rule_no_probe_row_carries_is_a_finding() {
+        let mut tools = placement_tools();
+        tools[0] = ("placement_check.py", "# PG2 PG3 rule\n".to_owned());
+        let (code, report) = placement_run("pg29", &placement_document(), &tools, true);
+        assert_eq!(
+            code, 1,
+            "a rule the probe table omits is a finding: {report}"
+        );
+        assert!(
+            report.contains("PROBE:      PG3: the probe table carries no row"),
+            "the guard names the rule the prototypes implement: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg29_prototype_that_does_not_open_fails_closed() {
+        let tools = vec![("placement_check.py", "# PG2 rule\n".to_owned())];
+        let (code, report) = placement_run("pg29-absent", &placement_document(), &tools, true);
+        assert_eq!(
+            code, 2,
+            "a prototype that does not open is fail-closed: {report}"
+        );
+        assert!(
+            report.contains(
+                "FAIL: the prototype `conversion_check.py` does not open, so the rule set is \
+unknown; the guard is fail-closed (PG29)."
+            ),
+            "the guard names the prototype it cannot read: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg30_used_by_cell_that_cites_nothing_is_a_finding() {
+        let text = plant(
+            &placement_document(),
+            "| B1 | 4 | a synthetic bound |  |",
+            "| B1 | 4 | a synthetic bound | 9.1 |",
+        );
+        let (code, report) = placement("pg30", &text);
+        assert_eq!(
+            code, 1,
+            "a `Used by` cell that cites nothing is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "USED BY:    B1: the `Used by` cell names section 9.1 and it cites nothing"
+            ),
+            "the guard names the budget and the section: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg31_link_that_runs_backward_is_a_finding() {
+        let text = plant(
+            &placement_document(),
+            "### 13.3 The phases\n",
+            "### 13.4 The links\n\n| Link | Why |\n|---|---|\n\
+| A2 before A1 | a synthetic link |\n\n### 13.3 The phases\n",
+        );
+        let (code, report) = placement("pg31", &text);
+        assert_eq!(code, 1, "a link that runs backward is a finding: {report}");
+        assert!(
+            report.contains("LINK:       A2 before A1: A2 is in phase 1 and A1 is in phase 0"),
+            "the guard names the link and the two phases: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg31b_same_phase_crate_edge_with_no_exemption_is_a_finding() {
+        let text = plant(&placement_document(), "C duet\n", "C duet-aa\n");
+        let (code, report) = placement("pg31b", &text);
+        assert_eq!(
+            code, 1,
+            "a same-phase crate edge with no exemption is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "PAIR:       A1 and C1: both in phase 0, and duet depends on duet-aa; no \
+exemption row states why the edge does not bind"
+            ),
+            "the guard names the pair, the phase, and the edge: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg33_suppression_register_that_is_not_one_set_is_a_finding() {
+        let text = plant(
+            &placement_document(),
+            "one functions carry a suppression: `probe_fn`.",
+            "one functions carry a suppression: `ghost_fn`.",
+        );
+        let (code, report) = placement("pg33", &text);
+        assert_eq!(
+            code, 1,
+            "a suppression register that is not one set is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "SUPPRESS:   ghost_fn: the suppression register names it and no Rust block \
+declares the function"
+            ),
+            "the guard names the third source the register misses: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg34_cost_bullet_the_phase_table_refutes_is_a_finding() {
+        let text = plant(
+            &placement_document(),
+            "sixteen phases replace four",
+            "fifteen phases replace four",
+        );
+        let (code, report) = placement("pg34", &text);
+        assert_eq!(
+            code, 1,
+            "a cost bullet the phase table refutes is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "TAIL:       SM6: the cost bullet states fifteen phases and the table holds 16"
+            ),
+            "the guard names the stated count and the measured one: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg35_lock_writer_sequence_the_chunks_refute_is_a_finding() {
+        let text = plant(
+            &placement_document(),
+            "phases 0 to 15: 0, 0,",
+            "phases 0 to 15: 1, 0,",
+        );
+        let (code, report) = placement("pg35", &text);
+        assert_eq!(
+            code, 1,
+            "a stated sequence the chunk tables refute is a finding: {report}"
+        );
+        assert!(
+            report.contains("LOCK SEQ:   13.3: the stated sequence is 1, 0,"),
+            "the guard states the sequence it read and the one it derived: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg36_pin_owner_the_appendices_disagree_about_is_a_finding() {
+        let text = plant(
+            &placement_document(),
+            "| `tpaa` | a synthetic pin | M1 |",
+            "| `tpaa` | a synthetic pin | M2 |",
+        );
+        let (code, report) = placement("pg36", &text);
+        assert_eq!(
+            code, 1,
+            "a pin owner the appendices disagree about is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "PIN OWNER:  tpaa: Appendix B.3 names owner M2 and 13.1 gives the pin to M1"
+            ),
+            "the guard names the pin and the two owners: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg37_budget_value_the_citing_line_refutes_is_a_finding() {
+        let text = plant(
+            &placement_document(),
+            "| B1 | 4 | a synthetic bound |  |",
+            "| B1 | 5 | a synthetic bound |  |",
+        );
+        let (code, report) = placement("pg37", &text);
+        assert_eq!(
+            code, 1,
+            "a budget value the citing line refutes is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "VALUE:      B1: the row states 5 and the declaration line that cites it writes 4"
+            ),
+            "the guard names the budget, the row value, and the declared capacity: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg38_ragged_table_row_is_a_finding() {
+        let text = plant(
+            &placement_document(),
+            "| Audio | the engine | the graph | allocate |",
+            "| Audio | the engine | the graph | allocate | extra |",
+        );
+        let (code, report) = placement("pg38", &text);
+        assert_eq!(
+            code, 1,
+            "a row whose cell count differs from its header is a finding: {report}"
+        );
+        assert!(
+            report.contains("RAGGED:     Audio: the row holds 5 cells and its header holds 4"),
+            "the guard names the row and the two cell counts: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg39_index_that_omits_a_live_id_is_a_finding() {
+        let text = plant(
+            &placement_document(),
+            "| PP2 | probes the open | 1.9 |\n",
+            "",
+        );
+        let (code, report) = placement("pg39", &text);
+        assert_eq!(code, 1, "an id section 1.7 omits is a finding: {report}");
+        assert!(
+            report.contains("INDEX:      PP2: the rule set holds it and section 1.7 omits it"),
+            "the guard names the id the index omits: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg40_chunk_that_writes_outside_its_line_is_a_finding() {
+        let text = plant(
+            &placement_document(),
+            "| A1 | 0 | a synthetic chunk | the workspace | a synthetic gate |",
+            "| A1 | 0 | a synthetic chunk | writes crates/duet-aa/src/one.rs | a synthetic gate |",
+        );
+        let (code, report) = placement("pg40", &text);
+        assert_eq!(
+            code, 1,
+            "a chunk that writes outside its own line is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "CHUNK CRATE:A1: the row writes under `crates/duet-aa/` and line `A` owns `duet`"
+            ),
+            "the guard names the chunk, the path, and the owning line: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg41_carrier_row_with_no_declared_end_is_a_finding() {
+        let text = plant(
+            &placement_document(),
+            "pub struct Car00 { w: triple_buffer::Input<u32>, r: triple_buffer::Output<u32> }",
+            "pub struct Car00 { r: triple_buffer::Output<u32> }",
+        );
+        let (code, report) = placement("pg41", &text);
+        assert_eq!(
+            code, 1,
+            "a carrier row with no declared end is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "CARRIER:    msg00: `Car00.w` holds no carrier end, so it cannot be the write \
+end of this row"
+            ),
+            "the guard names the message and the end it cannot find: {report}"
         );
     }
 }
