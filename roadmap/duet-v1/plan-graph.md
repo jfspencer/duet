@@ -1,6 +1,6 @@
 # Plan graph: roadmap/duet-v1
 
-Derived from the chunk front-matter by `tools/plan_graph_check.py`. Edit the chunk files, then regenerate; never edit this file by hand.
+Derived from the chunk front-matter by `cargo xtask check-plan-graph <plan-dir> --write-manifest`. Edit the chunk files, then regenerate; never edit this file by hand.
 
 ## Objective
 

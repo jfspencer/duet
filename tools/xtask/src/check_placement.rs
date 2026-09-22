@@ -9615,7 +9615,7 @@ pub(crate) fn run(document: &Path) -> anyhow::Result<Outcome> {
             out,
             "FAIL: the candidate set is empty, so the parse is broken."
         )?;
-        return Ok(Outcome::Findings);
+        return Ok(Outcome::FailClosed);
     }
     Ok(if lists.any() {
         Outcome::Findings

@@ -27,6 +27,8 @@
 mod tests {
     use std::path::{Path, PathBuf};
     use std::process::Command;
+    use std::sync::LazyLock;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
     use std::{env, fs};
 
@@ -227,15 +229,52 @@ path = "other/lib.rs"
         )
     }
 
-    /// A scratch directory this probe owns, outside the repository.
-    fn scratch(label: &str) -> PathBuf {
+    /// The part of a scratch name that no other process of this machine holds.
+    ///
+    /// The process id separates two probe processes that run at one time, and
+    /// the start instant separates a later process that the system gives the
+    /// same id.
+    static PROCESS_TAG: LazyLock<String> = LazyLock::new(|| {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock after epoch")
             .as_nanos();
+        format!("{}z{nanos}", std::process::id())
+    });
+
+    /// How many names this process has minted.
+    static PROBE_SERIAL: AtomicU64 = AtomicU64::new(0);
+
+    /// The next serial of this process. Two calls never return one value.
+    fn next_serial() -> u64 {
+        PROBE_SERIAL.fetch_add(1, Ordering::Relaxed)
+    }
+
+    /// The test that asked, as the harness names the thread it runs on.
+    ///
+    /// The harness names each test thread after the test item, and the
+    /// compiler holds two items of one module apart, so the name is unique. A
+    /// run that states no name falls back to the label.
+    fn probe_name(label: &str) -> String {
+        let thread = std::thread::current();
+        match thread.name() {
+            Some("main") | None => label.to_owned(),
+            Some(named) => named.replace("::", "-"),
+        }
+    }
+
+    /// A scratch directory this probe owns, outside the repository.
+    ///
+    /// The name carries the test, the process, and a serial the process never
+    /// repeats, so two probes never resolve to one path. Each probe store
+    /// lives under this directory, so one path per probe is one store
+    /// environment per probe.
+    fn scratch(label: &str) -> PathBuf {
         let dir = env::temp_dir().join(format!(
-            "xtask-probe-{label}-{}-{nanos}",
-            std::process::id()
+            "xtask-probe-{}-{}-{}",
+            probe_name(label),
+            *PROCESS_TAG,
+            next_serial()
         ));
         fs::create_dir_all(&dir).expect("scratch root");
         dir
@@ -940,6 +979,42 @@ path = "other/lib.rs"
     }
 
     #[test]
+    fn plan_graph_vocabulary_duplicate_chunk_id_is_a_finding() {
+        let arch = architecture(&[(1, "none", "A1")], &[]);
+        let body = chunk("A1", "core", &[], &["crates/alpha/src/a.rs"]);
+        let (code, report) = plan_graph(
+            "pg-duplicate",
+            &arch,
+            &[("a1.md", body.clone()), ("a1-copy.md", body)],
+        );
+        assert_eq!(code, 1, "two files that state one id give exit 1: {report}");
+        assert!(
+            report
+                .lines()
+                .any(|line| line.starts_with("FINDING: duplicate chunk id")),
+            "the report opens the duplicate-id line with the finding word: {report}"
+        );
+        assert!(
+            report.contains("FINDING: duplicate chunk id A1 in a1.md and a1-copy.md"),
+            "the finding names the id and both files: {report}"
+        );
+    }
+
+    #[test]
+    fn plan_graph_vocabulary_empty_directory_fails_closed() {
+        let arch = architecture(&[(1, "none", "A1")], &[]);
+        let (code, report) = plan_graph("pg-empty", &arch, &[]);
+        assert_eq!(
+            code, 2,
+            "a plan directory with no chunk file gives exit 2: {report}"
+        );
+        assert!(
+            report.contains("FAIL: no chunk file found; the guard is fail-closed."),
+            "the guard states that it read no chunk and is fail-closed: {report}"
+        );
+    }
+
+    #[test]
     fn plan_graph_cycle_is_a_finding() {
         let arch = architecture(&[(1, "none", "A1, B1")], &[]);
         let (code, report) = plan_graph(
@@ -1427,11 +1502,13 @@ path = "other/lib.rs"
     /// The registered block every closure probe runs.
     const CLOSURE_BLOCK: &str = "closure-r16";
 
-    /// The plan name the guard derives from the throwaway document.
+    /// The parent the guard puts before the plan directory of a fixture.
     ///
-    /// The guard reads the directory that holds the document, which every
-    /// fixture names `plan`.
-    const CLOSURE_PLAN: &str = "roadmap/plan";
+    /// The guard reads the directory that holds the document, so each fixture
+    /// names that directory after its own token. The plan KEY therefore
+    /// differs per probe, and two probes cannot resolve to one store
+    /// environment even if `PLAN_DB_ROOT` reaches neither of them.
+    const CLOSURE_PLAN_PARENT: &str = "roadmap";
 
     /// A plan-store key that carries the suffix of another review (`CL1c`).
     const CLOSURE_OTHER_KEY: &str = "36304kihouge4-review-r21-inner";
@@ -1454,22 +1531,18 @@ path = "other/lib.rs"
     /// The token opens with a letter after the revision number, because the id
     /// generator reads a digit run there as a longer revision.
     fn run_token() -> String {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock after epoch")
-            .as_nanos();
-        format!("r99z{}z{nanos}", std::process::id())
+        format!("r99z{}z{}", *PROCESS_TAG, next_serial())
     }
 
     /// Append one value to the throwaway store and return the key it minted.
-    fn store_append(root: &Path, suffix: &str, value: &str) -> String {
+    fn store_append(root: &Path, plan: &str, suffix: &str, value: &str) -> String {
         let launcher = guard_repo()
             .join(".claude")
             .join("plan-coordination")
             .join("db.sh");
         let output = Command::new("bash")
             .arg(&launcher)
-            .args(["append", CLOSURE_PLAN, suffix, value])
+            .args(["append", plan, suffix, value])
             .current_dir(guard_repo())
             .env("PLAN_DB_ROOT", root.join("store"))
             .output()
@@ -1541,8 +1614,19 @@ path = "other/lib.rs"
             let token = run_token();
             let review = root.join("review").join(format!("critic-spec-{token}.md"));
             write_bytes(&review, CLOSURE_REVIEW.as_bytes());
-            let key = store_append(&root, &format!("review-{token}"), CLOSURE_REVIEW);
+            let plan = format!("{CLOSURE_PLAN_PARENT}/plan-{token}");
+            let key = store_append(&root, &plan, &format!("review-{token}"), CLOSURE_REVIEW);
             Self { root, token, key }
+        }
+
+        /// The plan directory this fixture owns, under its scratch root.
+        fn plan_dir(&self) -> String {
+            format!("plan-{}", self.token)
+        }
+
+        /// The plan name `db.sh` reads for this fixture.
+        fn plan(&self) -> String {
+            format!("{CLOSURE_PLAN_PARENT}/{}", self.plan_dir())
         }
 
         /// The review file this fixture wrote.
@@ -1564,7 +1648,7 @@ path = "other/lib.rs"
 
         /// Append one more copy of the review under this fixture's suffix.
         fn append(&self, value: &str) -> String {
-            store_append(&self.root, &self.suffix(), value)
+            store_append(&self.root, &self.plan(), &self.suffix(), value)
         }
 
         /// Run the guard over one document text and this fixture's review.
@@ -1574,7 +1658,7 @@ path = "other/lib.rs"
 
         /// Run the guard over one document text, review path, and block id.
         fn guard_with(&self, document: &str, review: &Path, block: &str) -> (i32, String) {
-            let path = self.root.join("plan").join("architecture.md");
+            let path = self.root.join(self.plan_dir()).join("architecture.md");
             write_bytes(&path, document.as_bytes());
             let named = path.display().to_string();
             let read = review.display().to_string();
@@ -1591,6 +1675,31 @@ path = "other/lib.rs"
         let report = fixture.guard(&plant(&fixture.block()));
         clean(&fixture.root);
         report
+    }
+
+    #[test]
+    fn fixture_scratch_never_repeats_one_path_for_one_label() {
+        let first = scratch("fixture-repeat");
+        let second = scratch("fixture-repeat");
+        assert_ne!(
+            first, second,
+            "two scratch calls under one label give two paths"
+        );
+        clean(&first);
+        clean(&second);
+    }
+
+    #[test]
+    fn fixture_closure_plan_key_carries_the_token_of_its_own_probe() {
+        let fixture = Closure::new("fixture-plan");
+        let plan = fixture.plan();
+        let root = fixture.root.clone();
+        clean(&root);
+        assert_eq!(
+            plan,
+            format!("{CLOSURE_PLAN_PARENT}/plan-{}", fixture.token),
+            "the plan name of a fixture carries the token no other fixture holds"
+        );
     }
 
     #[test]
@@ -3308,6 +3417,54 @@ suppressions, four `missing_copy_implementations` expectations, and three \
             report.contains("FAIL: cannot open")
                 && report.contains("architecture.md; the guard is fail-closed."),
             "the guard names the document it cannot open: {report}"
+        );
+    }
+
+    /// The fixture document with the body of the section 9.1 fence removed.
+    ///
+    /// The parser reads a declaration and a used name from that one Rust fence,
+    /// so a document with an empty fence states neither, and the candidate set
+    /// the placement rules decide over is empty. Every guard block, marker,
+    /// heading and list fence stays, so the run reaches the candidate count
+    /// instead of one of the earlier fail-closed rules.
+    fn without_declarations(text: &str) -> String {
+        const DECLARATION_HEADING: &str = "### 9.1 The declarations";
+        let mut out = String::new();
+        let mut at_section = false;
+        let mut inside = false;
+        for line in text.lines() {
+            if inside && line != "```" {
+                continue;
+            }
+            if inside {
+                inside = false;
+                at_section = false;
+            } else if at_section && line == "```rust" {
+                inside = true;
+            } else if line == DECLARATION_HEADING {
+                at_section = true;
+            }
+            out.push_str(line);
+            out.push('\n');
+        }
+        out
+    }
+
+    #[test]
+    fn placement_vocabulary_empty_candidate_set_fails_closed() {
+        let (code, report) = placement_run(
+            "pg-nocandidate",
+            &without_declarations(&placement_document()),
+            &placement_tools(),
+            true,
+        );
+        assert_eq!(
+            code, 2,
+            "a document the parser reads to zero candidates gives exit 2: {report}"
+        );
+        assert!(
+            report.contains("FAIL: the candidate set is empty, so the parse is broken."),
+            "the guard states that the parse is broken: {report}"
         );
     }
 
