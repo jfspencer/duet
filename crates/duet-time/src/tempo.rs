@@ -552,8 +552,14 @@ impl TempoMap {
     /// # Errors
     /// Returns `TimeError::BbtOutOfRange` when the meter list is empty and the
     /// address is not `Bbt::ORIGIN`, when the beat is above the governing
-    /// meter, or when the tick is at or above one beat. Returns
-    /// `TimeError::Overflow` when the tick count leaves the 64-bit range.
+    /// meter, or when the tick is at or above one beat.
+    ///
+    /// `TimeError::Overflow` is the total fallback of the tick arithmetic, and
+    /// no map that `TempoMapEdit::finish` accepts can reach it. The meter
+    /// cross-check of `finish` holds a consistent chain of meter entries below
+    /// about 8.4e15 ticks: a bar number stays inside the 32-bit range, and one
+    /// bar holds at most 255 beats of 7680 ticks. The arm stays, because it is
+    /// what makes the function total on a list this signature cannot refuse.
     pub fn ticks_at_bbt(&self, bbt: Bbt) -> Result<Ticks, TimeError> {
         let index = self
             .meters
@@ -670,6 +676,10 @@ impl TempoMapEdit {
     }
 
     /// This builder with every tempo entry at `ticks` removed.
+    ///
+    /// The entries after the removed one keep the clock of the list they came
+    /// from, so a removal from the middle leaves a list that `finish` refuses.
+    /// `recompute_cached_views` rebuilds those clocks.
     #[must_use]
     pub fn remove_tempo_at(mut self, ticks: Ticks) -> Self {
         self.tempos.retain(|point| point.ticks() != ticks);
@@ -677,9 +687,40 @@ impl TempoMapEdit {
     }
 
     /// This builder with every meter entry at `ticks` removed.
+    ///
+    /// The entries after the removed one keep the address of the list they came
+    /// from, for the reason `remove_tempo_at` states.
     #[must_use]
     pub fn remove_meter_at(mut self, ticks: Ticks) -> Self {
         self.meters.retain(|point| point.ticks() != ticks);
+        self
+    }
+
+    /// This builder with every cached view the map arithmetic owns rebuilt.
+    ///
+    /// The tick axis is authoritative, and so is the tempo of a tempo entry and
+    /// the meter of a meter entry. The first entry of a list is the anchor and
+    /// keeps its stored views. Every later tempo entry takes the clock that the
+    /// rate of the entry before it produces, and every later meter entry takes
+    /// the address that the meter of the entry before it produces. Those are
+    /// the two views that `finish` cross-checks.
+    ///
+    /// Two cached views carry no rule of their own and stay as they are: the
+    /// address of a tempo entry and the clock of a meter entry. Neither one is
+    /// arithmetic over its own list, and `finish` reads each one for the order
+    /// rule alone.
+    ///
+    /// A caller removes an entry from the middle of a list, calls this, and
+    /// then calls `finish`. `finish` itself rebuilds nothing, so a caller that
+    /// edits the lists by hand and forgets this call is still refused.
+    ///
+    /// It is total: it uses the saturating scale the queries use, and it holds
+    /// an address that leaves the range of a `Bbt` at the limit `bbt_at` holds
+    /// it at.
+    #[must_use]
+    pub fn recompute_cached_views(mut self) -> Self {
+        recompute_tempo_clocks(&mut self.tempos);
+        recompute_meter_addresses(&mut self.meters);
         self
     }
 
@@ -759,6 +800,37 @@ fn tempo_pair_agrees(previous: &TempoPoint, next: &TempoPoint) -> bool {
 /// meter clock carries no rule, because no query reads it.
 fn meter_pair_agrees(previous: &MeterPoint, next: &MeterPoint) -> bool {
     exact_address(*previous, next.ticks()) == Some(next.bbt())
+}
+
+/// Rebuild the clock of every tempo entry after the first.
+///
+/// Each entry takes the clock that `tempo_pair_agrees` demands of it, so a
+/// list this leaves is a list the tempo cross-check accepts.
+fn recompute_tempo_clocks(tempos: &mut [TempoPoint]) {
+    let mut anchor: Option<TempoPoint> = None;
+    for point in tempos {
+        if let Some(previous) = anchor {
+            let delta_ticks = point.ticks.saturating_sub(previous.ticks);
+            let delta_clock = superclocks_for_ticks(previous.tempo, delta_ticks.get());
+            point.clock = previous.clock.saturating_add(SuperClock::new(delta_clock));
+        }
+        anchor = Some(*point);
+    }
+}
+
+/// Rebuild the address of every meter entry after the first.
+///
+/// Each entry takes the address that `meter_pair_agrees` demands of it, so a
+/// list this leaves is a list the meter cross-check accepts whenever the
+/// address of every entry fits the range a `Bbt` names.
+fn recompute_meter_addresses(meters: &mut [MeterPoint]) {
+    let mut anchor: Option<MeterPoint> = None;
+    for point in meters {
+        if let Some(previous) = anchor {
+            point.bbt = clamped_address(previous, point.ticks);
+        }
+        anchor = Some(*point);
+    }
 }
 
 /// The three views of one map entry that the validation reads.

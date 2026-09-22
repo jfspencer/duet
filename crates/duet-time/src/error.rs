@@ -18,8 +18,9 @@ pub enum TimeError {
     /// A float is a `NaN` or an infinity.
     #[error("the value is not a finite number")]
     NotFinite,
-    /// A point list is not in tick order.
-    #[error("the point list is not in tick order")]
+    /// A point list is not in tick order, or a point's cached views disagree
+    /// with the map arithmetic.
+    #[error("the point list is not in tick order, or a point disagrees with the map arithmetic")]
     UnorderedMap,
     /// A point list has no point at tick zero.
     #[error("the point list has no point at tick zero")]

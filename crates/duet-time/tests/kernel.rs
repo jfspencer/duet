@@ -10,18 +10,35 @@ mod tests {
     use core::num::{NonZeroU8, NonZeroU16, NonZeroU32};
 
     use duet_time::convert::{
-        Rounding, Unit, f64_to_f32, i16_to_f32, i24_to_f32, i32_to_f32, muldiv,
-        sample_clock_to_superclock, samples_to_superclock, superclock_to_sample_clock,
+        Rounding, Unit, f64_to_f32, finite_to_f32_saturating, i16_to_f32, i24_to_f32, i32_to_f32,
+        muldiv, sample_clock_to_superclock, samples_to_superclock, superclock_to_sample_clock,
         superclock_to_samples, ticks_to_f64, unit_to_i24, unit_to_i32,
     };
     use duet_time::{
-        Bbt, Delta, Finite, I24, Meter, MeterPoint, NoteValue, Position, Ratio, SUPERCLOCK_HZ,
-        SampleClock, SampleRate, Span, SuperClock, TICKS_PER_QUARTER, Tempo, TempoMap,
-        TempoMapEdit, TempoPoint, Ticks, TimeDomain, TimeError, finite, split_tuplet,
+        BarCount, Bbt, ChannelCount, ChannelIndex, Delta, Finite, FrameCount, GainDb, I24,
+        MAX_BOUND_PORTS, MAX_PARAMS, MAX_SENDS, MAX_SLOT_METERS, MAX_SLOTS, MAX_STRIPS, Meter,
+        MeterPoint, NoteValue, Position, Ratio, SUPERCLOCK_HZ, SampleClock, SampleRate,
+        SchemaVersion, Span, SuperClock, TICKS_PER_QUARTER, Tempo, TempoMap, TempoMapEdit,
+        TempoPoint, Ticks, TimeDomain, TimeError, Tuplet, UnixSeconds, finite, split_tuplet,
     };
     use proptest::prelude::{
-        Strategy as _, any, prop_assert, prop_assert_eq, prop_assert_ne, prop_assume, proptest,
+        ProptestConfig, Strategy as _, any, prop_assert, prop_assert_eq, prop_assert_ne,
+        prop_assume, proptest,
     };
+
+    /// The proptest case count of the gate (B78).
+    const GATE_CASES: u32 = 1_000;
+
+    /// The proptest configuration of every property in this file.
+    ///
+    /// `tests/proptest_large.rs` holds the same four properties at the soak
+    /// case count of the same budget row.
+    fn gate() -> ProptestConfig {
+        ProptestConfig {
+            cases: GATE_CASES,
+            ..ProptestConfig::default()
+        }
+    }
 
     /// The rounding rule of the kernel, computed toward zero and then adjusted.
     ///
@@ -60,6 +77,8 @@ mod tests {
     }
 
     proptest! {
+        #![proptest_config(gate())]
+
         #[test]
         fn finite_rejects_non_finite(raw in any::<f64>()) {
             prop_assert_eq!(
@@ -99,30 +118,32 @@ mod tests {
     }
 
     proptest! {
+        #![proptest_config(gate())]
+
         #[test]
         fn finite_equality_matches_bits(left in any::<f64>(), right in any::<f64>()) {
-            prop_assume!(left.is_finite() && right.is_finite());
-            let first = Finite::new(left).expect("the left input is finite");
-            let second = Finite::new(right).expect("the right input is finite");
-            prop_assert_eq!(
-                first == second,
-                (left + 0.0).to_bits() == (right + 0.0).to_bits(),
-                "equality follows the canonical bits"
-            );
+            if let (Some(first), Some(second)) = (Finite::new(left), Finite::new(right)) {
+                prop_assert_eq!(
+                    first == second,
+                    (left + 0.0).to_bits() == (right + 0.0).to_bits(),
+                    "equality follows the canonical bits"
+                );
+            }
         }
     }
 
     proptest! {
+        #![proptest_config(gate())]
+
         #[test]
         fn finite_order_matches_total_cmp(left in any::<f64>(), right in any::<f64>()) {
-            prop_assume!(left.is_finite() && right.is_finite());
-            let first = Finite::new(left).expect("the left input is finite");
-            let second = Finite::new(right).expect("the right input is finite");
-            prop_assert_eq!(
-                first.cmp(&second),
-                (left + 0.0).total_cmp(&(right + 0.0)),
-                "the order is total_cmp over the canonical value"
-            );
+            if let (Some(first), Some(second)) = (Finite::new(left), Finite::new(right)) {
+                prop_assert_eq!(
+                    first.cmp(&second),
+                    (left + 0.0).total_cmp(&(right + 0.0)),
+                    "the order is total_cmp over the canonical value"
+                );
+            }
         }
     }
 
@@ -154,6 +175,8 @@ mod tests {
     }
 
     proptest! {
+        #![proptest_config(gate())]
+
         #[test]
         fn muldiv_matches_i128_reference(
             value in any::<i64>(),
@@ -173,6 +196,53 @@ mod tests {
                         "muldiv reports an overflow outside the 64-bit range"
                     );
                 }
+            }
+        }
+    }
+
+    /// The 64-bit boundary values that a uniform strategy cannot reach.
+    ///
+    /// `any::<i64>()` is uniform over the whole range, so each of these has a
+    /// probability near two to the power minus 64 per draw and no gate run
+    /// reaches one. `muldiv` holds a branch for a negative divisor, and
+    /// `i64::MIN` is the value that branch is written for.
+    const I64_BOUNDARIES: [i64; 6] = [i64::MIN, i64::MIN + 1, -1, 0, 1, i64::MAX];
+
+    /// Assert `muldiv` against the 128-bit reference in every rounding mode.
+    fn assert_muldiv_matches_reference(value: i64, numerator: i64, divisor: NonZeroI64) {
+        let denominator = divisor.get();
+        for rounding in [Rounding::Down, Rounding::Nearest, Rounding::Up] {
+            let got = muldiv(value, numerator, divisor, rounding);
+            match reference(value, numerator, denominator, rounding) {
+                Some(want) => assert_eq!(
+                    got,
+                    Ok(want),
+                    "muldiv matches the reference at {value} times {numerator} over {denominator} under {rounding:?}"
+                ),
+                None => assert_eq!(
+                    got,
+                    Err(TimeError::Overflow),
+                    "muldiv reports an overflow at {value} times {numerator} over {denominator} under {rounding:?}"
+                ),
+            }
+        }
+    }
+
+    /// Assert `muldiv` over every boundary denominator of one pair.
+    fn assert_muldiv_over_the_boundary_denominators(value: i64, numerator: i64) {
+        for denominator in I64_BOUNDARIES {
+            let Some(divisor) = NonZeroI64::new(denominator) else {
+                continue;
+            };
+            assert_muldiv_matches_reference(value, numerator, divisor);
+        }
+    }
+
+    #[test]
+    fn muldiv_matches_the_reference_at_every_boundary() {
+        for value in I64_BOUNDARIES {
+            for numerator in I64_BOUNDARIES {
+                assert_muldiv_over_the_boundary_denominators(value, numerator);
             }
         }
     }
@@ -197,6 +267,8 @@ mod tests {
     }
 
     proptest! {
+        #![proptest_config(gate())]
+
         #[test]
         fn convert_i24_round_trip(raw in any::<i32>().prop_map(narrow_to_i24)) {
             let sample = I24::new(raw).expect("the folded value is a 24-bit sample");
@@ -216,14 +288,82 @@ mod tests {
         }
     }
 
+    /// The 24-bit boundary samples, each with the answer of one round trip.
+    ///
+    /// `any::<i32>()` folded into the 24-bit range gives each of the
+    /// 16,777,216 values a probability near six parts in a hundred million, so
+    /// no gate run reaches a bound. The decode scale is two to the power 23 and
+    /// the encode scale is two to the power 23 minus one, so a sample above
+    /// half scale moves by one step and a sample at or below half scale answers
+    /// itself.
+    const I24_BOUNDARY_ROUND_TRIPS: [(i32, i32); 8] = [
+        (-8_388_608, -8_388_607),
+        (-8_388_607, -8_388_606),
+        (-4_194_304, -4_194_304),
+        (-1, -1),
+        (0, 0),
+        (1, 1),
+        (4_194_304, 4_194_304),
+        (8_388_607, 8_388_606),
+    ];
+
     #[test]
-    fn convert_i32_round_trip() {
-        for sample in [i32::MIN, -1, 0, 1, i32::MAX] {
-            let back = i64::from(unit_to_i32(i32_to_f32(sample)));
-            let drift = back - i64::from(sample);
+    fn convert_i24_round_trip_at_the_boundaries() {
+        assert_eq!(
+            I24::MIN.get(),
+            -8_388_608,
+            "the table opens at the lowest sample the type holds"
+        );
+        assert_eq!(
+            I24::MAX.get(),
+            8_388_607,
+            "the table closes at the highest sample the type holds"
+        );
+        for (raw, want) in I24_BOUNDARY_ROUND_TRIPS {
+            let sample = I24::new(raw).expect("a boundary value is a 24-bit sample");
+            assert_eq!(
+                unit_to_i24(i24_to_f32(sample)).get(),
+                want,
+                "the 24-bit round trip of {raw} answers {want}"
+            );
+        }
+    }
+
+    /// The drift bound of the 32-bit round trip, in three derived terms.
+    ///
+    /// An `f32` carries a 24-bit significand, so the widening of an `i32`
+    /// moves the value by at most its own magnitude times two to the power
+    /// minus 24, which is 128 at the bound of the 32-bit range. The encode
+    /// scale is two to the power 31 minus one and not two to the power 31,
+    /// which moves the answer by at most one more. The rounding to an integer
+    /// adds at most one half.
+    const I32_ROUND_TRIP_DRIFT: i64 = 130;
+
+    /// The drift of one 32-bit round trip through the unit range.
+    fn i32_round_trip_drift(sample: i32) -> i64 {
+        i64::from(unit_to_i32(i32_to_f32(sample))) - i64::from(sample)
+    }
+
+    #[test]
+    fn convert_i32_round_trip_at_the_boundaries() {
+        for sample in [i32::MIN, i32::MIN + 1, -1, 0, 1, i32::MAX] {
             assert!(
-                drift.abs() <= 256,
-                "the 32-bit round trip stays below the 24th bit for {sample}"
+                i32_round_trip_drift(sample).abs() <= I32_ROUND_TRIP_DRIFT,
+                "the 32-bit round trip of {sample} stays inside the bound {I32_ROUND_TRIP_DRIFT}"
+            );
+        }
+    }
+
+    proptest! {
+        #![proptest_config(gate())]
+
+        /// The strategy draws an arbitrary sample with `any::<i32>()`.
+        #[test]
+        fn convert_i32_round_trip(sample in any::<i32>()) {
+            prop_assert!(
+                i32_round_trip_drift(sample).abs() <= I32_ROUND_TRIP_DRIFT,
+                "the 32-bit round trip stays inside the bound {}",
+                I32_ROUND_TRIP_DRIFT
             );
         }
     }
@@ -298,6 +438,23 @@ mod tests {
             SUPERCLOCK_HZ.get(),
             282_240_000,
             "SUPERCLOCK_HZ holds its literal value"
+        );
+        assert_eq!(MAX_STRIPS, 48, "MAX_STRIPS holds the value of row B86");
+        assert_eq!(MAX_PARAMS, 2_048, "MAX_PARAMS holds the value of row B90");
+        assert_eq!(MAX_SLOTS, 8, "MAX_SLOTS holds the value of row B45");
+        assert_eq!(MAX_SENDS, 8, "MAX_SENDS holds the value of row B46");
+        assert_eq!(
+            MAX_BOUND_PORTS, 16,
+            "MAX_BOUND_PORTS holds the value of row B139"
+        );
+        assert_eq!(
+            MAX_SLOT_METERS, 768,
+            "MAX_SLOT_METERS holds the value of row B133"
+        );
+        assert_eq!(
+            MAX_SLOT_METERS,
+            MAX_STRIPS * 2 * MAX_SLOTS,
+            "MAX_SLOT_METERS is arithmetic over three constants and never a literal"
         );
     }
 
@@ -520,6 +677,8 @@ mod tests {
     }
 
     proptest! {
+        #![proptest_config(gate())]
+
         /// The strategy draws a rate from `1..=1_000_000` over `1..=1_000_000`,
         /// a tick delta from `-1_000_000_000..=1_000_000_000`, and a note value
         /// index from `0..6`.
@@ -567,6 +726,8 @@ mod tests {
     }
 
     proptest! {
+        #![proptest_config(gate())]
+
         /// The strategy draws two arbitrary tick counts with `any::<i64>()`.
         #[test]
         fn superclock_at_is_monotonic(first in any::<i64>(), second in any::<i64>()) {
@@ -581,6 +742,8 @@ mod tests {
     }
 
     proptest! {
+        #![proptest_config(gate())]
+
         /// The strategy draws two arbitrary superclock counts with `any::<i64>()`.
         #[test]
         fn ticks_at_is_monotonic(first in any::<i64>(), second in any::<i64>()) {
@@ -595,6 +758,8 @@ mod tests {
     }
 
     proptest! {
+        #![proptest_config(gate())]
+
         /// The strategy draws a rate from `1..=100_000` over `1..=1_000` and a
         /// tick count from `-1_000_000..=1_000_000`.
         #[test]
@@ -676,6 +841,8 @@ mod tests {
     }
 
     proptest! {
+        #![proptest_config(gate())]
+
         /// The strategy draws a tick count from `0..=1_000_000_000`.
         #[test]
         fn bbt_round_trips_for_every_tick(ticks in 0_i64..=1_000_000_000) {
@@ -689,6 +856,8 @@ mod tests {
     }
 
     proptest! {
+        #![proptest_config(gate())]
+
         /// The strategy draws an arbitrary tick count with `any::<i64>()`.
         #[test]
         fn bbt_at_fields_stay_in_range(ticks in any::<i64>()) {
@@ -1069,25 +1238,29 @@ mod tests {
     }
 
     #[test]
-    fn span_end_matches_origin_later() {
-        let map = three_tempo_map();
-        let origins = [
-            Position::Beats(Ticks::new(1_920)),
-            Position::Audio(SuperClock::new(CLOCK_AT_120)),
-        ];
-        let deltas = [
-            Delta::Beats(Ticks::new(960)),
-            Delta::Audio(SuperClock::new(CLOCK_AT_120)),
-        ];
-        for origin in origins {
-            for delta in deltas {
-                let span = Span::new(origin, delta);
-                assert_eq!(
-                    span.end(&map),
-                    span.origin().later(span, &map),
-                    "the end of a span is its origin moved later for {origin:?} and {delta:?}"
-                );
-            }
+    fn span_end_is_the_position_the_arithmetic_names() {
+        let map = one_tempo_map(quarter_tempo(120));
+        let origin_ticks = 1_920_i64;
+        let delta_ticks = 960_i64;
+        let end_ticks = origin_ticks.saturating_add(delta_ticks);
+        let beat_origin = Position::Beats(Ticks::new(origin_ticks));
+        let audio_origin =
+            Position::Audio(SuperClock::new(origin_ticks.saturating_mul(CLOCK_AT_120)));
+        let beat_delta = Delta::Beats(Ticks::new(delta_ticks));
+        let audio_delta = Delta::Audio(SuperClock::new(delta_ticks.saturating_mul(CLOCK_AT_120)));
+        let beat_end = Position::Beats(Ticks::new(end_ticks));
+        let audio_end = Position::Audio(SuperClock::new(end_ticks.saturating_mul(CLOCK_AT_120)));
+        for (origin, delta, want) in [
+            (beat_origin, beat_delta, beat_end),
+            (beat_origin, audio_delta, beat_end),
+            (audio_origin, beat_delta, audio_end),
+            (audio_origin, audio_delta, audio_end),
+        ] {
+            assert_eq!(
+                Span::new(origin, delta).end(&map),
+                want,
+                "the end is the tick or the clock the map names for {origin:?} and {delta:?}"
+            );
         }
     }
 
@@ -1224,6 +1397,8 @@ mod tests {
     }
 
     proptest! {
+        #![proptest_config(gate())]
+
         /// The strategy draws a tick count from `0..=200_000`.
         #[test]
         fn bbt_round_trips_over_a_multi_meter_map(ticks in 0_i64..=200_000) {
@@ -1270,6 +1445,8 @@ mod tests {
     }
 
     proptest! {
+        #![proptest_config(gate())]
+
         /// The strategy draws two arbitrary tick counts with `any::<i64>()`.
         #[test]
         fn bbt_at_is_monotonic(first in any::<i64>(), second in any::<i64>()) {
@@ -1535,5 +1712,300 @@ mod tests {
                 assert_tuplet_split(span, divisor);
             }
         }
+    }
+
+    #[test]
+    fn tuplet_holds_its_two_counts() {
+        let triplet = Tuplet::new(nonzero_u8(3), nonzero_u8(2));
+        assert_eq!(triplet.count().get(), 3, "a triplet writes three notes");
+        assert_eq!(
+            triplet.over().get(),
+            2,
+            "a triplet occupies two notes of the same value"
+        );
+        assert_ne!(
+            triplet,
+            Tuplet::new(nonzero_u8(2), nonzero_u8(3)),
+            "the two counts name different tuplets"
+        );
+    }
+
+    #[test]
+    fn unordered_map_names_both_of_its_causes() {
+        let message =
+            "the point list is not in tick order, or a point disagrees with the map arithmetic";
+        let out_of_order = TempoMapEdit::new()
+            .push_tempo(tempo_point(0, 0, Bbt::ORIGIN, 120))
+            .push_tempo(tempo_point(BAR_TICKS, 2_000, bbt(2, 1, 0), 90))
+            .push_tempo(tempo_point(
+                BAR_TICKS.saturating_sub(1),
+                3_000,
+                bbt(3, 1, 0),
+                60,
+            ))
+            .finish()
+            .expect_err("a tempo list whose ticks fall is refused");
+        assert_eq!(
+            out_of_order.to_string(),
+            message,
+            "the message names the tick-order cause"
+        );
+        let disagreeing = TempoMapEdit::new()
+            .push_tempo(tempo_point(0, 0, Bbt::ORIGIN, 120))
+            .push_tempo(tempo_point(1_920, 1, bbt(2, 1, 0), 120))
+            .finish()
+            .expect_err("a stored clock that the rate before it denies is refused");
+        assert_eq!(
+            disagreeing.to_string(),
+            message,
+            "the same message names the arithmetic cause"
+        );
+        assert_eq!(
+            out_of_order, disagreeing,
+            "one variant carries both causes, so one message states both"
+        );
+    }
+
+    #[test]
+    fn removing_a_middle_tempo_entry_needs_the_recompute() {
+        let map = three_tempo_map();
+        let middle = Ticks::new(BAR_TICKS);
+        assert_eq!(
+            map.edit().remove_tempo_at(middle).finish().err(),
+            Some(TimeError::UnorderedMap),
+            "a removal alone leaves the later entries at the clock of the map they came from"
+        );
+        let trimmed = map
+            .edit()
+            .remove_tempo_at(middle)
+            .recompute_cached_views()
+            .finish()
+            .expect("the recompute states the clock the remaining rates produce");
+        assert_eq!(
+            trimmed.tempos().len(),
+            2,
+            "the middle entry is gone from the list"
+        );
+        let last_tick = BAR_TICKS.saturating_mul(2);
+        assert_eq!(
+            trimmed.superclock_at(Ticks::new(last_tick)).get(),
+            last_tick.saturating_mul(CLOCK_AT_120),
+            "the second entry sits where the rate of the first entry carries it"
+        );
+        assert_eq!(
+            trimmed
+                .superclock_at(Ticks::new(last_tick.saturating_add(1_920)))
+                .get(),
+            last_tick
+                .saturating_mul(CLOCK_AT_120)
+                .saturating_add(1_920_i64.saturating_mul(CLOCK_AT_90)),
+            "a tick after the second entry reads the rate of that entry"
+        );
+    }
+
+    #[test]
+    fn removing_a_middle_meter_entry_needs_the_recompute() {
+        let map = three_meter_map();
+        let middle = Ticks::new(BAR_TICKS.saturating_mul(4).saturating_add(1_920));
+        assert_eq!(
+            map.edit().remove_meter_at(middle).finish().err(),
+            Some(TimeError::UnorderedMap),
+            "a removal alone leaves the later entries at the address of the map they came from"
+        );
+        let trimmed = map
+            .edit()
+            .remove_meter_at(middle)
+            .recompute_cached_views()
+            .finish()
+            .expect("the recompute states the address the remaining meters produce");
+        assert_eq!(
+            trimmed.meters().len(),
+            2,
+            "the middle entry is gone from the list"
+        );
+        let last_tick = middle
+            .get()
+            .saturating_add(THREE_FOUR_BAR_TICKS.saturating_mul(3));
+        assert_eq!(
+            trimmed.bbt_at(Ticks::new(last_tick)),
+            bbt(7, 3, 0),
+            "the four-four meter of the first entry names tick {last_tick} as bar 7 beat 3"
+        );
+        assert_eq!(
+            trimmed.ticks_at_bbt(bbt(7, 3, 0)),
+            Ok(Ticks::new(last_tick)),
+            "the address round trips on the map the recompute leaves"
+        );
+    }
+
+    #[test]
+    fn finite_to_f32_saturates_above_the_f32_range() {
+        let inside = Finite::new(1.5).expect("the sample is finite");
+        assert_eq!(
+            finite_to_f32_saturating(inside).to_bits(),
+            1.5_f32.to_bits(),
+            "a value the f32 range holds narrows exactly"
+        );
+        for (raw, positive) in [(f64::MAX, true), (f64::MIN, false)] {
+            let value = Finite::new(raw).expect("a bound of the f64 range is finite");
+            let narrowed = finite_to_f32_saturating(value);
+            assert!(
+                narrowed.is_infinite(),
+                "a magnitude above the f32 range saturates to an infinity for {raw}"
+            );
+            assert!(!narrowed.is_nan(), "the narrowing answers no NaN for {raw}");
+            assert_eq!(
+                narrowed.is_sign_positive(),
+                positive,
+                "the saturation keeps the sign of {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn from_finite_const_canonicalizes_a_negative_zero() {
+        const NEGATIVE_ZERO: Finite = finite!(-0.0);
+        assert_eq!(
+            NEGATIVE_ZERO,
+            Finite::ZERO,
+            "the compile-time constructor writes the canonical zero"
+        );
+        assert!(
+            NEGATIVE_ZERO.get().is_sign_positive(),
+            "the stored constant carries a positive sign"
+        );
+    }
+
+    #[test]
+    fn checked_from_i64_refuses_both_bounds() {
+        for bound in [i64::MIN, i64::MAX] {
+            assert_eq!(
+                Ticks::checked_from_i64(bound).err(),
+                Some(TimeError::Overflow),
+                "a tick magnitude of {bound} reads as a saturated one, so it is refused"
+            );
+            assert_eq!(
+                SuperClock::checked_from_i64(bound).err(),
+                Some(TimeError::Overflow),
+                "a superclock magnitude of {bound} reads as a saturated one, so it is refused"
+            );
+        }
+        assert_eq!(
+            Ticks::checked_from_i64(1_920),
+            Ok(Ticks::new(1_920)),
+            "a tick magnitude inside the range is accepted"
+        );
+        assert_eq!(
+            SuperClock::checked_from_i64(i64::MIN.saturating_add(1)),
+            Ok(SuperClock::new(i64::MIN.saturating_add(1))),
+            "the magnitude beside the lower bound is accepted"
+        );
+    }
+
+    #[test]
+    fn channel_count_refuses_zero() {
+        assert_eq!(
+            ChannelCount::new(0),
+            None,
+            "a chunk size of zero would end the process, so the type holds no zero"
+        );
+        let stereo = ChannelCount::new(2).expect("two channels is a count");
+        assert_eq!(
+            stereo.get().get(),
+            2,
+            "the count answers the value it was built with"
+        );
+    }
+
+    #[test]
+    fn unit_new_refuses_a_value_outside_the_range() {
+        for raw in [-1.0_f32, -0.5, 0.0, 0.5, 1.0] {
+            assert!(Unit::new(raw).is_some(), "the unit range holds {raw}");
+        }
+        for raw in [-1.5_f32, 1.5, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            assert!(Unit::new(raw).is_none(), "the unit range refuses {raw}");
+        }
+        assert_eq!(
+            Unit::new(0.25).map(Unit::get).map(f32::to_bits),
+            Some(0.25_f32.to_bits()),
+            "the constructor stores the value it was given"
+        );
+    }
+
+    #[test]
+    fn the_small_newtypes_carry_their_value() {
+        assert_eq!(
+            FrameCount::new(512).get(),
+            512,
+            "a frame count answers its value"
+        );
+        assert_eq!(
+            FrameCount::default().get(),
+            0,
+            "no frames is a count and not an absence"
+        );
+        assert_eq!(BarCount::new(2).get(), 2, "a bar count answers its value");
+        assert_eq!(
+            SampleClock::new(-48_000).get(),
+            -48_000,
+            "a sample counter answers its value"
+        );
+        assert_eq!(
+            ChannelIndex::new(1).get(),
+            1,
+            "a channel index answers its value"
+        );
+        assert_eq!(
+            UnixSeconds::new(-5).get(),
+            -5,
+            "an instant before the epoch answers its value"
+        );
+        assert_eq!(
+            SchemaVersion::new(3).get(),
+            3,
+            "a schema number answers its value"
+        );
+        assert!(
+            SchemaVersion::new(2) < SchemaVersion::new(3),
+            "the order lets a reader migrate an older document and refuse a newer one"
+        );
+        let gain = GainDb::new(Finite::new(-6.0).expect("the gain is finite"));
+        assert_eq!(
+            gain.get().get().to_bits(),
+            (-6.0_f64).to_bits(),
+            "a gain answers the decibels it was built with"
+        );
+    }
+
+    /// Assert that one value returns equal from a JSON round trip.
+    fn assert_json_round_trip<T>(value: &T, label: &str)
+    where
+        T: serde::Serialize + serde::de::DeserializeOwned + PartialEq + core::fmt::Debug,
+    {
+        let text = serde_json::to_string(value).expect("the value serializes");
+        let back: T = serde_json::from_str(&text).expect("the text deserializes");
+        assert_eq!(&back, value, "a JSON round trip returns an equal {label}");
+    }
+
+    #[test]
+    fn the_small_newtypes_round_trip_through_json() {
+        assert_json_round_trip(&Ticks::new(-1_920), "tick magnitude");
+        assert_json_round_trip(&SuperClock::new(73_500), "superclock magnitude");
+        assert_json_round_trip(&FrameCount::new(512), "frame count");
+        assert_json_round_trip(&BarCount::new(2), "bar count");
+        assert_json_round_trip(&SampleClock::new(48_000), "sample counter");
+        assert_json_round_trip(&ChannelIndex::new(1), "channel index");
+        assert_json_round_trip(&UnixSeconds::new(-5), "instant");
+        assert_json_round_trip(&SchemaVersion::new(3), "schema number");
+        assert_json_round_trip(&SampleRate::new(nonzero_u32(48_000)), "sample rate");
+        assert_json_round_trip(
+            &ChannelCount::new(2).expect("two channels is a count"),
+            "channel count",
+        );
+        assert_json_round_trip(
+            &GainDb::new(Finite::new(-6.0).expect("the gain is finite")),
+            "gain",
+        );
+        assert_json_round_trip(&Tuplet::new(nonzero_u8(3), nonzero_u8(2)), "tuplet");
     }
 }
