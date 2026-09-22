@@ -13,6 +13,8 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-D warnings"
   RUSTDOCFLAGS: "-D warnings"
+  # The plan harnesses write no bytecode into the tree that they verify.
+  PYTHONDONTWRITEBYTECODE: "1"
 
 jobs:
   dod:
@@ -20,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        os: [macos-26, ubuntu-26.04]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -30,19 +32,84 @@ jobs:
         with:
           components: rustfmt, clippy
           cache-save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: Linux system dependencies for GPUI
+      - name: Linux system dependencies for GPUI and for the audio stack
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-xcb-dev \
             libxcb1-dev libxcb-shape0-dev libxcb-xfixes0-dev libasound2-dev \
-            libfontconfig1-dev libfreetype6-dev libssl-dev libgit2-dev \
-            libvulkan-dev mesa-vulkan-drivers pkg-config cmake clang mold
+            libpipewire-0.3-dev libfontconfig1-dev libfreetype6-dev libssl-dev \
+            libgit2-dev libvulkan-dev mesa-vulkan-drivers pkg-config cmake clang \
+            mold shellcheck
+      - name: macOS shell lint dependency
+        if: runner.os == 'macOS'
+        run: brew install shellcheck
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-deny,cargo-machete,cargo-nextest,typos-cli
+          tool: cargo-deny,cargo-machete,cargo-nextest@0.9.145,typos-cli
       - name: Definition of Done
         run: scripts/dod.sh
         env:
           NEXTEST_PROFILE: ci
+
+  changes:
+    name: Changed paths
+    runs-on: ubuntu-26.04
+    outputs:
+      roadmap: ${{ steps.filter.outputs.roadmap }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect a roadmap change
+        id: filter
+        run: |
+          base="${{ github.base_ref }}"
+          if [ -z "$base" ]; then
+            echo "roadmap=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --no-tags --depth=0 origin "$base"
+          changed="$(git diff --name-only "origin/$base"...HEAD)"
+          if printf '%s\n' "$changed" | grep -q '^roadmap/'; then
+            echo "roadmap=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "roadmap=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  plan-lint:
+    name: Plan guards
+    needs: changes
+    if: needs.changes.outputs.roadmap == 'true'
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest@0.9.145
+      - name: Placement
+        run: cargo xtask check-placement roadmap/duet-v1/architecture.md
+      - name: Roster compile
+        run: cargo xtask check-roster roadmap/duet-v1/architecture.md "$RUNNER_TEMP/roster" .
+      - name: Plan graph
+        run: cargo xtask check-plan-graph roadmap/duet-v1
+      - name: Closure blocks
+        run: |
+          cargo xtask check-closure roadmap/duet-v1/architecture.md roadmap/duet-v1/reviews/critic-spec-r16.md closure-r16
+          cargo xtask check-closure roadmap/duet-v1/architecture.md roadmap/duet-v1/reviews/critic-spec-r17.md closure-r17
+          cargo xtask check-closure roadmap/duet-v1/architecture.md roadmap/duet-v1/reviews/critic-spec-r18.md closure-r18
+          cargo xtask check-closure roadmap/duet-v1/architecture.md roadmap/duet-v1/reviews/critic-spec-r19.md closure-r19
+          cargo xtask check-closure roadmap/duet-v1/architecture.md roadmap/duet-v1/reviews/critic-spec-r20.md closure-r20
+          cargo xtask check-closure roadmap/duet-v1/architecture.md roadmap/duet-v1/reviews/critic-spec-r21.md closure-r21
+          cargo xtask check-closure roadmap/duet-v1/architecture.md roadmap/duet-v1/reviews/critic-spec-r21-inner.md closure-r21-inner
+          cargo xtask check-closure roadmap/duet-v1/architecture.md roadmap/duet-v1/reviews/critic-spec-r22-inner.md closure-r22-inner
+          cargo xtask check-closure roadmap/duet-v1/architecture.md roadmap/duet-v1/reviews/critic-spec-r23-inner.md closure-r23-inner
+      - name: Probes
+        run: cargo nextest run -p xtask --test probes --no-tests=fail
