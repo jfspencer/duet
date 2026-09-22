@@ -483,7 +483,7 @@ last entry takes the remainder.
 6. Create `src/finite.rs` with the `Finite` declaration, the two constructors, `get`, `ZERO`, and the
    five hand-written trait impls of section 2.6a. Add `mod finite;` and `pub use finite::Finite;` to
    `src/lib.rs`. Run the same command. Expected result: the run passes.
-7. Create `src/units.rs` with the eleven unit types, the two `impl` blocks, and the constant block of
+7. Create `src/units.rs` with the twelve unit types, the two `impl` blocks, and the constant block of
    section 1.6. Add `mod units;` and the `pub use` line to `src/lib.rs`. `GainDb` names `Finite`, so
    `units.rs` follows `finite.rs`. Run `cargo check -p duet-time`. Expected result: it succeeds.
 8. Write the failing `muldiv` proptest in `tests/kernel.rs`. It compares `muldiv` with an `i128`
@@ -542,7 +542,8 @@ targets, so each file wraps its tests in a `#[cfg(test)] mod tests` block
 | `finite_json_round_trip` | A `serde_json` round trip returns an equal value; a `NaN` token, a `null`, and a `-0.0` give a rejection or the canonical value | `tests/kernel.rs` |
 | `muldiv_matches_i128_reference` | `muldiv` equals an `i128` reference for every rounding mode and never overflows | `tests/kernel.rs` |
 | `convert_i16_round_trip` | `i16_to_f32` then `unit_to_i32` keeps the value inside the stated bound | `tests/kernel.rs` |
-| `convert_i24_round_trip` | `i24_to_f32` then `unit_to_i24` returns the same `I24` | `tests/kernel.rs` |
+| `convert_i24_round_trip` | `i24_to_f32` then `unit_to_i24` drifts by at most one 24-bit step over the whole range, and returns the same `I24` for every sample of magnitude 2^22 or less | `tests/kernel.rs` |
+| `convert_i32_round_trip` | `i32_to_f32` then `unit_to_i32` keeps the value inside the stated bound | `tests/kernel.rs` |
 | `convert_f64_out_of_range_errors` | `f64_to_f32` and `ticks_to_f64` return an error for every out-of-range input | `tests/kernel.rs` |
 | `clock_round_trip_every_rate` | `samples_to_superclock` then `superclock_to_samples` returns the same sample count at each of the six supported rates | `tests/kernel.rs` |
 | `tempo_map_refuses_unsorted` | `TempoMapEdit::finish` returns `TimeError::UnorderedMap` | `tests/kernel.rs` |
@@ -553,6 +554,17 @@ targets, so each file wraps its tests in a `#[cfg(test)] mod tests` block
 Proptest strategies: `any::<f64>()` for the `Finite` properties, `any::<i64>()` three times for
 `muldiv`, `any::<i32>()` narrowed to the `I24` range with `prop_map` for the 24-bit round trip, and
 `1_i64..=7_680` with `2_u8..=13` for the tuplet sum.
+
+**The 24-bit round trip drifts by one step, and Appendix B.1 is the reason.** The two reason texts
+of that appendix are mandatory character for character, and they fix both scale factors. The
+`i24_to_f32` text says the result "is in the unit range", which holds only for a divisor of 2^23,
+because a divisor of 2^23 - 1 sends `I24::MIN` outside the range and forces a clamp. The
+`unit_to_i24` text names the scale factor 2^23 - 1 and says the product "fits `I24` with no clamp",
+which holds only for that factor, because 2^23 sends a unit sample of 1.0 one step above `I24::MAX`.
+The two factors therefore differ by one part in 8,388,608, and no rounding mode makes the round trip
+exact above a half-scale sample. The chunk row above states the property that holds. A change to
+either factor needs a change to Appendix B.1 first, which is an Architect decision and not an
+implementation decision (T1, 2026-09-22).
 
 ## Verification
 
