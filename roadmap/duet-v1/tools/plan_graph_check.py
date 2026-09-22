@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the chunk files of a roadmap plan and derive the plan-graph manifest.
+"""Check the chunk files of a roadmap plan against section 13 of architecture.md.
 
 Usage: plan_graph_check.py <plan-dir> [--write-manifest]
 
@@ -11,8 +11,10 @@ Checks, each fail-closed:
 1. Every id is unique and every ``depends_on`` id exists.
 2. The dependency graph is acyclic.
 3. The phase of each chunk (from section 13.3 of architecture.md) is later
-   than the phase of every dependency; the one same-phase link allowed is from
-   the phase's opening manifest chunk (section 13.3 orders it first).
+   than the phase of every dependency. A same-phase link is refused only when
+   the DEPENDENCY id does not begin with ``M``, which is what the code below
+   tests, so a chunk may name a manifest chunk or a repair chunk of its own
+   phase.
 4. Two chunks of one phase never share a write-scope path (prefix overlap),
    except ``Cargo.lock``, and except a crate skeleton (``Cargo.toml``,
    ``src/lib.rs``) shared between the phase's manifest chunk and a chunk that
@@ -21,7 +23,10 @@ Checks, each fail-closed:
 6. Every chunk of section 13.3 has a file, and every file has a row in 13.3.
 7. Every serial link of section 13.4 appears as a ``depends_on`` edge.
 
-With ``--write-manifest`` it writes ``plan-graph.md`` from the front-matter.
+This prototype writes no file. ``--write-manifest`` prints the name of the
+one generator, ``cargo xtask check-plan-graph <plan-dir> --write-manifest``,
+and changes nothing on disk. The Rust guard is the sole writer of
+``plan-graph.md``.
 Exit 0 on success, 1 on a finding, 2 on a read failure.
 """
 
@@ -122,7 +127,7 @@ def overlap(a: str, b: str) -> bool:
 
 
 def main() -> None:
-    """Run every check and optionally write the manifest."""
+    """Run every check and report the one generator on the write flag."""
     if len(sys.argv) < 2:
         fail("usage: plan_graph_check.py <plan-dir> [--write-manifest]", 2)
     plan = Path(sys.argv[1])
@@ -225,33 +230,11 @@ def main() -> None:
 
     print(f"CHUNKS: {len(chunks)}   PHASES: {len(by_phase)}   LINKS 13.4: {len(links)}   FINDINGS: {bad}")
 
-    if write and bad == 0:
-        out = [
-            "# Plan graph: roadmap/duet-v1",
-            "",
-            "Derived from the chunk front-matter by `tools/plan_graph_check.py`. Edit the chunk files, then regenerate; never edit this file by hand.",
-            "",
-            "## Objective",
-            "",
-            "Duet v1: a vocal-first composition, record, mix, and master application on GPUI Kit, AI-first with a git-like history, on macOS 26 and Ubuntu 26.04. The measurable completion outcome is architecture.md section 14 (three rungs: `scripts/dod.sh` green on both platforms, the named test commands, and the human product review gate).",
-            "",
-            "## Phases",
-            "",
-            "| Phase | Chunks | Width |",
-            "|---|---|---|",
-        ]
-        for phase in sorted(by_phase):
-            ids = sorted(by_phase[phase])
-            out.append(f"| {phase} | {', '.join(ids)} | {len(ids)} |")
-        out += ["", "## Chunks", "", "| Id | Line | Phase | File | Depends on | Write scope |", "|---|---|---|---|---|---|"]
-        for cid in sorted(chunks, key=lambda c: (phases.get(c, 99), c)):
-            fm = chunks[cid]
-            out.append(
-                f"| {cid} | {fm['line']} | {phases.get(cid, '?')} | `{files[cid].name}` | {', '.join(fm['depends_on']) or 'none'} | {'; '.join(fm['write_scope'])} |"
-            )
-        out += ["", "## Parallelism", "", f"{len(by_phase)} phases; widest phase holds {max(len(v) for v in by_phase.values())} chunks. Every line is a serial chain (SM6); every cross-line link is a `depends_on` edge; `Cargo.lock` is the one shared write path and follows the regenerate rule of section 13.0.", ""]
-        (plan / "plan-graph.md").write_text("\n".join(out), encoding="utf-8")
-        print("MANIFEST: plan-graph.md written")
+    if write:
+        print(
+            "MANIFEST: not written by this prototype; run "
+            "`cargo xtask check-plan-graph <plan-dir> --write-manifest`"
+        )
 
     sys.exit(1 if bad else 0)
 
