@@ -19,7 +19,14 @@ rustup show active-toolchain >/dev/null   # installs the pinned channel + compon
 
 # Linux system packages. PipeWire is the audio server on Linux (section 11.5);
 # ALSA supplies the client and the sequencer interface that PipeWire presents.
-LINUX_PACKAGES="libpipewire-0.3-dev libasound2-dev pkg-config shellcheck"
+# The same set the ci.yml `dod` job installs, plus shellcheck. A developer who
+# runs this script on a clean Ubuntu host must be able to build crates/duet,
+# which pins gpui-kit.
+LINUX_PACKAGES="libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
+libx11-xcb-dev libxcb1-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+libasound2-dev libpipewire-0.3-dev libfontconfig1-dev libfreetype6-dev \
+libssl-dev libgit2-dev libvulkan-dev mesa-vulkan-drivers pkg-config cmake \
+clang mold shellcheck"
 if [[ "$(uname -s)" == "Linux" ]]; then
   # Select the privilege escalation rather than assume it. A root container
   # carries no sudo, and `set -e` would end the bootstrap before the git hooks.
