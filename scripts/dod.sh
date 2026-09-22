@@ -56,13 +56,22 @@ need cargo-machete
 # are empty. The union is computed here, above every step, because the first
 # reader of it is the `converts` step and not the `plan` step.
 #
-# Every diff runs under `core.quotePath=false`. With the default, git prints a
-# path that holds a byte outside printable ASCII in quotation marks and with
-# octal escapes, so `roadmap/duet-v1/<accented name>.md` prints as
-# "roadmap/duet-v1/caf\303\251.md", no pattern below matches it, and the step
-# SKIPS a change it must read. A condition that cannot see its own input must
-# not answer no.
-gitdiff() { git -c core.quotePath=false diff "$@"; }
+# `gitdiff` prints one changed path per line, whatever bytes the path holds. A
+# condition that cannot see its own input must not answer no, and a plain
+# `--name-only` cannot see four shapes. `-z` prints each path RAW and NUL
+# separated, so nothing is quoted and no byte is escaped; `core.quotePath=false`
+# alone covers the non-ASCII case and leaves a quotation mark, a backslash, a
+# tab and a newline quoted, and a quoted path fails every anchored pattern
+# below. `--no-renames` prints BOTH sides of a rename, so a document moved OUT
+# of `roadmap/` is still seen; with renames on, git prints the destination
+# alone and the step skips although the plan directory lost a file.
+#
+# A path that holds a newline prints as two lines here. That can only ADD a
+# match and never remove one, so the condition stays fail-safe in the one
+# direction that matters.
+gitdiff() {
+  git -c core.quotePath=false diff --no-renames -z "$@" | tr '\0' '\n'
+}
 
 CHANGED_PATHS=""
 DENOMINATOR_UNKNOWN=0

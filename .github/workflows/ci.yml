@@ -65,15 +65,19 @@ jobs:
       - name: Detect a change to the plan or to its guards
         id: filter
         run: |
-          # Every diff runs under `core.quotePath=false`. With the default, git
-          # prints a path holding a byte outside printable ASCII in quotation
-          # marks and with octal escapes, the pattern below cannot match it, and
-          # this job answers `false` for a plan change it did not see.
+          # Each diff prints one path per line, whatever bytes the path holds.
+          # `-z` prints each path RAW and NUL separated, so nothing is quoted
+          # and no byte is escaped; a quoted path fails the anchored pattern
+          # below and this job would answer `false` for a plan change it never
+          # saw. `--no-renames` prints BOTH sides of a rename, so a document
+          # moved OUT of `roadmap/` is still seen. The same form runs in
+          # `scripts/dod.sh`.
           base="${{ github.base_ref }}"
+          diffnames() { git -c core.quotePath=false diff --no-renames -z --name-only "$@" | tr '\0' '\n'; }
           if [ -n "$base" ]; then
-            changed="$(git -c core.quotePath=false diff --name-only "origin/$base"...HEAD)"
+            changed="$(diffnames "origin/$base"...HEAD)"
           elif git rev-parse --verify --quiet HEAD^ >/dev/null; then
-            changed="$(git -c core.quotePath=false diff --name-only HEAD^ HEAD)"
+            changed="$(diffnames HEAD^ HEAD)"
           else
             changed="roadmap/"
           fi
