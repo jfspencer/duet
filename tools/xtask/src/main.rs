@@ -8,7 +8,8 @@
 //!
 //! `cargo xtask check-conversions`, `cargo xtask check-manifests`,
 //! `cargo xtask check-plan-graph <plan-dir>`, and
-//! `cargo xtask check-closure <document> <review> <block>` are guards. Each one
+//! `cargo xtask check-closure <document> <review> <block>`, and
+//! `cargo xtask check-roster <document> <scratch> <repo>` are guards. Each one
 //! exits 0 when it finds nothing, 1 when it finds at least one breach, and 2
 //! when it cannot decide.
 
@@ -18,6 +19,7 @@ mod check_closure;
 mod check_conversions;
 mod check_manifests;
 mod check_plan_graph;
+mod check_roster;
 mod sync_agents;
 
 use std::io::{self, Write as _};
@@ -57,6 +59,16 @@ enum Command {
         review: PathBuf,
         /// The closure block identifier.
         block: String,
+    },
+    /// Compile the section 15 roster in a scratch workspace outside the
+    /// repository.
+    CheckRoster {
+        /// The architecture document to read.
+        document: PathBuf,
+        /// A scratch directory outside the repository.
+        scratch: PathBuf,
+        /// The repository root.
+        repo: PathBuf,
     },
     /// Refuse a chunk file whose front-matter breaks a section 13 rule.
     CheckPlanGraph {
@@ -160,6 +172,11 @@ fn main() -> ExitCode {
             review,
             block,
         } => check_closure::run(&document, &review, &block),
+        Command::CheckRoster {
+            document,
+            scratch,
+            repo,
+        } => check_roster::run(&document, &scratch, &repo),
         Command::CheckPlanGraph {
             plan_dir,
             write_manifest,
