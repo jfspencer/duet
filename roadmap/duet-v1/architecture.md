@@ -3362,9 +3362,20 @@ impl TempoMap {
     pub fn cmp(&self, left: Position, right: Position) -> core::cmp::Ordering;
 
     /// Test two positions for equality, across domains when they differ.
-    pub fn eq(&self, left: Position, right: Position) -> bool;
+    pub fn same_instant(&self, left: Position, right: Position) -> bool;
 }
 ```
+
+**The method is named `same_instant` and not `eq`, and the lint policy is the reason.**
+`TempoMap` derives `PartialEq`, so a second method named `eq` trips
+`clippy::same_name_method`, which `[workspace.lints]` denies. That lint reads the NAME alone,
+where the neighbouring `clippy::should_implement_trait` reads the arity and stays silent. Revision
+23 declared `eq` and no rule read the pair, so chunk T1 met a declared shape that the declared
+policy refuses. The rename removes the clash with no suppression, which is what the Appendix B.1
+preamble asks of an implementer. It also serves ADR-0001: structural equality and timeline
+equality are two different questions, and two methods named `eq` hide the difference that the ADR
+says the two names must keep visible. `cmp` needs no rename, because `TempoMap` derives no `Ord`
+(chunk T1, 2026-09-22).
 
 ### 2.8 Bars, beats, and ticks
 

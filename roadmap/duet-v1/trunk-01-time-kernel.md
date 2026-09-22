@@ -427,13 +427,21 @@ impl TempoMap {
     pub fn cmp(&self, left: Position, right: Position) -> core::cmp::Ordering;
 
     /// Test two positions for equality, across domains when they differ.
-    pub fn eq(&self, left: Position, right: Position) -> bool;
+    pub fn same_instant(&self, left: Position, right: Position) -> bool;
 }
 ```
 
+The method is named `same_instant` and not `eq`, because `TempoMap` derives `PartialEq` and
+`clippy::same_name_method` is denied. Architecture section 2.7 states the reason in full.
+
 `TempoMapEdit::finish` returns `Result<TempoMap, TimeError>`. It returns `TimeError::UnorderedMap`
 for a point list that is not sorted, and `TimeError::NoFirstPoint` for a list whose first point does
-not sit at tick zero (section 15.1, section 2.9).
+not sit at the origin in the tick, the clock, and the address (section 15.1, section 2.9). The
+chunk sentence named the tick alone. A first point at tick zero with a non-zero clock makes
+`ticks_at(SuperClock::ZERO)` answer a non-zero tick, so the map would be inconsistent from its
+first entry, and architecture section 2.5 measures a `Position` from timeline zero in BOTH domains.
+The rule refuses more lists and accepts none the chunk refuses, and it uses the declared variant
+(chunk T1, 2026-09-22).
 
 ### `duet_time::tuplet` (section 2.4)
 
