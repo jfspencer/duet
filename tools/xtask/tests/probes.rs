@@ -1266,6 +1266,69 @@ path = "other/lib.rs"
     }
 
     #[test]
+    fn plan_graph_document_front_matter_stays_silent() {
+        let arch = architecture(&[(1, "none", "A1")], &[]);
+        let (code, report) = plan_graph(
+            "pg-document-front-matter",
+            &arch,
+            &[
+                (
+                    "a1.md",
+                    chunk("A1", "core", &[], &["crates/alpha/src/a.rs"]),
+                ),
+                (
+                    "notes.md",
+                    "---\ntitle: Notes\nauthor: A probe\n---\n\n# Notes\n".to_owned(),
+                ),
+                (
+                    "rule.md",
+                    "---\n\nA horizontal rule opens this file.\n".to_owned(),
+                ),
+            ],
+        );
+        assert_eq!(
+            code, 0,
+            "a fence that states no chunk key breaks no chunk rule: {report}"
+        );
+        assert!(
+            report.contains("CHUNKS: 1   PHASES: 1   LINKS 13.4: 0   FINDINGS: 0"),
+            "the guard reads both files and says nothing about them: {report}"
+        );
+    }
+
+    #[test]
+    fn plan_graph_chunk_key_in_a_rejected_fence_is_a_finding() {
+        let arch = architecture(&[(1, "none", "A1")], &[]);
+        let (code, report) = plan_graph(
+            "pg-partial-chunk-key",
+            &arch,
+            &[
+                (
+                    "a1.md",
+                    chunk("A1", "core", &[], &["crates/alpha/src/a.rs"]),
+                ),
+                (
+                    "partial.md",
+                    "---\nid: B1\ntitle: A chunk that states four keys too few\n---\n\n# B1\n"
+                        .to_owned(),
+                ),
+            ],
+        );
+        assert_eq!(
+            code, 1,
+            "a fence that states a chunk key is held to the chunk contract: {report}"
+        );
+        assert!(
+            report.contains("FINDING: partial.md opens front matter the guard cannot parse"),
+            "the finding names the file: {report}"
+        );
+        assert!(
+            report.contains("CHUNKS: 1   PHASES: 1   LINKS 13.4: 0   FINDINGS: 1"),
+            "the rejected file counts as a finding and as no chunk: {report}"
+        );
+    }
+
+    #[test]
     fn plan_graph_file_with_no_front_matter_stays_silent() {
         let arch = architecture(&[(1, "none", "A1")], &[]);
         let (code, report) = plan_graph(

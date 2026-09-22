@@ -12,18 +12,21 @@
 //! This module is the port of the prototype
 //! `roadmap/duet-v1/tools/roster_compile.sh`, which carries two embedded Python
 //! halves: the generator that writes the workspace and the comparer that holds
-//! every recorded size against the measured one. The port keeps every rule,
-//! every printed line, and every exit code that prototype produces. The guard
-//! exits 2 on a usage or input failure, 1 on a finding, and 0 when the roster
-//! compiles clean and every recorded size is true.
+//! every recorded size against the measured one. The port keeps every rule and
+//! every printed line the prototype produces. It keeps every exit code too,
+//! except for the one input class this module states below. The guard exits 2
+//! on a usage or input failure, 1 on a finding, and 0 when the roster compiles
+//! clean and every recorded size is true.
 //!
-//! The port hardens one case the prototype leaves undefined. The prototype
-//! reads a non-zero clippy status as a finding of the plan, so a machine that
-//! cannot build the dependency tree makes the guard blame the roster. This
-//! port reads the clippy report: a lint diagnostic is the finding the
-//! prototype states, and a run that decided nothing is fail closed with a
-//! `FAIL:` line that names the cause. Every prototype line and every prototype
-//! exit code is unchanged, because the prototype defines neither case.
+//! The port differs from the prototype in one input class: a clippy process
+//! that exits non-zero and prints no lint diagnostic. The prototype reads every
+//! non-zero clippy status as a finding of the plan, and line 1015 of
+//! `roster_compile.sh` defines exit 1 for this class. This port reads the
+//! clippy report instead. A lint diagnostic is the finding the prototype
+//! states. A run that decided nothing is fail closed with a `FAIL:` line that
+//! names the cause, and this guard exits 2. The exit code differs because an
+//! environment fault is not a breach of a rule. A machine that cannot build the
+//! dependency tree must not read as a finding of the plan.
 //!
 //! One scratch directory and one cargo target, and the target does not outlive
 //! the run that made it. A target for this workspace holds the whole `gpui`
@@ -3085,9 +3088,9 @@ fn compare_sizes(
 #[cfg(test)]
 mod tests {
     use super::{
-        Kind, Shape, capital_names, collapse, is_literal_value, join_continuations,
-        make_fields_public, marker_of, mask_arms, printed_list, rule_id_at, section_at, split_top,
-        states_a_number, strip_docs, under,
+        Kind, Shape, capital_names, cargo_reason, collapse, is_lint_line, is_literal_value,
+        is_position, join_continuations, make_fields_public, marker_of, mask_arms, printed_list,
+        rule_id_at, section_at, split_top, states_a_number, strip_docs, under,
     };
 
     #[test]
@@ -3234,6 +3237,93 @@ mod tests {
             printed_list(&["S1".to_owned(), "S2".to_owned()]),
             "['S1', 'S2']",
             "the list reads as the prototype prints it"
+        );
+    }
+
+    #[test]
+    fn a_lint_diagnostic_states_a_bare_level_at_a_file_position() {
+        assert!(
+            is_lint_line("src/lib.rs:2:1: error: missing documentation for a function"),
+            "a bare level at a file position is a lint"
+        );
+        assert!(
+            is_lint_line("src/lib.rs:5:9: warning: unused variable: `mark`"),
+            "a warning at a file position is a lint too"
+        );
+    }
+
+    #[test]
+    fn a_coded_error_at_a_file_position_is_no_lint() {
+        assert!(
+            !is_lint_line("src/lib.rs:2:23: error[E0308]: mismatched types"),
+            "an error code makes the line a compiler error, not a lint"
+        );
+    }
+
+    #[test]
+    fn a_line_with_no_file_position_is_no_lint() {
+        assert!(
+            !is_lint_line("error: no matching package named `alpha` found"),
+            "a resolution failure carries no file position"
+        );
+        assert!(
+            !is_lint_line("error: could not compile `alpha` (lib) due to 1 previous error"),
+            "the build summary carries no file position"
+        );
+    }
+
+    #[test]
+    fn a_file_position_ends_with_a_row_and_a_column() {
+        assert!(
+            is_position("src/lib.rs:2:1: "),
+            "a path, a row, and a column are a position"
+        );
+        assert!(!is_position(""), "an empty head is no position");
+        assert!(
+            !is_position("src/lib.rs:two:1: "),
+            "a row that states no number is no position"
+        );
+        assert!(
+            !is_position(":2:1: "),
+            "a position with no path is no position"
+        );
+        assert!(
+            !is_position("src/lib.rs:2:1"),
+            "a head that does not close the field is no position"
+        );
+    }
+
+    #[test]
+    fn the_cargo_reason_is_the_first_line_that_names_an_error() {
+        assert_eq!(
+            cargo_reason(
+                "    Updating crates.io index\nerror: no matching package named `alpha` found\n\
+                 error: could not compile `alpha`\n"
+            ),
+            "error: no matching package named `alpha` found",
+            "the first line that names an error carries the cause"
+        );
+        assert_eq!(
+            cargo_reason("    Blocking waiting for file lock\n"),
+            "Blocking waiting for file lock",
+            "a report with no error line falls back to its first line"
+        );
+        assert_eq!(
+            cargo_reason(""),
+            "cargo printed no reason",
+            "an empty report states that cargo printed nothing"
+        );
+    }
+
+    #[test]
+    fn a_long_cargo_reason_is_bounded() {
+        let long = format!("error: {}", "x".repeat(super::REASON_WIDTH));
+        let bounded = cargo_reason(&long);
+        assert!(bounded.ends_with(" ..."), "a cut reason ends with the mark");
+        assert_eq!(
+            bounded.chars().count(),
+            super::REASON_WIDTH + 4,
+            "the reason holds the width and the four marks of the cut"
         );
     }
 

@@ -377,14 +377,25 @@ impl ChunkSet {
 struct Collected {
     /// Every file the guard read as a chunk.
     chunks: ChunkSet,
-    /// The name of every file that opens a front-matter fence the parser
-    /// rejects.
+    /// The name of every file that states a chunk key in a front-matter fence
+    /// the parser rejects.
     malformed: Vec<String>,
 }
 
-/// True when the first line of one file opens a front-matter fence.
-fn opens_front_matter(text: &str) -> bool {
-    text.lines().next().is_some_and(|line| line.trim() == "---")
+/// True when the first line of one file opens a fence that states a chunk key.
+///
+/// A file that opens with a horizontal rule, and a file that carries front
+/// matter of its own such as `title:`, break no chunk rule. Only a file that
+/// states a key of the chunk contract is held to that contract.
+fn states_a_chunk_key(text: &str) -> bool {
+    let mut lines = text.lines();
+    if lines.next().is_none_or(|line| line.trim() != "---") {
+        return false;
+    }
+    lines
+        .take_while(|line| *line != "---")
+        .filter_map(|line| split_entry(line.trim_end()))
+        .any(|(key, _)| REQUIRED.contains(&key))
 }
 
 /// Read every chunk file of the plan directory.
@@ -413,7 +424,7 @@ fn collect_chunks(plan_dir: &Path) -> anyhow::Result<Result<Collected, String>> 
         let path = plan_dir.join(&name);
         let text =
             fs::read_to_string(&path).with_context(|| format!("cannot read {}", path.display()))?;
-        let fenced = opens_front_matter(&text);
+        let fenced = states_a_chunk_key(&text);
         let Some(front) = parse_front_matter(&text) else {
             if fenced {
                 collected.malformed.push(name);
