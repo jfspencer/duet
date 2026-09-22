@@ -6,13 +6,15 @@
 //! the source; the two mirrors are generated and must never be edited by hand.
 //! `--check` reports drift and exits 1 without writing.
 //!
-//! `cargo xtask check-conversions`, `cargo xtask check-manifests`, and
-//! `cargo xtask check-plan-graph <plan-dir>` are guards. Each one exits 0 when
-//! it finds nothing, 1 when it finds at least one breach, and 2 when it cannot
-//! decide.
+//! `cargo xtask check-conversions`, `cargo xtask check-manifests`,
+//! `cargo xtask check-plan-graph <plan-dir>`, and
+//! `cargo xtask check-closure <document> <review> <block>` are guards. Each one
+//! exits 0 when it finds nothing, 1 when it finds at least one breach, and 2
+//! when it cannot decide.
 
 #![forbid(unsafe_code)]
 
+mod check_closure;
 mod check_conversions;
 mod check_manifests;
 mod check_plan_graph;
@@ -47,6 +49,15 @@ enum Command {
     CheckManifests,
     /// Refuse a cast and a cast suppression outside the one conversion file.
     CheckConversions,
+    /// Refuse a closure block that its own review file does not support.
+    CheckClosure {
+        /// The architecture document to read.
+        document: PathBuf,
+        /// The review file the block closes.
+        review: PathBuf,
+        /// The closure block identifier.
+        block: String,
+    },
     /// Refuse a chunk file whose front-matter breaks a section 13 rule.
     CheckPlanGraph {
         /// The plan directory that holds the chunk files.
@@ -144,6 +155,11 @@ fn main() -> ExitCode {
             };
             check_conversions::run(&root)
         },
+        Command::CheckClosure {
+            document,
+            review,
+            block,
+        } => check_closure::run(&document, &review, &block),
         Command::CheckPlanGraph {
             plan_dir,
             write_manifest,
