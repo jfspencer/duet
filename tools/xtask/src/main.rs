@@ -88,6 +88,9 @@ enum Command {
         scratch: PathBuf,
         /// The repository root.
         repo: PathBuf,
+        /// Write the scratch workspace and skip every cargo command.
+        #[arg(long)]
+        generate_only: bool,
     },
     /// Refuse a declared type that the section 1.5 table does not place.
     CheckPlacement {
@@ -204,7 +207,8 @@ fn main() -> ExitCode {
             document,
             scratch,
             repo,
-        } => check_roster::run(&document, &scratch, &repo),
+            generate_only,
+        } => check_roster::run(&document, &scratch, &repo, generate_only),
         Command::CheckPlacement { document } => check_placement::run(&document),
         Command::CheckPlanGraph {
             plan_dir,

@@ -1,5 +1,5 @@
-//! Probes for the five `xtask` guards: `check-conversions`, `check-manifests`,
-//! `check-plan-graph`, `check-closure`, and `check-placement`.
+//! Probes for the six `xtask` guards: `check-conversions`, `check-manifests`,
+//! `check-plan-graph`, `check-closure`, `check-placement`, and `check-roster`.
 //!
 //! A probe plants one defect in a throwaway fixture, runs the guard over that
 //! fixture, and asserts the exit code and the line the guard prints. The guard
@@ -22,6 +22,17 @@
 //! directory that holds the throwaway document, so no key reaches the plan
 //! store of `roadmap/duet-v1`. A probe that mocked the store would prove the
 //! mock.
+//!
+//! `roster_generate_only_never_reaches_a_job` is the second exception, and the
+//! rule it holds is why. The rule reads "a gate never takes
+//! `--generate-only`", so its denominator is every file under
+//! `.github/workflows/` of this repository. The probe reads that directory and
+//! writes nothing. It is fail-closed on its own input: a directory that does
+//! not open, and a directory that holds no file, are each a failure.
+//! `roster_job_line_probe_refuses_a_planted_flag` is its committed positive
+//! control, so no reader plants a defect by hand to know that the probe can go
+//! red. Every other `roster_` probe reads a synthetic document in its own
+//! scratch directory.
 
 #[cfg(test)]
 mod tests {
@@ -4393,6 +4404,456 @@ declares the function"
 end of this row"
             ),
             "the guard names the message and the end it cannot find: {report}"
+        );
+    }
+
+    /// The line the skipped form of the roster guard prints.
+    ///
+    /// No full run prints it, so the two forms of the guard are never
+    /// confusable by exit code alone.
+    const ROSTER_SKIP_LINE: &str = "ROSTER COMPILE:   skipped (--generate-only)";
+
+    /// How many types the synthetic section 1.5 table places.
+    const ROSTER_TYPES: usize = 20;
+
+    /// How many impl blocks the synthetic roster document spells out.
+    ///
+    /// The `impl-sites` block states 66 rows against a floor of 65, so a probe
+    /// that removes one row keeps the block above its floor and reaches the
+    /// count rule instead of the fail-closed row count.
+    const ROSTER_IMPL_SITES: usize = 66;
+
+    /// The repository manifest the roster fixture gives the guard.
+    ///
+    /// The guard copies the `[workspace.lints]` table into the scratch
+    /// workspace, and it reads the table between the rust heading and the
+    /// profile banner, so the fixture carries both marks.
+    const ROSTER_REPO_MANIFEST: &str = "[workspace]
+members = []
+
+[workspace.lints.rust]
+unsafe_code = \"deny\"
+
+[workspace.lints.rustdoc]
+all = \"deny\"
+
+# ---------------------------------------------------------------------------
+# Profiles
+[profile.release]
+opt-level = 3
+";
+
+    /// A two-line workflow that gives `check-roster` the skip flag.
+    const PLANTED_JOB_LINE: &str =
+        "jobs:\n  - run: cargo xtask check-roster document scratch repo --generate-only\n";
+
+    /// The one defect one roster fixture plants.
+    #[derive(Debug, Clone, Copy)]
+    enum RosterDefect {
+        /// The document breaks no rule the skipped form measures.
+        Clean,
+        /// One declaration the section 1.5 table places is absent.
+        MissingDeclaration,
+        /// One impl block carries a body beside a bodiless signature.
+        MixedImplBlock,
+        /// The `impl-sites` block lists one site fewer than the document holds.
+        MissingImplSite,
+    }
+
+    /// One type name the synthetic section 1.5 table places.
+    fn roster_type(index: usize) -> String {
+        format!("Rst{index:02}")
+    }
+
+    /// The crate row the synthetic section 1.5 table gives one type.
+    fn roster_row(index: usize) -> &'static str {
+        if index.is_multiple_of(2) {
+            "probe-one"
+        } else {
+            "probe-two"
+        }
+    }
+
+    /// One registered table block, as the synthetic document writes it.
+    fn roster_table_block(heading: &str, id: &str, minimum: usize, rows: Vec<String>) -> String {
+        let mut out = vec![
+            format!("#### {heading}"),
+            String::new(),
+            format!("<!-- GUARD BLOCK id={id} rows>={minimum} -->"),
+        ];
+        out.extend(rows);
+        out.push(String::new());
+        out.join("\n")
+    }
+
+    /// One registered fenced block, as the synthetic document writes it.
+    fn roster_fenced_block(head: RosterHead<'_>, language: &str, lines: Vec<String>) -> String {
+        let mut out = vec![
+            format!("#### {}", head.heading),
+            String::new(),
+            format!("<!-- GUARD BLOCK id={} rows>={} -->", head.id, head.minimum),
+            format!("```{language}"),
+        ];
+        out.extend(lines);
+        out.push("```".to_owned());
+        out.push(String::new());
+        out.join("\n")
+    }
+
+    /// What one registered block of the roster fixture calls itself.
+    #[derive(Debug, Clone, Copy)]
+    struct RosterHead<'a> {
+        /// The `####` heading the guard register states.
+        heading: &'a str,
+        /// The block id the marker line states.
+        id: &'a str,
+        /// The row floor the marker line states.
+        minimum: usize,
+    }
+
+    /// Every row of the synthetic type ownership table.
+    fn roster_ownership() -> Vec<String> {
+        let rows = (0..ROSTER_TYPES)
+            .map(|index| {
+                md_row(&[
+                    &format!("`{}`", roster_row(index)),
+                    &format!("`{}`", roster_type(index)),
+                    "15.1",
+                ])
+            })
+            .collect();
+        md_table(&["Crate", "Types it declares", "Declared in"], rows)
+    }
+
+    /// Every line of the synthetic internal edge list.
+    fn roster_edges() -> Vec<String> {
+        let mut lines = vec!["probe-one -> probe-two".to_owned()];
+        lines.extend((1..18).map(|index| format!("probe-edge-{index:02} -> probe-two")));
+        lines
+    }
+
+    /// Every line of the synthetic external path list.
+    fn roster_paths() -> Vec<String> {
+        (0..70)
+            .map(|index| format!("Ext{index:02}        std::probe::Ext{index:02}"))
+            .collect()
+    }
+
+    /// Every line of the synthetic external pin list.
+    fn roster_pins() -> Vec<String> {
+        (0..13)
+            .map(|index| format!("probe-pin-{index:02}   1.0.0"))
+            .collect()
+    }
+
+    /// Every line of the synthetic workspace constant block.
+    fn roster_constants() -> Vec<String> {
+        (0..122)
+            .map(|index| format!("pub const PROBE_{index:03}: usize = 0;"))
+            .collect()
+    }
+
+    /// Every line of the synthetic substitution block.
+    ///
+    /// The guard refuses a digit after the head token of one line, so each
+    /// line states its rule in words alone.
+    fn roster_substitutions() -> Vec<String> {
+        (1..=8)
+            .map(|index| format!("S{index} probe-rule    the synthetic block states this rule"))
+            .collect()
+    }
+
+    /// Every line of the synthetic recorded size block.
+    fn roster_sizes() -> Vec<String> {
+        (0..51)
+            .map(|index| format!("Siz{index:02}      8   8  generic"))
+            .collect()
+    }
+
+    /// Every line of the synthetic Drop block.
+    fn roster_drops() -> Vec<String> {
+        (0..3).map(roster_type).collect()
+    }
+
+    /// Every line of the synthetic impl site block.
+    fn roster_impl_sites() -> Vec<String> {
+        (0..ROSTER_IMPL_SITES)
+            .map(|index| format!("{} inherent {index:02}", roster_type(index % ROSTER_TYPES)))
+            .collect()
+    }
+
+    /// The impl block the synthetic document spells out at one index.
+    fn roster_impl_block(index: usize) -> String {
+        format!(
+            "impl {} {{ fn probe_{index:02}(&self) -> usize; }}",
+            roster_type(index % ROSTER_TYPES)
+        )
+    }
+
+    /// The unregistered Rust block that spells every declaration and impl out.
+    fn roster_declarations() -> String {
+        let mut out = vec![
+            "#### The declarations the roster spells out".to_owned(),
+            String::new(),
+            "```rust".to_owned(),
+        ];
+        out.extend(
+            (0..ROSTER_TYPES)
+                .map(|index| format!("struct {} {{ probe: usize }}", roster_type(index))),
+        );
+        out.extend((0..ROSTER_IMPL_SITES).map(roster_impl_block));
+        out.push("```".to_owned());
+        out.push(String::new());
+        out.join("\n")
+    }
+
+    /// The whole synthetic document, with the one defect the caller states.
+    fn roster_document(defect: RosterDefect) -> String {
+        let parts = vec![
+            "# The synthetic roster document\n".to_owned(),
+            roster_table_block(
+                "The type ownership table",
+                "ownership-table",
+                16,
+                roster_ownership(),
+            ),
+            roster_fenced_block(
+                RosterHead {
+                    heading: "The internal edge list",
+                    id: "edge-list",
+                    minimum: 18,
+                },
+                "text",
+                roster_edges(),
+            ),
+            roster_fenced_block(
+                RosterHead {
+                    heading: "Where every external name comes from",
+                    id: "external-paths",
+                    minimum: 70,
+                },
+                "text",
+                roster_paths(),
+            ),
+            roster_fenced_block(
+                RosterHead {
+                    heading: "The external crate pins the roster compile uses",
+                    id: "pins",
+                    minimum: 13,
+                },
+                "text",
+                roster_pins(),
+            ),
+            roster_fenced_block(
+                RosterHead {
+                    heading: "Every workspace constant",
+                    id: "constants",
+                    minimum: 122,
+                },
+                "rust",
+                roster_constants(),
+            ),
+            roster_fenced_block(
+                RosterHead {
+                    heading: "Every substitution the roster compile applies",
+                    id: "substitutions",
+                    minimum: 8,
+                },
+                "text",
+                roster_substitutions(),
+            ),
+            roster_fenced_block(
+                RosterHead {
+                    heading: "Every size the guard records",
+                    id: "recorded-sizes",
+                    minimum: 51,
+                },
+                "text",
+                roster_sizes(),
+            ),
+            roster_fenced_block(
+                RosterHead {
+                    heading: "Every declaration with a hand-written Drop impl",
+                    id: "drop-impls",
+                    minimum: 3,
+                },
+                "text",
+                roster_drops(),
+            ),
+            roster_fenced_block(
+                RosterHead {
+                    heading: "Every impl block the roster compiles",
+                    id: "impl-sites",
+                    minimum: 65,
+                },
+                "text",
+                roster_impl_sites(),
+            ),
+            roster_declarations(),
+        ];
+        roster_plant(&parts.join("\n"), defect)
+    }
+
+    /// The synthetic document with one defect planted in it.
+    fn roster_plant(text: &str, defect: RosterDefect) -> String {
+        match defect {
+            RosterDefect::Clean => text.to_owned(),
+            RosterDefect::MissingDeclaration => plant(
+                text,
+                &format!(
+                    "struct {} {{ probe: usize }}\n",
+                    roster_type(ROSTER_TYPES - 1)
+                ),
+                "",
+            ),
+            RosterDefect::MixedImplBlock => plant(
+                text,
+                &roster_impl_block(0),
+                "impl Rst00 { fn probe_00(&self) -> usize; fn probe_mixed(&self) -> usize { 0 } }",
+            ),
+            RosterDefect::MissingImplSite => {
+                let last = ROSTER_IMPL_SITES - 1;
+                plant(
+                    text,
+                    &format!("{} inherent {last:02}\n", roster_type(last % ROSTER_TYPES)),
+                    "",
+                )
+            },
+        }
+    }
+
+    /// Run the roster guard over one synthetic document, and clean up.
+    ///
+    /// The fixture holds its own repository root and its own scratch
+    /// directory, and the scratch sits beside the repository and never under
+    /// it, because the guard refuses a scratch path inside the repository.
+    fn roster_generate_only(label: &str, defect: RosterDefect) -> (i32, String) {
+        let root = scratch(label);
+        let document = root.join("architecture.md");
+        write_bytes(&document, roster_document(defect).as_bytes());
+        write_bytes(
+            &root.join("repo").join("Cargo.toml"),
+            ROSTER_REPO_MANIFEST.as_bytes(),
+        );
+        let report = xtask(
+            &root,
+            &[
+                "check-roster",
+                &document.display().to_string(),
+                &root.join("work").display().to_string(),
+                &root.join("repo").display().to_string(),
+                "--generate-only",
+            ],
+        );
+        clean(&root);
+        report
+    }
+
+    /// Whether no line of one workflow gives `check-roster` the skip flag.
+    ///
+    /// The helper reads one LINE at a time, and that is its own limit. A
+    /// folded YAML scalar, a shell variable that holds the flag, and an `env:`
+    /// entry each defeat it, and review holds those three.
+    fn roster_job_line_is_clean(workflow: &str) -> bool {
+        !workflow
+            .lines()
+            .any(|line| line.contains("check-roster") && line.contains("--generate-only"))
+    }
+
+    /// The workflow directory of this repository.
+    fn workflow_directory() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(2)
+            .expect("the crate manifest sits two levels under the repository root")
+            .join(".github")
+            .join("workflows")
+    }
+
+    #[test]
+    fn roster_generate_only_clean_document_exits_zero() {
+        let (code, report) = roster_generate_only("roster-clean", RosterDefect::Clean);
+        assert_eq!(
+            code, 0,
+            "a synthetic document that breaks no rule exits 0: {report}"
+        );
+        assert!(
+            report.contains(ROSTER_SKIP_LINE),
+            "the skipped form prints the line that names itself: {report}"
+        );
+    }
+
+    #[test]
+    fn roster_generate_only_roster_below_the_denominator_is_a_finding() {
+        let (code, report) = roster_generate_only("roster-floor", RosterDefect::MissingDeclaration);
+        assert_eq!(
+            code, 1,
+            "a roster below the section 1.5 floor is a finding: {report}"
+        );
+        assert!(
+            report
+                .lines()
+                .any(|line| line.starts_with("FINDING: the roster holds")),
+            "the guard names the first name with no declaration: {report}"
+        );
+    }
+
+    #[test]
+    fn roster_generate_only_mixed_impl_block_is_a_finding() {
+        let (code, report) = roster_generate_only("roster-mixed", RosterDefect::MixedImplBlock);
+        assert_eq!(code, 1, "a mixed impl block is a finding: {report}");
+        assert!(
+            report
+                .lines()
+                .any(|line| line.starts_with("FINDING: the impl block for")),
+            "the guard names the declaration the mixed block is for: {report}"
+        );
+    }
+
+    #[test]
+    fn roster_generate_only_impl_count_that_differs_is_a_finding() {
+        let (code, report) = roster_generate_only("roster-impls", RosterDefect::MissingImplSite);
+        assert_eq!(
+            code, 1,
+            "an impl count that differs from the block is a finding: {report}"
+        );
+        assert!(
+            report
+                .lines()
+                .any(|line| line.starts_with("FINDING: the roster parsed")),
+            "the guard names both counts and the difference: {report}"
+        );
+    }
+
+    #[test]
+    fn roster_generate_only_never_reaches_a_job() {
+        let directory = workflow_directory();
+        let entries = fs::read_dir(&directory).expect("the workflow directory opens");
+        let mut files = 0_usize;
+        for entry in entries {
+            let path = entry.expect("one entry of the workflow directory").path();
+            if !path.is_file() {
+                continue;
+            }
+            let text = fs::read_to_string(&path).expect("one workflow file");
+            assert!(
+                roster_job_line_is_clean(&text),
+                "no job gives check-roster the skip flag: {}",
+                path.display()
+            );
+            files += 1;
+        }
+        assert!(
+            files > 0,
+            "the workflow directory holds at least one file, so the probe has a denominator"
+        );
+    }
+
+    #[test]
+    fn roster_job_line_probe_refuses_a_planted_flag() {
+        assert!(
+            !roster_job_line_is_clean(PLANTED_JOB_LINE),
+            "a planted skip flag makes the job-line helper return false"
         );
     }
 }
