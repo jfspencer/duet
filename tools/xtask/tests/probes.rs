@@ -867,6 +867,216 @@ path = "other/lib.rs"
         );
     }
 
+    /// The `b1-convert` cell of the `CG9` green control.
+    ///
+    /// The cell carries a quotation mark and the markdown escape `\|`, so the
+    /// control proves that the guard reads the cell a reader sees.
+    const CONTROL_CELL: &str = "\"a \"quoted\" word and a \\| bar\"";
+
+    /// The exempt-file source whose reason text matches [`CONTROL_CELL`].
+    ///
+    /// The literal carries a `\"` escape and breaks across two lines with a
+    /// backslash continuation, so the control proves that the guard decodes
+    /// the literal and never compares its raw source token.
+    const CONTROL_CONVERT: &str = "//! A probe member.
+#[expect(
+    clippy::as_conversions,
+    reason = \"a \\\"quoted\\\" word and a | \\
+        bar\"
+)]
+pub fn alpha(value: u64) -> u64 { value }
+";
+
+    /// A synthetic appendix whose `b1-convert` block states the given rows.
+    ///
+    /// Each pair is a site and the whole cell three of its row, quotation
+    /// marks included, so a probe states the cell exactly as an author writes
+    /// it in the markdown table.
+    fn b1_appendix(rows: &[(&str, &str)]) -> String {
+        use std::fmt::Write as _;
+
+        let mut out = String::from(
+            "# A probe appendix\n\n#### Conversion suppressions\n\n\
+             <!-- GUARD BLOCK id=b1-convert rows>=1 -->\n\
+             | Site | Lints the attribute names | Reason text that the code must carry |\n\
+             |---|---|---|\n",
+        );
+        for (site, cell) in rows {
+            let _written = writeln!(out, "| `{site}` | `as_conversions` | {cell} |");
+        }
+        out.push('\n');
+        out
+    }
+
+    /// An exempt-file source that declares one `fn` per given pair.
+    ///
+    /// Each pair is a function name and the reason text its `#[expect]`
+    /// carries, stated as the source spells it between the quotation marks.
+    fn convert_source(sites: &[(&str, &str)]) -> String {
+        use std::fmt::Write as _;
+
+        let mut out = String::from("//! A probe member.\n");
+        for (name, text) in sites {
+            let _written = writeln!(
+                out,
+                "#[expect(\n    clippy::as_conversions,\n    reason = \"{text}\"\n)]\n\
+                 pub fn {name}(value: u64) -> u64 {{ value }}\n"
+            );
+        }
+        out
+    }
+
+    /// The one member every `CG9` probe builds: the exempt file and its crate.
+    fn exempt_member(convert: &str) -> Member {
+        Member::lib(
+            "crates/duet-time",
+            "duet-time",
+            &[("src/lib.rs", CLEAN_LIB), ("src/convert.rs", convert)],
+        )
+    }
+
+    /// Build one `CG9` fixture, run the guard inside it, and clean up.
+    ///
+    /// The appendix path is absolute and names a document under the scratch
+    /// root, so no probe of this group reads this repository. A `None`
+    /// appendix writes no document, which leaves the named path absent.
+    fn conversions_with_appendix(
+        label: &str,
+        convert: &str,
+        appendix: Option<&str>,
+    ) -> (i32, String) {
+        let root = workspace(
+            label,
+            &root_manifest(&["crates/*"], &[]),
+            &[exempt_member(convert)],
+        );
+        let document = root.join("roadmap").join("duet-v1").join("architecture.md");
+        if let Some(text) = appendix {
+            write_bytes(&document, text.as_bytes());
+        }
+        let named = document.display().to_string();
+        let report = xtask(&root, &["check-conversions", "--appendix", &named]);
+        clean(&root);
+        report
+    }
+
+    #[test]
+    fn conversions_reason_text_that_differs_is_a_finding() {
+        let (code, report) = conversions_with_appendix(
+            "cg9-differs",
+            &convert_source(&[("alpha", "the divisor is 2^23")]),
+            Some(&b1_appendix(&[("alpha", "\"the divisor is 2^24\"")])),
+        );
+        assert_eq!(code, 1, "a reason text that differs is a finding: {report}");
+        assert_eq!(
+            count_lines(&report, "  REASON TEXT: "),
+            1,
+            "one line names the one divergence: {report}"
+        );
+        assert!(
+            report.contains("REASON TEXTS:    1     REASON TEXT BAD: 1"),
+            "the counter states the denominator and the failures: {report}"
+        );
+        assert!(
+            report.contains("  REASON TEXT: alpha:"),
+            "the line names the site: {report}"
+        );
+    }
+
+    #[test]
+    fn conversions_reason_row_with_no_site_is_a_finding() {
+        let (code, report) = conversions_with_appendix(
+            "cg9-row-no-site",
+            &convert_source(&[("alpha", "the divisor is 2^23")]),
+            Some(&b1_appendix(&[
+                ("alpha", "\"the divisor is 2^23\""),
+                ("ghost", "\"a site no file declares\""),
+            ])),
+        );
+        assert_eq!(code, 1, "a row with no site is a finding: {report}");
+        assert_eq!(
+            count_lines(&report, "  REASON TEXT: "),
+            1,
+            "one line names the one row: {report}"
+        );
+        assert!(
+            report.contains("REASON TEXTS:    2     REASON TEXT BAD: 1"),
+            "the counter states both sites and the one failure: {report}"
+        );
+        assert!(
+            report.contains("  REASON TEXT: ghost:"),
+            "the line names the row site: {report}"
+        );
+    }
+
+    #[test]
+    fn conversions_reason_site_with_no_row_is_a_finding() {
+        let (code, report) = conversions_with_appendix(
+            "cg9-site-no-row",
+            &convert_source(&[
+                ("alpha", "the divisor is 2^23"),
+                ("extra", "a reason no row names"),
+            ]),
+            Some(&b1_appendix(&[("alpha", "\"the divisor is 2^23\"")])),
+        );
+        assert_eq!(code, 1, "a site with no row is a finding: {report}");
+        assert_eq!(
+            count_lines(&report, "  REASON TEXT: "),
+            1,
+            "one line names the one site: {report}"
+        );
+        assert!(
+            report.contains("REASON TEXTS:    2     REASON TEXT BAD: 1"),
+            "the counter states both sites and the one failure: {report}"
+        );
+        assert!(
+            report.contains("  REASON TEXT: extra:"),
+            "the line names the code site: {report}"
+        );
+    }
+
+    #[test]
+    fn conversions_appendix_that_does_not_open_fails_closed() {
+        let (code, report) = conversions_with_appendix(
+            "cg9-absent",
+            &convert_source(&[("alpha", "the divisor is 2^23")]),
+            None,
+        );
+        assert_eq!(code, 2, "an absent appendix fails closed: {report}");
+        assert!(
+            report.contains("the appendix does not open; the guard is fail-closed."),
+            "the named line states the fail-closed reason: {report}"
+        );
+        assert!(
+            report.contains("architecture.md"),
+            "the named line names the document: {report}"
+        );
+        assert_eq!(
+            count_lines(&report, "REASON TEXT BAD: "),
+            0,
+            "a fail-closed run prints no counter: {report}"
+        );
+    }
+
+    #[test]
+    fn conversions_reason_text_that_matches_is_clean() {
+        let (code, report) = conversions_with_appendix(
+            "cg9-matches",
+            CONTROL_CONVERT,
+            Some(&b1_appendix(&[("alpha", CONTROL_CELL)])),
+        );
+        assert_eq!(code, 0, "a matching pair is clean: {report}");
+        assert!(
+            report.contains("REASON TEXTS:    1     REASON TEXT BAD: 0"),
+            "the counter states one text and no failure: {report}"
+        );
+        assert_eq!(
+            count_lines(&report, "  REASON TEXT: "),
+            0,
+            "a clean run names no site: {report}"
+        );
+    }
+
     #[test]
     fn manifests_clean_workspace_exits_zero() {
         let (code, report) = manifests(
