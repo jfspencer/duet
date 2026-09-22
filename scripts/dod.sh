@@ -9,8 +9,8 @@
 #   scripts/dod.sh --plan   print the gate list and exit 0 (read-only dry run)
 #
 # Required tools: rustup (rust-toolchain.toml pins the channel), cargo-deny,
-# cargo-machete. Optional: cargo-nextest (preferred test runner), typos,
-# shellcheck. `scripts/bootstrap.sh` installs the required set.
+# and cargo-machete. Optional tools: cargo-nextest (the preferred test
+# runner), typos, and shellcheck. `scripts/bootstrap.sh` installs the set.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
