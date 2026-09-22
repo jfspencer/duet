@@ -2352,7 +2352,7 @@ path = "other/lib.rs"
                 "exit 1",
             ]),
         ];
-        while rows.len() < 64 {
+        while rows.len() < 65 {
             rows.push(md_row(&["-", "a filler row", "-", "synthetic", "exit 0"]));
         }
         md_table(
@@ -3400,7 +3400,7 @@ suppressions, four `missing_copy_implementations` expectations, and three \
             "the placement rules find nothing: {report}"
         );
         assert!(
-            report.contains("MEMBER ROWS: 1362     MEMBER BAD: 0"),
+            report.contains("MEMBER ROWS: 1363     MEMBER BAD: 0"),
             "every row of every block names a referent: {report}"
         );
         assert!(

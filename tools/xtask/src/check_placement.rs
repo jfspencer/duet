@@ -1779,7 +1779,7 @@ const DATA_BLOCKS: &[BlockSpec] = &[
         "probe-table",
         "Every rule, its probe, and the recorded result",
         BlockKind::Table,
-        64,
+        65,
     ),
     block(
         "external-verdicts",
