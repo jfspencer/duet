@@ -3410,19 +3410,20 @@ pub struct Tempo { beats_per_minute: Ratio, beat_unit: NoteValue, ramped: bool }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Meter { beats_per_bar: NonZeroU8, beat_unit: NoteValue }
 
-/// One tempo entry. It carries its own position in all three views, so a
-/// lookup never calls back into the map.
+/// One tempo entry. It carries its own position in the two views the beat
+/// and audio queries read, so a lookup never calls back into the map.
 ///
 /// It derives serde, because `score/meta.json` holds the tempo map
 /// (section 3.6). It carries no `extra` bag: `duet-time` has no `serde_json`
 /// edge, and an unknown field on a tempo entry would be a tempo this build
 /// cannot honour, so the reader refuses it (critic W8).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TempoPoint { ticks: Ticks, clock: SuperClock, bbt: Bbt, tempo: Tempo }
+pub struct TempoPoint { ticks: Ticks, clock: SuperClock, tempo: Tempo }
 
-/// One meter entry, with the same three views and the same serde rule.
+/// One meter entry, with the two views the bar queries read and the same
+/// serde rule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MeterPoint { ticks: Ticks, clock: SuperClock, bbt: Bbt, meter: Meter }
+pub struct MeterPoint { ticks: Ticks, bbt: Bbt, meter: Meter }
 
 /// A sorted tempo and meter map.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -3440,8 +3441,22 @@ impl TempoMap {
 }
 ```
 
-Each point holds its own tick, clock, and bar address. A point never asks the map to convert its own
-position. That breaks the circular dependency at the base of the design (Ardour 1).
+Each point holds its own address in the axis its own queries read. A point never asks the map to
+convert its own position. That breaks the circular dependency at the base of the design (Ardour 1).
+
+**An entry carries TWO views and not three, and chunk T1 is the site that says why.** Revision 23
+gave each entry a tick, a clock, and a bar address. A tempo entry's bar address and a meter entry's
+clock are read by NO query: `superclock_at` and `ticks_at` read a tempo entry's tick and clock, and
+`bbt_at` and `ticks_at_bbt` read a meter entry's tick and address. Neither of the two unread views
+can be checked without the OTHER list, so the gate of section 2.9 could not hold them, and the
+strict-rise rule made the TRUE tempo address ILLEGAL whenever the meter list was empty: the gate
+refused the honest map and accepted the false one. The Engineering Critic proved both halves on the
+chunk's own fixtures. A redundant cached value that no gate checks is a second source of truth, and
+`TempoMap::tempos` and `TempoMap::meters` publish it to fifteen consumer crates that cannot repair
+it, because no later chunk writes `duet-time`. The ADR-0001 decision 7 reason is untouched: each
+query still reads the entry's own cached view for its own axis, so no lookup calls back into the
+map. The two removed views never broke that cycle; they created a second, cross-list cycle
+(chunk T1, 2026-09-22).
 
 ### 2.10 Conversion takes the map as an argument
 
@@ -11971,11 +11986,19 @@ compile. Revision 11 gave the relaxation a reason the compiler contradicts (crit
 
 ```rust
 /// A gain in decibels. Every stored gain on a region and on a strip is one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// It derives the order, because `Finite` carries a total order through
+/// `f64::total_cmp` and a caller that sorts a gain list can reach it no
+/// other way: no later chunk writes `duet-time` (chunk T1, 2026-09-22).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct GainDb(Finite);
 
 /// A 24-bit signed sample, held in the low three bytes of an `i32`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
+///
+/// It derives `Ord` beside the `PartialOrd` revision 23 declared. The inner
+/// value is an `i32`, so the two agree by construction, and a sample list
+/// that a caller sorts can reach the order no other way (chunk T1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct I24(i32);
 
 /// A checked builder for a tempo map. It validates the sort order and the

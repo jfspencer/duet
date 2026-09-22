@@ -122,13 +122,18 @@ impl SchemaVersion {
 }
 
 /// A gain in decibels. Every stored gain on a region and on a strip is one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct GainDb(Finite);
 
 /// A 24-bit signed sample, held in the low three bytes of an `i32`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct I24(i32);
 ```
+
+`GainDb` and `I24` each derive the order. Architecture section 15.1 states the reason: a caller that
+sorts a gain list or a sample list can reach the order no other way, because no later chunk writes
+`duet-time`. `Finite` carries a total order through `f64::total_cmp`, and the inner value of `I24`
+is an `i32`, so each derive agrees with the type below it (chunk T1, 2026-09-22).
 
 The constants below are the `duet-time` block of section 1.6. They live in `units.rs`.
 
@@ -395,14 +400,15 @@ pub struct Tempo { beats_per_minute: Ratio, beat_unit: NoteValue, ramped: bool }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Meter { beats_per_bar: NonZeroU8, beat_unit: NoteValue }
 
-/// One tempo entry. It carries its own position in all three views, so a
-/// lookup never calls back into the map.
+/// One tempo entry. It carries its own position in the two views the beat
+/// and audio queries read, so a lookup never calls back into the map.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TempoPoint { ticks: Ticks, clock: SuperClock, bbt: Bbt, tempo: Tempo }
+pub struct TempoPoint { ticks: Ticks, clock: SuperClock, tempo: Tempo }
 
-/// One meter entry, with the same three views and the same serde rule.
+/// One meter entry, with the two views the bar queries read and the same
+/// serde rule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MeterPoint { ticks: Ticks, clock: SuperClock, bbt: Bbt, meter: Meter }
+pub struct MeterPoint { ticks: Ticks, bbt: Bbt, meter: Meter }
 
 /// A sorted tempo and meter map.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
