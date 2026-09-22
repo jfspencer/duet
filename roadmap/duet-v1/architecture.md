@@ -11986,19 +11986,11 @@ compile. Revision 11 gave the relaxation a reason the compiler contradicts (crit
 
 ```rust
 /// A gain in decibels. Every stored gain on a region and on a strip is one.
-///
-/// It derives the order, because `Finite` carries a total order through
-/// `f64::total_cmp` and a caller that sorts a gain list can reach it no
-/// other way: no later chunk writes `duet-time` (chunk T1, 2026-09-22).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GainDb(Finite);
 
 /// A 24-bit signed sample, held in the low three bytes of an `i32`.
-///
-/// It derives `Ord` beside the `PartialOrd` revision 23 declared. The inner
-/// value is an `i32`, so the two agree by construction, and a sample list
-/// that a caller sorts can reach the order no other way (chunk T1).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
 pub struct I24(i32);
 
 /// A checked builder for a tempo map. It validates the sort order and the

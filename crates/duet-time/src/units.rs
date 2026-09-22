@@ -344,9 +344,9 @@ impl SchemaVersion {
 
 /// A gain in decibels. Every stored gain on a region and on a strip is one.
 ///
-/// It derives `Ord`, because a caller sorts a strip list by gain. `Finite`
-/// carries a total order, so the derive adds no rule of its own.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+/// It derives no order. Rule VR1 of architecture section 3.5 gives a type the
+/// derives its own use needs, and no declared use sorts a gain.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GainDb(Finite);
 
 impl GainDb {
@@ -370,9 +370,10 @@ impl GainDb {
 /// derived `Deserialize` would write the inner field directly, and the
 /// suppression reason on `convert::i24_to_f32` reads the range as a fact.
 ///
-/// It derives `Ord`, because a caller sorts samples. The order is the order of
-/// the inner `i32`, which is the order of the sample values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+/// It derives `PartialOrd` and no `Ord`, which is the pair architecture
+/// section 15.1 declares. Rule VR1 of section 3.5 gives a type the derives its
+/// own use needs, and no declared use sorts a sample.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
 #[serde(try_from = "i32")]
 pub struct I24(i32);
 

@@ -1791,29 +1791,12 @@ mod tests {
     }
 
     #[test]
-    fn gain_and_sample_carry_a_total_order() {
-        let mut gains = [
-            GainDb::new(Finite::new(0.0).expect("the gain is finite")),
-            GainDb::new(Finite::new(-6.0).expect("the gain is finite")),
-            GainDb::new(Finite::new(3.5).expect("the gain is finite")),
-        ];
-        gains.sort_unstable();
-        assert_eq!(
-            gains.first().map(|gain| gain.get().get().to_bits()),
-            Some((-6.0_f64).to_bits()),
-            "the sort puts the quietest gain first"
-        );
-        assert_eq!(
-            gains.last().map(|gain| gain.get().get().to_bits()),
-            Some(3.5_f64.to_bits()),
-            "the sort puts the loudest gain last"
-        );
+    fn sample_compares_with_the_declared_partial_order() {
         let zero = I24::new(0).expect("zero is a 24-bit sample");
-        let mut samples = [I24::MAX, I24::MIN, zero];
-        samples.sort_unstable();
-        assert_eq!(
-            samples,
-            [I24::MIN, zero, I24::MAX],
+        assert!(I24::MIN < zero, "the lowest 24-bit sample is below zero");
+        assert!(zero < I24::MAX, "zero is below the highest 24-bit sample");
+        assert!(
+            I24::MIN < I24::MAX,
             "the sample order is the order of the sample values"
         );
     }

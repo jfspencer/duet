@@ -122,18 +122,22 @@ impl SchemaVersion {
 }
 
 /// A gain in decibels. Every stored gain on a region and on a strip is one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GainDb(Finite);
 
 /// A 24-bit signed sample, held in the low three bytes of an `i32`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
 pub struct I24(i32);
 ```
 
-`GainDb` and `I24` each derive the order. Architecture section 15.1 states the reason: a caller that
-sorts a gain list or a sample list can reach the order no other way, because no later chunk writes
-`duet-time`. `Finite` carries a total order through `f64::total_cmp`, and the inner value of `I24`
-is an `i32`, so each derive agrees with the type below it (chunk T1, 2026-09-22).
+`GainDb` and `I24` each derive NO `Ord`, and the plan-guard rule VR1 is the reason. Architecture
+section 3.5 gives a type the derives its own use needs, and the VR1 table is the one list of those
+uses. The chunk added the two derives on the reading that a consumer might sort a gain list or a
+sample list, and `cargo xtask check-placement` refused both: `duet-time::GainDb derives Ord with no
+VR1 row`. No declared use sorts either type. A VR1 row written to pass the guard would state a use
+that does not exist, which is the same act as a lint relaxed to pass the gate. The derive returns
+when a real consumer names the use, and the Architect adds the VR1 row in the same changeset
+(chunk T1, 2026-09-22).
 
 The constants below are the `duet-time` block of section 1.6. They live in `units.rs`.
 
