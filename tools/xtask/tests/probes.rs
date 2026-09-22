@@ -1,5 +1,5 @@
-//! Probes for the three `xtask` guards: `check-conversions`, `check-manifests`,
-//! and `check-plan-graph`.
+//! Probes for the four `xtask` guards: `check-conversions`, `check-manifests`,
+//! `check-plan-graph`, and `check-closure`.
 //!
 //! A probe plants one defect in a throwaway fixture, runs the guard over that
 //! fixture, and asserts the exit code and the line the guard prints. The guard
@@ -10,6 +10,18 @@
 //! Every guard item is `pub(crate)` inside a binary target, so a probe reaches
 //! the guard the way an operator does: it spawns the binary. No probe reads
 //! this repository, and no probe writes outside its own scratch directory.
+//!
+//! The `closure_` group is the one exception to the second half of that
+//! sentence, and the guard makes it one. `CL1c` reads a stored copy of the
+//! review back from the plan store through `.claude/plan-coordination/db.sh`,
+//! and `check-closure` resolves that launcher from the repository root its own
+//! crate compiled in, so a probe of `CL1c` runs the launcher of this
+//! repository. Both halves that matter stay throwaway: `PLAN_DB_ROOT` names
+//! the probe's own scratch directory, so the store environment is created and
+//! removed with the fixture, and the plan name comes from the scratch
+//! directory that holds the throwaway document, so no key reaches the plan
+//! store of `roadmap/duet-v1`. A probe that mocked the store would prove the
+//! mock.
 
 #[cfg(test)]
 mod tests {
@@ -1052,6 +1064,557 @@ path = "other/lib.rs"
         assert!(
             report.contains("FAIL: cannot open"),
             "the guard states that it cannot open the plan: {report}"
+        );
+    }
+
+    /// The throwaway review every closure probe writes, byte for byte.
+    ///
+    /// The id generator reads the headings alone, so the file needs no body.
+    /// The three digests below are the md5 of exactly these bytes, so a change
+    /// of one character here turns every closure probe red.
+    const CLOSURE_REVIEW: &str = "# Engineering Critic, specification review, revision 99
+
+**Counts: 2 Criticals, 1 Warnings, 1 Concerns.**
+
+## CRITICAL 1. A probe
+
+## CRITICAL 2. A probe
+
+## WARNING 1. A probe
+
+## CONCERN 1. A probe
+";
+
+    /// The md5 of the review file, which the block records (`CL5`).
+    const CLOSURE_FILE_DIGEST: &str = "8bf1ef7216b17e25853e7b0bcf327869";
+
+    /// The md5 of the review with its trailing newlines removed (`CL1c`).
+    const CLOSURE_CONTENT_DIGEST: &str = "4b78ae2b0f7a7556e28f8d92c7dedf88";
+
+    /// The md5 of the doctored copy with its trailing newlines removed.
+    const CLOSURE_DOCTORED_DIGEST: &str = "da764fb9652cb2803ab6197619ca7238";
+
+    /// The count sentence the throwaway review generates (`CL3`).
+    const CLOSURE_SENTENCE: &str = "It returned 2 Criticals, 1 Warnings, and 1 Concerns, and this block holds one row for each of the 4.";
+
+    /// The registered block every closure probe runs.
+    const CLOSURE_BLOCK: &str = "closure-r16";
+
+    /// The plan name the guard derives from the throwaway document.
+    ///
+    /// The guard reads the directory that holds the document, which every
+    /// fixture names `plan`.
+    const CLOSURE_PLAN: &str = "roadmap/plan";
+
+    /// A plan-store key that carries the suffix of another review (`CL1c`).
+    const CLOSURE_OTHER_KEY: &str = "36304kihouge4-review-r21-inner";
+
+    /// The repository the closure guard resolves at compile time.
+    ///
+    /// The guard reads `.claude/plan-coordination/db.sh` of the repository two
+    /// levels above its own crate, so a probe of `CL1c` resolves the same
+    /// launcher the same way.
+    fn guard_repo() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(2)
+            .expect("the repository root sits two levels above this crate")
+            .to_path_buf()
+    }
+
+    /// A run token no other closure probe shares.
+    ///
+    /// The token opens with a letter after the revision number, because the id
+    /// generator reads a digit run there as a longer revision.
+    fn run_token() -> String {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock after epoch")
+            .as_nanos();
+        format!("r99z{}z{nanos}", std::process::id())
+    }
+
+    /// Append one value to the throwaway store and return the key it minted.
+    fn store_append(root: &Path, suffix: &str, value: &str) -> String {
+        let launcher = guard_repo()
+            .join(".claude")
+            .join("plan-coordination")
+            .join("db.sh");
+        let output = Command::new("bash")
+            .arg(&launcher)
+            .args(["append", CLOSURE_PLAN, suffix, value])
+            .current_dir(guard_repo())
+            .env("PLAN_DB_ROOT", root.join("store"))
+            .output()
+            .expect("spawn the plan-store launcher");
+        assert!(
+            output.status.success(),
+            "the throwaway store takes the review: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout)
+            .expect("utf-8 key")
+            .trim()
+            .to_owned()
+    }
+
+    /// Run the `xtask` binary against one throwaway store.
+    fn xtask_with_store(root: &Path, args: &[&str]) -> (i32, String) {
+        let output = Command::new(env!("CARGO_BIN_EXE_xtask"))
+            .args(args)
+            .current_dir(root)
+            .env("PLAN_DB_ROOT", root.join("store"))
+            .output()
+            .expect("spawn xtask");
+        let stdout = String::from_utf8(output.stdout).expect("utf-8 stdout");
+        (output.status.code().unwrap_or(-1), stdout)
+    }
+
+    /// The one sentence that binds the block to the review file (`CL5`).
+    fn digest_sentence() -> String {
+        format!(
+            "The review file this block records has md5 `{CLOSURE_FILE_DIGEST}` ({CLOSURE_BLOCK})."
+        )
+    }
+
+    /// The whole throwaway closure section, which records the minted key.
+    fn closure_block(key: &str) -> String {
+        format!(
+            "### 1.9 A probe section\n\n\
+             #### The revision-16 review, over the frozen document\n\n\
+             {CLOSURE_SENTENCE}\n\n\
+             {}\n\
+             The review file this block records is stored at plan-store key `{key}` ({CLOSURE_BLOCK}).\n\n\
+             <!-- GUARD BLOCK id={CLOSURE_BLOCK} rows>=4 -->\n\
+             | Id | Finding | State | Section and mechanism |\n\
+             |---|---|---|---|\n\
+             | C99-1 | A probe | **CLOSED** | 1.9 |\n\
+             | C99-2 | A probe | **CLOSED** | 1.9 |\n\
+             | C99-W1 | A probe | **CLOSED** | 1.9 |\n\
+             | N99-1 | A probe | **CLOSED** | 1.9 |\n",
+            digest_sentence()
+        )
+    }
+
+    /// One throwaway closure fixture: its own store, document, and review.
+    #[derive(Debug)]
+    struct Closure {
+        /// The scratch root this fixture owns.
+        root: PathBuf,
+        /// The token the review file name and the store suffix carry.
+        token: String,
+        /// The plan-store key the store minted for the review.
+        key: String,
+    }
+
+    impl Closure {
+        /// Write the review, append it to a throwaway store, and mint its key.
+        fn new(label: &str) -> Self {
+            let root = scratch(label);
+            let token = run_token();
+            let review = root.join("review").join(format!("critic-spec-{token}.md"));
+            write_bytes(&review, CLOSURE_REVIEW.as_bytes());
+            let key = store_append(&root, &format!("review-{token}"), CLOSURE_REVIEW);
+            Self { root, token, key }
+        }
+
+        /// The review file this fixture wrote.
+        fn review(&self) -> PathBuf {
+            self.root
+                .join("review")
+                .join(format!("critic-spec-{}.md", self.token))
+        }
+
+        /// The plan-store suffix the review file name decides.
+        fn suffix(&self) -> String {
+            format!("review-{}", self.token)
+        }
+
+        /// The baseline closure section, which records the minted key.
+        fn block(&self) -> String {
+            closure_block(&self.key)
+        }
+
+        /// Append one more copy of the review under this fixture's suffix.
+        fn append(&self, value: &str) -> String {
+            store_append(&self.root, &self.suffix(), value)
+        }
+
+        /// Run the guard over one document text and this fixture's review.
+        fn guard(&self, document: &str) -> (i32, String) {
+            self.guard_with(document, &self.review(), CLOSURE_BLOCK)
+        }
+
+        /// Run the guard over one document text, review path, and block id.
+        fn guard_with(&self, document: &str, review: &Path, block: &str) -> (i32, String) {
+            let path = self.root.join("plan").join("architecture.md");
+            write_bytes(&path, document.as_bytes());
+            let named = path.display().to_string();
+            let read = review.display().to_string();
+            xtask_with_store(
+                &self.root,
+                &["check-closure", named.as_str(), read.as_str(), block],
+            )
+        }
+    }
+
+    /// Plant one document shape over a fresh fixture, run it, and clean up.
+    fn planted(label: &str, plant: impl Fn(&str) -> String) -> (i32, String) {
+        let fixture = Closure::new(label);
+        let report = fixture.guard(&plant(&fixture.block()));
+        clean(&fixture.root);
+        report
+    }
+
+    #[test]
+    fn closure_baseline_is_clean() {
+        let (code, report) = planted("cl-base", str::to_owned);
+        assert_eq!(code, 0, "a well-formed throwaway pair is clean: {report}");
+        assert!(
+            report.starts_with("REVIEW: critic-spec-r99z"),
+            "the summary names the review this run read: {report}"
+        );
+        assert!(
+            report.contains(
+                "BLOCK: closure-r16   GENERATED: 4   ROWS: 4   STORE: matches   STORE COPIES: 1   CLOSURE BAD: 0"
+            ),
+            "the summary states the generated set, the rows, and the stored copy: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_pp32_missing_row_is_a_finding() {
+        let (code, report) = planted("cl-missing", |block| {
+            block
+                .replace("| C99-2 | A probe | **CLOSED** | 1.9 |\n", "")
+                .replace("rows>=4", "rows>=3")
+        });
+        assert_eq!(code, 1, "a generated id with no row is a finding: {report}");
+        assert!(
+            report.contains("  CLOSURE:   C99-2: the review states it and the block holds no row"),
+            "the finding names the id the block drops: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_pp32_extra_row_is_a_finding() {
+        let (code, report) = planted("cl-extra", |block| {
+            block
+                .replace(
+                    "| N99-1 | A probe | **CLOSED** | 1.9 |",
+                    "| N99-1 | A probe | **CLOSED** | 1.9 |\n| C99-9 | A probe | **CLOSED** | 1.9 |",
+                )
+                .replace("rows>=4", "rows>=5")
+        });
+        assert_eq!(code, 1, "a row for no finding is a finding: {report}");
+        assert!(
+            report.contains(
+                "  CLOSURE:   C99-9: the block holds a row and the review states no such finding"
+            ),
+            "the finding names the id the review does not state: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_pp32_wrong_count_sentence_is_a_finding() {
+        let (code, report) = planted("cl-count", |block| {
+            block.replace("It returned 2 Criticals", "It returned 1 Criticals")
+        });
+        assert_eq!(code, 1, "a count the review does not generate: {report}");
+        assert!(
+            report.contains(&format!(
+                "  COUNT:     the document does not hold the count sentence this review generates: {CLOSURE_SENTENCE}"
+            )),
+            "the finding prints the sentence the review generates: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_pp32_closed_row_with_an_empty_section_is_a_finding() {
+        let (code, report) = planted("cl-nosection", |block| {
+            block.replace(
+                "| C99-1 | A probe | **CLOSED** | 1.9 |",
+                "| C99-1 | A probe | **CLOSED** |  |",
+            )
+        });
+        assert_eq!(
+            code, 1,
+            "a CLOSED row with no section is a finding: {report}"
+        );
+        assert!(
+            report.contains("  CLOSURE:   C99-1: the row says CLOSED and names no section"),
+            "the finding names the row that closes on nothing: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_pp32_wrong_digest_is_a_finding() {
+        let (code, report) = planted("cl-digest", |block| {
+            block.replace(CLOSURE_FILE_DIGEST, &"0".repeat(32))
+        });
+        assert_eq!(code, 1, "a digest of another file is a finding: {report}");
+        assert!(
+            report.contains(&format!(
+                "  DIGEST:    the document states no md5 `{CLOSURE_FILE_DIGEST}` for {CLOSURE_BLOCK} beside the block, so nothing binds this block to the file this run read"
+            )),
+            "the finding prints the md5 of the file this run read: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_pp32_state_outside_the_three_is_a_finding() {
+        let (code, report) = planted("cl-state", |block| {
+            block.replace(
+                "| C99-2 | A probe | **CLOSED** | 1.9 |",
+                "| C99-2 | A probe | **PENDING** | 1.9 |",
+            )
+        });
+        assert_eq!(code, 1, "a fourth state word is a finding: {report}");
+        assert!(
+            report.contains(
+                "  CLOSURE:   C99-2: the state is `PENDING` and the three states are CLOSED, PARTIAL, OPEN"
+            ),
+            "the finding prints the state and the three it accepts: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_pp32_blank_row_is_a_finding() {
+        let (code, report) = planted("cl-blank", |block| {
+            block.replace(
+                "| C99-W1 | A probe | **CLOSED** | 1.9 |",
+                "| C99-W1 |  |  |  |",
+            )
+        });
+        assert_eq!(code, 1, "a row that says nothing is a finding: {report}");
+        assert!(
+            report.contains("  CLOSURE:   C99-W1: the row states no finding"),
+            "the finding names the empty row: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_pp32_unknown_section_is_a_finding() {
+        let (code, report) = planted("cl-section", |block| {
+            block.replace(
+                "| N99-1 | A probe | **CLOSED** | 1.9 |",
+                "| N99-1 | A probe | **CLOSED** | 99.99 |",
+            )
+        });
+        assert_eq!(
+            code, 1,
+            "a section no heading states is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "  CLOSURE:   N99-1: the row names section 99.99 and no heading of this document states it"
+            ),
+            "the finding names the section the document lacks: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_pp32_duplicate_row_is_a_finding() {
+        let (code, report) = planted("cl-duplicate", |block| {
+            block.replace(
+                "| C99-W1 | A probe | **CLOSED** | 1.9 |",
+                "| C99-W1 | A probe | **CLOSED** | 1.9 |\n| C99-W1 | A probe | **OPEN** | 1.9 |",
+            )
+        });
+        assert_eq!(
+            code, 1,
+            "a second row for one finding is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "  CLOSURE:   C99-W1: the block holds 2 rows and PG32 states one closure row per finding"
+            ),
+            "the finding counts the rows the id carries: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_pp32_prose_section_cell_is_a_finding() {
+        let (code, report) = planted("cl-prose", |block| {
+            block.replace(
+                "| C99-1 | A probe | **CLOSED** | 1.9 |",
+                "| C99-1 | A probe | **CLOSED** | fixed in the tool |",
+            )
+        });
+        assert_eq!(
+            code, 1,
+            "a cell that names no section is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "  CLOSURE:   C99-1: the row says CLOSED and its section cell names no section of this document"
+            ),
+            "the finding names the row whose cell is prose: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_pp32_moved_digest_sentence_is_a_finding() {
+        let (code, report) = planted("cl-moved", |block| {
+            let sentence = digest_sentence();
+            format!(
+                "{}\n### A section far away\n\n{sentence}\n",
+                block.replace(&format!("{sentence}\n"), "")
+            )
+        });
+        assert_eq!(
+            code, 1,
+            "a digest sentence outside the block's section is a finding: {report}"
+        );
+        assert!(
+            report.contains(&format!(
+                "  DIGEST:    the document states no md5 `{CLOSURE_FILE_DIGEST}` for {CLOSURE_BLOCK} beside the block, so nothing binds this block to the file this run read"
+            )),
+            "the guard reads the block's own section alone: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_pp32_deleted_store_key_is_a_finding() {
+        let (code, report) = planted("cl-nokey", |block| {
+            let kept: Vec<&str> = block
+                .lines()
+                .filter(|line| !line.contains("is stored at plan-store key"))
+                .collect();
+            format!("{}\n", kept.join("\n"))
+        });
+        assert_eq!(
+            code, 1,
+            "a block that names no stored copy is a finding: {report}"
+        );
+        assert!(
+            report.contains(&format!(
+                "  STORE:     the section states no plan-store key for {CLOSURE_BLOCK}, so nothing binds this block to a copy outside the Architect's write scope (CL1c)"
+            )),
+            "the finding states that CL1c has no second source: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_pp32_key_of_another_suffix_is_a_finding() {
+        let fixture = Closure::new("cl-otherkey");
+        let planted_block = fixture.block().replace(
+            &format!("`{}`", fixture.key),
+            &format!("`{CLOSURE_OTHER_KEY}`"),
+        );
+        let (code, report) = fixture.guard(&planted_block);
+        let suffix = fixture.suffix();
+        clean(&fixture.root);
+        assert_eq!(
+            code, 1,
+            "a key outside the review's suffix is a finding: {report}"
+        );
+        assert!(
+            report.contains(&format!(
+                "  STORE:     the section names key `{CLOSURE_OTHER_KEY}`, whose suffix is not `{suffix}`; the review file name decides the suffix and the Architect does not (CL1c)"
+            )),
+            "the finding states that the file name decides the suffix: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_pp32_second_stored_copy_is_a_finding() {
+        let fixture = Closure::new("cl-reappend");
+        let doctored =
+            CLOSURE_REVIEW.replace("## CONCERN 1. A probe", "## CONCERN 1. A doctored probe");
+        let second = fixture.append(&doctored);
+        let (code, report) = fixture.guard(&fixture.block());
+        clean(&fixture.root);
+        assert_eq!(
+            code, 1,
+            "a second stored copy that differs is a finding: {report}"
+        );
+        assert!(
+            report.contains(&format!(
+                "  STORE:     1 of 2 stored copies of this review differ from the file this run read, `{CLOSURE_CONTENT_DIGEST}`; the first is key `{second}` at md5 `{CLOSURE_DOCTORED_DIGEST}` (CL1c)"
+            )),
+            "the finding names the doctored copy and both digests: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_pp32_hidden_warning_review_fails_closed() {
+        let fixture = Closure::new("cl-format");
+        let hidden = format!(
+            "{}\n### Warning two\n\nA probe.\n",
+            CLOSURE_REVIEW.replace(
+                "**Counts: 2 Criticals, 1 Warnings, 1 Concerns.**",
+                "**Counts: 2 Criticals, 2 Warnings, 1 Concerns.**",
+            )
+        );
+        let review = fixture.root.join("hidden").join("critic-spec-r99.md");
+        write_bytes(&review, hidden.as_bytes());
+        let (code, report) = fixture.guard_with(&fixture.block(), &review, CLOSURE_BLOCK);
+        clean(&fixture.root);
+        assert_eq!(
+            code, 2,
+            "a heading no form of the parser reads is fail-closed: {report}"
+        );
+        assert!(
+            report.contains(
+                ": the review states 2 Warnings and the heading scan finds 1; a heading this parser cannot see is the one failure a second source exists to catch; the guard is fail-closed."
+            ),
+            "the guard states what the second source caught: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_review_that_does_not_open_fails_closed() {
+        let fixture = Closure::new("cl-absent");
+        let absent = fixture.root.join("review").join("no-such-review.md");
+        let (code, report) = fixture.guard_with(&fixture.block(), &absent, CLOSURE_BLOCK);
+        clean(&fixture.root);
+        assert_eq!(
+            code, 2,
+            "a review that does not open is fail-closed: {report}"
+        );
+        assert!(
+            report.contains("FAIL: cannot open")
+                && report.contains("no-such-review.md; the guard is fail-closed."),
+            "the guard names the file it cannot open: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_unregistered_block_fails_closed() {
+        let fixture = Closure::new("cl-unregistered");
+        let (code, report) = fixture.guard_with(&fixture.block(), &fixture.review(), "closure-r99");
+        clean(&fixture.root);
+        assert_eq!(
+            code, 2,
+            "a block id no register holds is fail-closed: {report}"
+        );
+        assert!(
+            report
+                .contains("FAIL: `closure-r99` is no registered block; the guard is fail-closed."),
+            "the guard names the block it does not register: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_review_that_states_no_revision_fails_closed() {
+        let fixture = Closure::new("cl-norevision");
+        let unnamed = fixture.root.join("review").join("notes.md");
+        write_bytes(
+            &unnamed,
+            b"# Engineering Critic, specification review\n\n## CRITICAL 1. A probe\n",
+        );
+        let (code, report) = fixture.guard_with(&fixture.block(), &unnamed, CLOSURE_BLOCK);
+        clean(&fixture.root);
+        assert_eq!(
+            code, 2,
+            "a review that names no revision is fail-closed: {report}"
+        );
+        assert!(
+            report.contains(
+                ": the file name states no review and the title states no revision; the guard is fail-closed."
+            ),
+            "the guard states that no id prefix can be generated: {report}"
         );
     }
 }
