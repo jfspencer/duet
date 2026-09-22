@@ -189,9 +189,14 @@ failure here blocks a merge by review and never by a hook (section 14).
    pass. The run proves that the filter of each workflow command matches at least one test (SM7).
 9. Run `cargo deny check`. Expected result: it reports no licence failure. `futures` carries MIT or
    Apache-2.0 and `rubato` carries MIT, and `deny.toml` already allows both.
-10. Record the feature resolution of the two pins. Run `cargo tree -e features -i futures` and
-    `cargo tree -e features -i rubato`, and paste each output into the commit body (Appendix B.5).
-    `async-channel` is chunk M4's pin, and chunk M4 recorded it.
+10. Confirm the feature set of the two pins. Run `cargo info futures@0.3.34` and
+    `cargo info rubato@5.0.0`, and paste each output into the commit body (Appendix B.5). Both pins
+    take the default feature set, which Appendix B.5 requires this chunk to record. **Do NOT run
+    `cargo tree -e features -i futures` or `cargo tree -e features -i rubato` in this chunk.**
+    Neither pin has a member behind it at this commit, so `cargo tree` exits 101 and prints
+    `error: package ID specification` with the crate name. **Chunk I1 records the `futures` tree and
+    chunk H1 records the `rubato` tree**, because each one adds the `{ workspace = true }` entry
+    (Appendix B.3, Appendix B.5). `async-channel` is chunk M4's pin.
 11. Run the Completion command: `cargo check -p duet-export -p duet-core --locked`. Expected result:
     exit 0. The command fails before this chunk, because `cargo` reports two unknown packages.
 12. `git add` the write scope and `git commit`. The native hook runs `scripts/dod.sh`.
@@ -215,12 +220,16 @@ cargo xtask check-manifests
 cargo nextest run -p duet-engine --run-ignored ignored-only -E 'test(soak)' --no-tests=fail
 cargo nextest run -p duet-time --run-ignored ignored-only -E 'test(proptest_large)' --no-tests=fail
 cargo deny check
+cargo info futures@0.3.34
+cargo info rubato@5.0.0
 bash -n .github/workflows/soak.yml || true
 ```
 
 Expected output: the first command exits 0 and prints two `Checking` lines. The second command exits
 0. The third and the fourth commands each report at least one test as passed and report no filter
-miss. The fifth command reports no licence failure. The workflow file is YAML, so read it with a
+miss. The fifth command reports no licence failure. The two `cargo info` commands each print a
+published feature list, and the commit body carries both; **no `cargo tree` command belongs in this
+chunk**, for the reason step 10 states. The workflow file is YAML, so read it with a
 YAML parser rather than with `bash -n`; the repository gate runs `bash -n` on shell files alone.
 
 Then commit on a branch named `chunk/m7-manifest-phase-7`. The native git hook runs

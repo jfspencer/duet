@@ -148,9 +148,14 @@ chunk D1 adds the `duet-dsp` entries, each in the same commit as the code that u
    declares either one.
 6. Run `cargo xtask check-manifests`. Expected result: exit 0. Both new manifests hold
    `[lints] workspace = true` and a non-empty `description`.
-7. Record the feature resolution of both pins. Run `cargo tree -e features -i rustfft` and
-   `cargo tree -e features -i realfft`, and paste the output into the commit body. Appendix B.5
-   requires the record for every pin its table omits.
+7. Confirm the feature set of both pins. Run `cargo info rustfft@6.4.1` and
+   `cargo info realfft@3.5.0`, and paste each output into the commit body. Both pins take the
+   default feature set, and Appendix B.5 requires the record for every pin its table omits.
+   **Do NOT run `cargo tree -e features -i rustfft` or `cargo tree -e features -i realfft` in this
+   chunk.** Step 5 states the reason: the two pins add no edge yet, because no member declares
+   either one, so `cargo tree` exits 101 and prints `error: package ID specification` with the crate
+   name. **Chunk D1 records the resolved tree of both crates**, because D1 adds both
+   `{ workspace = true }` entries to `crates/duet-dsp/Cargo.toml`. Appendix B.5 states the rule.
 8. Run the Completion command: `cargo check -p duet-score -p duet-dsp --locked`. Expected result:
    exit 0. The command fails before this chunk, because neither package exists.
 9. `git add` the write scope and `git commit`. The native hook runs `scripts/dod.sh`.
@@ -167,12 +172,13 @@ the mechanical guard over both new manifests, and the native hook runs it on the
 ```
 cargo check -p duet-score -p duet-dsp --locked
 cargo xtask check-manifests
-cargo tree -e features -i rustfft
-cargo tree -e features -i realfft
+cargo info rustfft@6.4.1
+cargo info realfft@3.5.0
 ```
 
 Expected output: the first command exits 0 and prints two `Checking` lines. The second command exits
-0. The last two commands print the feature set of each pin, and the commit body carries both.
+0. The last two commands print the published feature list of each pin, and the commit body carries
+both. **No `cargo tree` command belongs in this chunk**, for the reason step 7 states.
 
 Then commit on a branch named `chunk/m1-manifest-phase-1`. The native git hook runs
 `scripts/dod.sh`, and the commit lands only when every gate passes.
