@@ -18,6 +18,7 @@
 mod check_closure;
 mod check_conversions;
 mod check_manifests;
+mod check_placement;
 mod check_plan_graph;
 mod check_roster;
 mod sync_agents;
@@ -69,6 +70,11 @@ enum Command {
         scratch: PathBuf,
         /// The repository root.
         repo: PathBuf,
+    },
+    /// Refuse a declared type that the section 1.5 table does not place.
+    CheckPlacement {
+        /// The architecture document to read.
+        document: PathBuf,
     },
     /// Refuse a chunk file whose front-matter breaks a section 13 rule.
     CheckPlanGraph {
@@ -177,6 +183,7 @@ fn main() -> ExitCode {
             scratch,
             repo,
         } => check_roster::run(&document, &scratch, &repo),
+        Command::CheckPlacement { document } => check_placement::run(&document),
         Command::CheckPlanGraph {
             plan_dir,
             write_manifest,
