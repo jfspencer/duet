@@ -34,6 +34,16 @@ impl Tuplet {
     pub const fn over(self) -> NonZeroU8 {
         self.over
     }
+
+    /// The tick count of each note of this tuplet inside `span`.
+    ///
+    /// It is `split_tuplet(span, self.count())`, so the two answers can never
+    /// differ. The rounding rule reads `count` alone: `over` names the written
+    /// value of the group and moves no tick.
+    #[must_use]
+    pub fn split(self, span: Ticks) -> SmallVec<[Ticks; 13]> {
+        split_tuplet(span, self.count)
+    }
 }
 
 /// Split a span into `parts` tick counts that sum to the span exactly.
@@ -46,8 +56,14 @@ impl Tuplet {
 /// A tuplet of one of those counts is not exact, and the rule decides where
 /// the leftover ticks go.
 ///
+/// `div_euclid` floors, so a negative span gives a quotient below the exact
+/// value and the last part can carry the opposite sign.
+/// `split_tuplet(Ticks::new(-1), 255)` answers 254 parts of -1 tick and one
+/// last part of 253 ticks. The parts still sum to the span exactly.
+///
 /// The inline capacity is B113, the divisor maximum of the range B43. A tuplet
-/// of that range needs no heap block.
+/// of that range needs no heap block. A count of 14 to 255 is above that range,
+/// and the answer then takes a heap block.
 #[must_use]
 pub fn split_tuplet(span: Ticks, parts: NonZeroU8) -> SmallVec<[Ticks; 13]> {
     let count = parts.get();

@@ -31,8 +31,10 @@ mod tests {
 
     /// The proptest configuration of every property in this file.
     ///
-    /// `tests/proptest_large.rs` holds the same four properties at the soak
-    /// case count of the same budget row.
+    /// `tests/proptest_large.rs` proves six of these properties again at the
+    /// soak case count of the same budget row: the `Finite` invariants,
+    /// `muldiv`, the 24-bit round trip, the two tempo queries, the bar round
+    /// trip, and the bar order.
     fn gate() -> ProptestConfig {
         ProptestConfig {
             cases: GATE_CASES,
@@ -489,12 +491,11 @@ mod tests {
         Tempo::new(rate, NoteValue::Quarter, false).expect("the rate is positive")
     }
 
-    /// A tempo entry with the three views the map reads.
-    fn tempo_point(ticks: i64, clock: i64, address: Bbt, beats: i64) -> TempoPoint {
+    /// A tempo entry with the two views the map reads.
+    fn tempo_point(ticks: i64, clock: i64, beats: i64) -> TempoPoint {
         TempoPoint::new(
             Ticks::new(ticks),
             SuperClock::new(clock),
-            address,
             quarter_tempo(beats),
         )
     }
@@ -521,6 +522,9 @@ mod tests {
     /// Superclock ticks of one tick at 90 quarter notes per minute.
     const CLOCK_AT_90: i64 = 98_000;
 
+    /// Superclock ticks of one tick at 240 quarter notes per minute.
+    const CLOCK_AT_240: i64 = 36_750;
+
     /// The tick count of one bar of three quarter notes.
     const THREE_FOUR_BAR_TICKS: i64 = 5_760;
 
@@ -536,11 +540,10 @@ mod tests {
     /// superclock value.
     const EXTREME_RATE: i64 = 9_000_000;
 
-    /// A meter entry with the three views the map reads.
-    fn meter_point(ticks: i64, clock: i64, address: Bbt, beats_per_bar: u8) -> MeterPoint {
+    /// A meter entry with the two views the map reads.
+    fn meter_point(ticks: i64, address: Bbt, beats_per_bar: u8) -> MeterPoint {
         MeterPoint::new(
             Ticks::new(ticks),
-            SuperClock::new(clock),
             address,
             Meter::new(nonzero_u8(beats_per_bar), NoteValue::Quarter),
         )
@@ -549,29 +552,24 @@ mod tests {
     /// A map of one tempo entry at the origin.
     fn one_tempo_map(tempo: Tempo) -> TempoMap {
         TempoMapEdit::new()
-            .push_tempo(TempoPoint::new(
-                Ticks::ZERO,
-                SuperClock::ZERO,
-                Bbt::ORIGIN,
-                tempo,
-            ))
+            .push_tempo(TempoPoint::new(Ticks::ZERO, SuperClock::ZERO, tempo))
             .finish()
             .expect("a single entry at the origin is a valid map")
     }
 
+    /// The stored clock of the second entry of `three_tempo_map`.
+    fn second_tempo_clock() -> i64 {
+        BAR_TICKS.saturating_mul(CLOCK_AT_120)
+    }
+
     /// A map of three tempo entries whose stored clocks match the arithmetic.
     fn three_tempo_map() -> TempoMap {
-        let second_clock = BAR_TICKS.saturating_mul(CLOCK_AT_120);
+        let second_clock = second_tempo_clock();
         let third_clock = second_clock.saturating_add(BAR_TICKS.saturating_mul(CLOCK_AT_60));
         TempoMapEdit::new()
-            .push_tempo(tempo_point(0, 0, Bbt::ORIGIN, 120))
-            .push_tempo(tempo_point(BAR_TICKS, second_clock, bbt(2, 1, 0), 60))
-            .push_tempo(tempo_point(
-                BAR_TICKS.saturating_mul(2),
-                third_clock,
-                bbt(3, 1, 0),
-                90,
-            ))
+            .push_tempo(tempo_point(0, 0, 120))
+            .push_tempo(tempo_point(BAR_TICKS, second_clock, 60))
+            .push_tempo(tempo_point(BAR_TICKS.saturating_mul(2), third_clock, 90))
             .finish()
             .expect("the three entries rise in every view")
     }
@@ -579,9 +577,24 @@ mod tests {
     /// A map of one meter entry of four quarter notes at the origin.
     fn quarter_meter_map() -> TempoMap {
         TempoMapEdit::new()
-            .push_meter(meter_point(0, 0, Bbt::ORIGIN, 4))
+            .push_meter(meter_point(0, Bbt::ORIGIN, 4))
             .finish()
             .expect("a single meter entry at the origin is a valid map")
+    }
+
+    /// A map that holds a tempo list and a meter list together.
+    ///
+    /// The load path reads both lists, so a round trip needs a map that holds
+    /// both. It takes the three tempo entries and the three meter entries of
+    /// the two other fixtures.
+    fn tempo_and_meter_map() -> TempoMap {
+        let meters = three_meter_map();
+        let mut edit = three_tempo_map().edit();
+        for point in meters.meters() {
+            edit = edit.push_meter(*point);
+        }
+        edit.finish()
+            .expect("the two lists are validated apart, and each one is consistent")
     }
 
     #[test]
@@ -878,13 +891,8 @@ mod tests {
     fn bbt_at_normalizes_a_mid_bar_meter_point() {
         let start = BAR_TICKS.saturating_mul(4).saturating_add(1_920);
         let map = TempoMapEdit::new()
-            .push_meter(meter_point(0, 0, Bbt::ORIGIN, 4))
-            .push_meter(meter_point(
-                start,
-                start.saturating_mul(CLOCK_AT_120),
-                bbt(5, 2, 0),
-                3,
-            ))
+            .push_meter(meter_point(0, Bbt::ORIGIN, 4))
+            .push_meter(meter_point(start, bbt(5, 2, 0), 3))
             .finish()
             .expect("the two meter entries rise in every view");
         for (probe, want) in [
@@ -949,8 +957,8 @@ mod tests {
     fn ticks_at_bbt_answers_the_far_bar_of_a_consistent_map() {
         let start = BAR_TICKS.saturating_mul(3_999_999_999);
         let map = TempoMapEdit::new()
-            .push_meter(meter_point(0, 0, Bbt::ORIGIN, 4))
-            .push_meter(meter_point(start, 1, bbt(4_000_000_000, 1, 0), 4))
+            .push_meter(meter_point(0, Bbt::ORIGIN, 4))
+            .push_meter(meter_point(start, bbt(4_000_000_000, 1, 0), 4))
             .finish()
             .expect("the second entry states the address the first entry produces");
         assert_eq!(
@@ -1086,61 +1094,57 @@ mod tests {
     #[test]
     fn tempo_map_refuses_a_first_point_off_the_origin() {
         let off_clock = TempoMapEdit::new()
-            .push_tempo(tempo_point(0, 500, Bbt::ORIGIN, 120))
+            .push_tempo(tempo_point(0, 500, 120))
             .finish();
         assert_eq!(
             off_clock.err(),
             Some(TimeError::NoFirstPoint),
-            "a first entry off superclock zero is refused"
+            "a first tempo entry off superclock zero is refused"
         );
         let off_address = TempoMapEdit::new()
-            .push_tempo(tempo_point(0, 0, bbt(2, 1, 0), 120))
+            .push_meter(meter_point(0, bbt(2, 1, 0), 4))
             .finish();
         assert_eq!(
             off_address.err(),
             Some(TimeError::NoFirstPoint),
-            "a first entry off the origin address is refused"
+            "a first meter entry off the origin address is refused"
         );
     }
 
     #[test]
     fn tempo_map_refuses_a_duplicate_tick() {
+        let second_clock = second_tempo_clock();
         let finished = TempoMapEdit::new()
-            .push_tempo(tempo_point(0, 0, Bbt::ORIGIN, 120))
-            .push_tempo(tempo_point(BAR_TICKS, 1_000, bbt(2, 1, 0), 90))
-            .push_tempo(tempo_point(BAR_TICKS, 2_000, bbt(3, 1, 0), 60))
+            .push_tempo(tempo_point(0, 0, 120))
+            .push_tempo(tempo_point(BAR_TICKS, second_clock, 90))
+            .push_tempo(tempo_point(BAR_TICKS, second_clock, 60))
             .finish();
         assert_eq!(
             finished.err(),
             Some(TimeError::UnorderedMap),
-            "a duplicate tick names an entry no query can reach"
+            "a duplicate tick names an entry no query can reach, and the cross-check accepts a tick delta of zero"
         );
     }
 
     #[test]
-    fn tempo_map_refuses_an_unordered_bbt() {
+    fn meter_map_refuses_an_address_that_does_not_rise() {
         let finished = TempoMapEdit::new()
-            .push_tempo(tempo_point(0, 0, Bbt::ORIGIN, 120))
-            .push_tempo(tempo_point(BAR_TICKS, 1_000, bbt(5, 1, 0), 90))
-            .push_tempo(tempo_point(
-                BAR_TICKS.saturating_mul(2),
-                2_000,
-                bbt(3, 1, 0),
-                60,
-            ))
+            .push_meter(meter_point(0, Bbt::ORIGIN, 4))
+            .push_meter(meter_point(BAR_TICKS, bbt(2, 1, 0), 3))
+            .push_meter(meter_point(BAR_TICKS, bbt(2, 1, 0), 5))
             .finish();
         assert_eq!(
             finished.err(),
             Some(TimeError::UnorderedMap),
-            "a list sorted by tick but not by address is refused"
+            "two meter entries at one tick hold one address, so the address does not rise, and the cross-check accepts the pair"
         );
     }
 
     #[test]
     fn tempo_map_accepts_a_non_decreasing_clock() {
         let finished = TempoMapEdit::new()
-            .push_tempo(tempo_point(0, 0, Bbt::ORIGIN, EXTREME_RATE))
-            .push_tempo(tempo_point(1, 0, bbt(1, 1, 1), EXTREME_RATE))
+            .push_tempo(tempo_point(0, 0, EXTREME_RATE))
+            .push_tempo(tempo_point(1, 0, EXTREME_RATE))
             .finish();
         assert!(
             finished.is_ok(),
@@ -1151,22 +1155,21 @@ mod tests {
     #[test]
     fn tempo_map_refuses_an_unsorted_meter_list() {
         let unordered = TempoMapEdit::new()
-            .push_meter(meter_point(0, 0, Bbt::ORIGIN, 4))
-            .push_meter(meter_point(BAR_TICKS, 1_000, bbt(2, 1, 0), 3))
+            .push_meter(meter_point(0, Bbt::ORIGIN, 4))
+            .push_meter(meter_point(BAR_TICKS, bbt(2, 1, 0), 3))
             .push_meter(meter_point(
                 BAR_TICKS.saturating_sub(1),
-                2_000,
-                bbt(3, 1, 0),
+                bbt(1, 3, 1_919),
                 3,
             ))
             .finish();
         assert_eq!(
             unordered.err(),
             Some(TimeError::UnorderedMap),
-            "the meter list carries the order rule of the tempo list"
+            "the meter list carries the order rule of the tempo list, and the cross-check accepts the third entry"
         );
         let off_origin = TempoMapEdit::new()
-            .push_meter(meter_point(BAR_TICKS, 0, Bbt::ORIGIN, 4))
+            .push_meter(meter_point(BAR_TICKS, Bbt::ORIGIN, 4))
             .finish();
         assert_eq!(
             off_origin.err(),
@@ -1178,14 +1181,14 @@ mod tests {
     #[test]
     fn tempo_map_validates_the_two_lists_apart() {
         let tempo_only = TempoMapEdit::new()
-            .push_tempo(tempo_point(0, 0, Bbt::ORIGIN, 120))
+            .push_tempo(tempo_point(0, 0, 120))
             .finish();
         assert!(
             tempo_only.is_ok(),
             "an empty meter list beside a tempo list is accepted"
         );
         let meter_only = TempoMapEdit::new()
-            .push_meter(meter_point(0, 0, Bbt::ORIGIN, 4))
+            .push_meter(meter_point(0, Bbt::ORIGIN, 4))
             .finish();
         assert!(
             meter_only.is_ok(),
@@ -1307,22 +1310,24 @@ mod tests {
 
     #[test]
     fn tempo_map_refuses_unsorted() {
+        let second_clock = second_tempo_clock();
+        let third_clock = second_clock.saturating_sub(3_840_i64.saturating_mul(CLOCK_AT_90));
         let finished = TempoMapEdit::new()
-            .push_tempo(tempo_point(0, 0, Bbt::ORIGIN, 120))
-            .push_tempo(tempo_point(7_680, 2_000, bbt(2, 1, 0), 90))
-            .push_tempo(tempo_point(3_840, 3_000, bbt(3, 1, 0), 60))
+            .push_tempo(tempo_point(0, 0, 120))
+            .push_tempo(tempo_point(7_680, second_clock, 90))
+            .push_tempo(tempo_point(3_840, third_clock, 60))
             .finish();
         assert_eq!(
             finished.err(),
             Some(TimeError::UnorderedMap),
-            "finish refuses a tempo list whose ticks fall"
+            "finish refuses a tempo list whose ticks fall, and the cross-check accepts the third clock"
         );
     }
 
     #[test]
     fn tempo_map_refuses_no_first_point() {
         let finished = TempoMapEdit::new()
-            .push_tempo(tempo_point(1_920, 0, Bbt::ORIGIN, 120))
+            .push_tempo(tempo_point(1_920, 0, 120))
             .finish();
         assert_eq!(
             finished.err(),
@@ -1339,9 +1344,9 @@ mod tests {
         let second = BAR_TICKS.saturating_mul(4).saturating_add(1_920);
         let third = second.saturating_add(THREE_FOUR_BAR_TICKS.saturating_mul(3));
         TempoMapEdit::new()
-            .push_meter(meter_point(0, 0, Bbt::ORIGIN, 4))
-            .push_meter(meter_point(second, 1, bbt(5, 2, 0), 3))
-            .push_meter(meter_point(third, 2, bbt(8, 2, 0), 5))
+            .push_meter(meter_point(0, Bbt::ORIGIN, 4))
+            .push_meter(meter_point(second, bbt(5, 2, 0), 3))
+            .push_meter(meter_point(third, bbt(8, 2, 0), 5))
             .finish()
             .expect("each entry states the address the entry before it produces")
     }
@@ -1349,8 +1354,8 @@ mod tests {
     #[test]
     fn finish_refuses_a_tempo_clock_the_rate_denies() {
         let refused = TempoMapEdit::new()
-            .push_tempo(tempo_point(0, 0, Bbt::ORIGIN, 120))
-            .push_tempo(tempo_point(1_920, 1, bbt(2, 1, 0), 120))
+            .push_tempo(tempo_point(0, 0, 120))
+            .push_tempo(tempo_point(1_920, 1, 120))
             .finish();
         assert_eq!(
             refused.err(),
@@ -1358,11 +1363,10 @@ mod tests {
             "a stored clock of 1 where the rate of the entry before it produces 141_120_000 is refused"
         );
         let repaired = TempoMapEdit::new()
-            .push_tempo(tempo_point(0, 0, Bbt::ORIGIN, 120))
+            .push_tempo(tempo_point(0, 0, 120))
             .push_tempo(tempo_point(
                 1_920,
                 1_920_i64.saturating_mul(CLOCK_AT_120),
-                bbt(2, 1, 0),
                 120,
             ))
             .finish()
@@ -1376,13 +1380,45 @@ mod tests {
     #[test]
     fn finish_refuses_a_meter_address_the_bar_arithmetic_denies() {
         let refused = TempoMapEdit::new()
-            .push_meter(meter_point(0, 0, Bbt::ORIGIN, 4))
-            .push_meter(meter_point(15_360, 1, bbt(2, 1, 0), 4))
+            .push_meter(meter_point(0, Bbt::ORIGIN, 4))
+            .push_meter(meter_point(15_360, bbt(2, 1, 0), 4))
             .finish();
         assert_eq!(
             refused.err(),
             Some(TimeError::UnorderedMap),
             "a second entry that claims bar 2 where the first entry produces bar 3 is refused"
+        );
+    }
+
+    #[test]
+    fn finish_refuses_a_meter_address_the_entry_meter_cannot_name() {
+        let refused = TempoMapEdit::new()
+            .push_meter(meter_point(0, Bbt::ORIGIN, 7))
+            .push_meter(meter_point(11_520, bbt(1, 7, 0), 4))
+            .finish();
+        assert_eq!(
+            refused.err(),
+            Some(TimeError::UnorderedMap),
+            "beat 7 is the address the first meter produces, and a meter of four beats does not name it"
+        );
+    }
+
+    #[test]
+    fn finish_accepts_a_meter_change_on_a_barline() {
+        let map = TempoMapEdit::new()
+            .push_meter(meter_point(0, Bbt::ORIGIN, 7))
+            .push_meter(meter_point(13_440, bbt(2, 1, 0), 4))
+            .finish()
+            .expect("a change on a barline stores beat 1, which every meter names");
+        assert_eq!(
+            map.ticks_at_bbt(bbt(2, 1, 0)),
+            Ok(Ticks::new(13_440)),
+            "the address that the second entry stores names the tick of that entry"
+        );
+        assert_eq!(
+            map.bbt_at(Ticks::new(13_440)),
+            bbt(2, 1, 0),
+            "the query answers the address that the entry stores"
         );
     }
 
@@ -1450,14 +1486,15 @@ mod tests {
         /// The strategy draws two arbitrary tick counts with `any::<i64>()`.
         #[test]
         fn bbt_at_is_monotonic(first in any::<i64>(), second in any::<i64>()) {
-            let map = quarter_meter_map();
             let low = Ticks::new(first.min(second));
             let high = Ticks::new(first.max(second));
-            prop_assert_ne!(
-                map.bbt_at(low).lexicographic_cmp(map.bbt_at(high)),
-                Ordering::Greater,
-                "the address never falls as the tick rises, over the whole 64-bit range"
-            );
+            for map in [quarter_meter_map(), three_meter_map()] {
+                prop_assert_ne!(
+                    map.bbt_at(low).lexicographic_cmp(map.bbt_at(high)),
+                    Ordering::Greater,
+                    "the address never falls as the tick rises, over the whole 64-bit range and across a segment boundary"
+                );
+            }
         }
     }
 
@@ -1497,14 +1534,34 @@ mod tests {
         );
     }
 
+    /// Assert that a serde refusal carries the message of one `TimeError`.
+    ///
+    /// `serde_json` renders a `TryFrom` error as its own message, so the text
+    /// names the variant. A test that asserts `is_err` alone stays green when a
+    /// field is renamed and the parse fails for another reason.
+    fn assert_refusal_names<T>(parsed: &Result<T, serde_json::Error>, want: TimeError, label: &str)
+    where
+        T: core::fmt::Debug,
+    {
+        let error = parsed
+            .as_ref()
+            .err()
+            .unwrap_or_else(|| panic!("the load path refuses {label}"));
+        assert!(
+            error.to_string().contains(&want.to_string()),
+            "the refusal of {label} names {want:?} and reads: {error}"
+        );
+    }
+
     #[test]
     fn deserialization_refuses_a_zero_tempo_rate() {
         let parsed: Result<Tempo, serde_json::Error> = serde_json::from_str(
             r#"{"beats_per_minute":{"numerator":0,"denominator":1},"beat_unit":"Quarter","ramped":false}"#,
         );
-        assert!(
-            parsed.is_err(),
-            "a stored rate of zero is refused on the load path"
+        assert_refusal_names(
+            &parsed,
+            TimeError::NotRepresentable,
+            "a stored rate of zero",
         );
     }
 
@@ -1526,18 +1583,20 @@ mod tests {
         let parsed: Result<Tempo, serde_json::Error> = serde_json::from_str(
             r#"{"beats_per_minute":{"numerator":120,"denominator":-1},"beat_unit":"Quarter","ramped":false}"#,
         );
-        assert!(
-            parsed.is_err(),
-            "a stored rate that runs the timeline backwards is refused on the load path"
+        assert_refusal_names(
+            &parsed,
+            TimeError::NotRepresentable,
+            "a stored rate that runs the timeline backwards",
         );
     }
 
     #[test]
     fn deserialization_refuses_a_sample_outside_the_24_bit_range() {
         let parsed: Result<I24, serde_json::Error> = serde_json::from_str("2000000000");
-        assert!(
-            parsed.is_err(),
-            "a stored sample far outside the 24-bit range is refused on the load path"
+        assert_refusal_names(
+            &parsed,
+            TimeError::NotRepresentable,
+            "a stored sample far outside the 24-bit range",
         );
         let inside: I24 = serde_json::from_str("8388607").expect("the highest sample is in range");
         assert_eq!(inside, I24::MAX, "a sample inside the range still parses");
@@ -1545,17 +1604,30 @@ mod tests {
 
     #[test]
     fn deserialization_refuses_a_map_the_builder_refuses() {
-        let document = r#"{"tempos":[],"meters":[{"ticks":5000,"clock":0,"bbt":{"bar":9,"beat":1,"tick":0},"meter":{"beats_per_bar":4,"beat_unit":"Quarter"}}]}"#;
+        let document = r#"{"tempos":[],"meters":[{"ticks":5000,"bbt":{"bar":9,"beat":1,"tick":0},"meter":{"beats_per_bar":4,"beat_unit":"Quarter"}}]}"#;
         let parsed: Result<TempoMap, serde_json::Error> = serde_json::from_str(document);
-        assert!(
-            parsed.is_err(),
-            "the load path meets the gate that TempoMapEdit::finish carries"
+        assert_refusal_names(
+            &parsed,
+            TimeError::NoFirstPoint,
+            "a stored meter list whose first entry is off tick zero",
+        );
+        let unnameable = r#"{"tempos":[],"meters":[{"ticks":0,"bbt":{"bar":1,"beat":1,"tick":0},"meter":{"beats_per_bar":7,"beat_unit":"Quarter"}},{"ticks":11520,"bbt":{"bar":1,"beat":7,"tick":0},"meter":{"beats_per_bar":4,"beat_unit":"Quarter"}}]}"#;
+        let refused: Result<TempoMap, serde_json::Error> = serde_json::from_str(unnameable);
+        assert_refusal_names(
+            &refused,
+            TimeError::UnorderedMap,
+            "a stored meter entry whose own meter cannot name its address",
         );
     }
 
     #[test]
     fn tempo_map_json_round_trips() {
-        let map = three_meter_map();
+        let map = tempo_and_meter_map();
+        assert_eq!(
+            (map.tempos().len(), map.meters().len()),
+            (3, 3),
+            "the round trip reads a map that holds both lists"
+        );
         let document = serde_json::to_string(&map).expect("the map serializes");
         let parsed: TempoMap = serde_json::from_str(&document).expect("a valid map parses back");
         assert_eq!(parsed, map, "a map the builder accepts survives the file");
@@ -1602,6 +1674,179 @@ mod tests {
             TempoMap::default().meter_at(Ticks::ZERO),
             None,
             "an empty meter list has no governing entry"
+        );
+    }
+
+    #[test]
+    fn tempo_map_edit_inserts_a_tempo_change_in_the_middle() {
+        let edited = three_tempo_map()
+            .edit()
+            .insert_tempo(tempo_point(3_840, 0, 240))
+            .recompute_cached_views()
+            .finish()
+            .expect("the recompute states the clock that the rate before each entry produces");
+        assert_eq!(
+            edited.tempos().len(),
+            4,
+            "the new entry sits between the first entry and the second"
+        );
+        let at_insert = 3_840_i64.saturating_mul(CLOCK_AT_120);
+        let at_second = at_insert.saturating_add(3_840_i64.saturating_mul(CLOCK_AT_240));
+        let at_third = at_second.saturating_add(BAR_TICKS.saturating_mul(CLOCK_AT_60));
+        for (probe, want) in [
+            (3_840, at_insert),
+            (BAR_TICKS, at_second),
+            (BAR_TICKS.saturating_mul(2), at_third),
+        ] {
+            assert_eq!(
+                edited.superclock_at(Ticks::new(probe)).get(),
+                want,
+                "the map answers the clock that the rates before tick {probe} produce"
+            );
+        }
+    }
+
+    #[test]
+    fn tempo_map_edit_replaces_an_entry_at_the_same_tick() {
+        let edit = three_tempo_map().edit().insert_tempo(tempo_point(
+            BAR_TICKS,
+            second_tempo_clock(),
+            240,
+        ));
+        assert_eq!(
+            edit.tempos().len(),
+            3,
+            "an insert at a tick the list holds replaces that entry"
+        );
+        assert_eq!(
+            edit.tempos()
+                .get(1)
+                .map(|point| point.tempo().beats_per_minute().numerator()),
+            Some(240),
+            "the entry at that tick carries the new rate"
+        );
+        let finished = edit
+            .recompute_cached_views()
+            .finish()
+            .expect("the replaced entry keeps the tick order of the list");
+        assert_eq!(
+            finished
+                .superclock_at(Ticks::new(BAR_TICKS.saturating_add(1_920)))
+                .get(),
+            second_tempo_clock().saturating_add(1_920_i64.saturating_mul(CLOCK_AT_240)),
+            "a tick after the replaced entry reads the new rate"
+        );
+    }
+
+    #[test]
+    fn tempo_map_edit_inserts_a_meter_change_in_the_middle() {
+        let edit = three_meter_map().edit().insert_meter(meter_point(
+            BAR_TICKS.saturating_mul(2),
+            Bbt::ORIGIN,
+            3,
+        ));
+        assert_eq!(
+            edit.meters().len(),
+            4,
+            "the new entry sits between the first entry and the second"
+        );
+        let edited = edit
+            .recompute_cached_views()
+            .finish()
+            .expect("the recompute states the address that the meter before each entry produces");
+        assert_eq!(
+            edited.bbt_at(Ticks::new(BAR_TICKS.saturating_mul(2))),
+            bbt(3, 1, 0),
+            "the new entry starts at bar 3, which the first meter names"
+        );
+        assert_eq!(
+            edited.ticks_at_bbt(bbt(6, 1, 0)),
+            Ok(Ticks::new(
+                BAR_TICKS
+                    .saturating_mul(2)
+                    .saturating_add(THREE_FOUR_BAR_TICKS.saturating_mul(3))
+            )),
+            "the address round trips on the map that the insert and the recompute leave"
+        );
+    }
+
+    #[test]
+    fn sample_rate_lists_the_set_that_is_supported_tests() {
+        assert_eq!(
+            SampleRate::SUPPORTED.map(|rate| rate.get().get()),
+            [44_100, 48_000, 88_200, 96_000, 176_400, 192_000],
+            "the list holds the six rates of section 2.1"
+        );
+        for rate in SampleRate::SUPPORTED {
+            assert!(
+                rate.is_supported(),
+                "every listed rate answers as supported, at {} samples per second",
+                rate.get().get()
+            );
+        }
+        assert!(
+            !SampleRate::SUPPORTED.contains(&SampleRate::new(nonzero_u32(44_056))),
+            "a rate the kernel does not name is outside the list"
+        );
+    }
+
+    #[test]
+    fn gain_and_sample_carry_a_total_order() {
+        let mut gains = [
+            GainDb::new(Finite::new(0.0).expect("the gain is finite")),
+            GainDb::new(Finite::new(-6.0).expect("the gain is finite")),
+            GainDb::new(Finite::new(3.5).expect("the gain is finite")),
+        ];
+        gains.sort_unstable();
+        assert_eq!(
+            gains.first().map(|gain| gain.get().get().to_bits()),
+            Some((-6.0_f64).to_bits()),
+            "the sort puts the quietest gain first"
+        );
+        assert_eq!(
+            gains.last().map(|gain| gain.get().get().to_bits()),
+            Some(3.5_f64.to_bits()),
+            "the sort puts the loudest gain last"
+        );
+        let zero = I24::new(0).expect("zero is a 24-bit sample");
+        let mut samples = [I24::MAX, I24::MIN, zero];
+        samples.sort_unstable();
+        assert_eq!(
+            samples,
+            [I24::MIN, zero, I24::MAX],
+            "the sample order is the order of the sample values"
+        );
+    }
+
+    #[test]
+    fn tuplet_splits_a_span_with_its_own_count() {
+        let triplet = Tuplet::new(nonzero_u8(3), nonzero_u8(2));
+        let parts = triplet.split(Ticks::new(BAR_TICKS));
+        assert_eq!(
+            parts.as_slice(),
+            split_tuplet(Ticks::new(BAR_TICKS), nonzero_u8(3)).as_slice(),
+            "the method answers what the function answers for the same count"
+        );
+        assert_eq!(parts.len(), 3, "a triplet splits a span into three parts");
+        let total: i64 = parts.iter().map(|part| part.get()).sum();
+        assert_eq!(total, BAR_TICKS, "the parts sum to the span exactly");
+    }
+
+    #[test]
+    fn split_tuplet_floors_a_negative_span() {
+        let parts = split_tuplet(Ticks::new(-1), nonzero_u8(255));
+        assert_eq!(parts.len(), 255, "the split holds one entry for each part");
+        let total: i64 = parts.iter().map(|part| part.get()).sum();
+        assert_eq!(total, -1, "the parts sum to the span exactly");
+        assert_eq!(
+            parts.first().copied().map(Ticks::get),
+            Some(-1),
+            "every part but the last takes the floor of the quotient"
+        );
+        assert_eq!(
+            parts.last().copied().map(Ticks::get),
+            Some(253),
+            "the last part absorbs the remainder and carries the opposite sign"
         );
     }
 
@@ -1734,13 +1979,13 @@ mod tests {
     fn unordered_map_names_both_of_its_causes() {
         let message =
             "the point list is not in tick order, or a point disagrees with the map arithmetic";
+        let second_clock = second_tempo_clock();
         let out_of_order = TempoMapEdit::new()
-            .push_tempo(tempo_point(0, 0, Bbt::ORIGIN, 120))
-            .push_tempo(tempo_point(BAR_TICKS, 2_000, bbt(2, 1, 0), 90))
+            .push_tempo(tempo_point(0, 0, 120))
+            .push_tempo(tempo_point(BAR_TICKS, second_clock, 90))
             .push_tempo(tempo_point(
                 BAR_TICKS.saturating_sub(1),
-                3_000,
-                bbt(3, 1, 0),
+                second_clock.saturating_sub(CLOCK_AT_90),
                 60,
             ))
             .finish()
@@ -1751,8 +1996,8 @@ mod tests {
             "the message names the tick-order cause"
         );
         let disagreeing = TempoMapEdit::new()
-            .push_tempo(tempo_point(0, 0, Bbt::ORIGIN, 120))
-            .push_tempo(tempo_point(1_920, 1, bbt(2, 1, 0), 120))
+            .push_tempo(tempo_point(0, 0, 120))
+            .push_tempo(tempo_point(1_920, 1, 120))
             .finish()
             .expect_err("a stored clock that the rate before it denies is refused");
         assert_eq!(

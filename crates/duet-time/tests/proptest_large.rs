@@ -1,27 +1,40 @@
-//! The nightly soak target: the four kernel properties at the soak case count.
+//! The nightly soak target: six kernel properties at the soak case count.
 //!
-//! The four properties are the four properties of `tests/kernel.rs` that take
-//! a proptest strategy:
+//! `tests/kernel.rs` proves each of the six at the gate case count, and this
+//! target proves it again at the soak case count:
 //!
 //! 1. The `Finite` invariants.
 //! 2. `muldiv` against a 128-bit reference.
 //! 3. The 24-bit round trip.
-//! 4. The tuplet sum.
+//! 4. The `superclock_at` and `ticks_at` monotonicity.
+//! 5. The `bbt_at` and `ticks_at_bbt` round trip.
+//! 6. The `bbt_at` monotonicity under `Bbt::lexicographic_cmp`.
 //!
-//! The gate runs each one at the gate case count of B78. This target runs each
-//! one at the soak case count of B78. Every test here carries an `ignore`
+//! The three map properties draw over a wide range, so a longer run reaches
+//! inputs that the gate run does not. The tuplet sum is not one of the six: the
+//! whole domain of that rule is 99,840 pairs, and
+//! `tuplet_parts_sum_to_span` in `tests/kernel.rs` enumerates every one of them
+//! at the gate.
+//!
+//! The gate runs each property at the gate case count of B78. This target runs
+//! each one at the soak case count of B78. Every test here carries an `ignore`
 //! attribute, so the gate skips them. Section 14 of
 //! `roadmap/duet-v1/architecture.md` gives this target to the nightly
 //! `soak.yml` workflow, which chunk M7 writes.
 
 #[cfg(test)]
 mod tests {
-    use core::num::{NonZeroI64, NonZeroU8};
+    use core::cmp::Ordering;
+    use core::num::{NonZeroI64, NonZeroU8, NonZeroU16, NonZeroU32};
 
     use duet_time::convert::{Rounding, i24_to_f32, muldiv, unit_to_i24};
-    use duet_time::{Finite, I24, Ticks, TimeError, split_tuplet};
+    use duet_time::{
+        Bbt, Finite, I24, Meter, MeterPoint, NoteValue, Ratio, SuperClock, Tempo, TempoMap,
+        TempoMapEdit, TempoPoint, Ticks, TimeError,
+    };
     use proptest::prelude::{
-        ProptestConfig, Strategy as _, any, prop_assert, prop_assert_eq, prop_assume, proptest,
+        ProptestConfig, Strategy as _, any, prop_assert, prop_assert_eq, prop_assert_ne,
+        prop_assume, proptest,
     };
 
     /// The proptest case count of the nightly soak run (B78).
@@ -76,6 +89,86 @@ mod tests {
         let span = i64::from(I24::MAX.get()) - i64::from(I24::MIN.get()) + 1;
         let folded = i64::from(raw).rem_euclid(span) + i64::from(I24::MIN.get());
         i32::try_from(folded).expect("the folded value fits an i32")
+    }
+
+    /// The tick count of one bar of four quarter notes.
+    const BAR_TICKS: i64 = 7_680;
+
+    /// The tick count of one bar of three quarter notes.
+    const THREE_FOUR_BAR_TICKS: i64 = 5_760;
+
+    /// Superclock ticks of one tick at 120 quarter notes per minute.
+    const CLOCK_AT_120: i64 = 73_500;
+
+    /// Superclock ticks of one tick at 60 quarter notes per minute.
+    const CLOCK_AT_60: i64 = 147_000;
+
+    /// A non-zero 64-bit value for a test fixture.
+    fn nonzero_i64(value: i64) -> NonZeroI64 {
+        NonZeroI64::new(value).expect("the fixture value is not zero")
+    }
+
+    /// A non-zero 8-bit value for a test fixture.
+    fn nonzero_u8(value: u8) -> NonZeroU8 {
+        NonZeroU8::new(value).expect("the fixture value is not zero")
+    }
+
+    /// The address at `bar`, `beat`, and `tick`.
+    fn bbt(bar: u32, beat: u16, tick: u16) -> Bbt {
+        Bbt::new(
+            NonZeroU32::new(bar).expect("a bar number is not zero"),
+            NonZeroU16::new(beat).expect("a beat number is not zero"),
+            tick,
+        )
+    }
+
+    /// A tempo entry of `beats` quarter notes per minute.
+    fn tempo_point(ticks: i64, clock: i64, beats: i64) -> TempoPoint {
+        let rate = Ratio::new(beats, nonzero_i64(1)).expect("the rate reduces inside the range");
+        TempoPoint::new(
+            Ticks::new(ticks),
+            SuperClock::new(clock),
+            Tempo::new(rate, NoteValue::Quarter, false).expect("the rate is positive"),
+        )
+    }
+
+    /// A meter entry of `beats_per_bar` quarter notes.
+    fn meter_point(ticks: i64, address: Bbt, beats_per_bar: u8) -> MeterPoint {
+        MeterPoint::new(
+            Ticks::new(ticks),
+            address,
+            Meter::new(nonzero_u8(beats_per_bar), NoteValue::Quarter),
+        )
+    }
+
+    /// A map of three tempo entries whose stored clocks match the arithmetic.
+    ///
+    /// It is the fixture of `superclock_at_is_monotonic` in `tests/kernel.rs`,
+    /// so the soak run and the gate run prove one property of one map.
+    fn three_tempo_map() -> TempoMap {
+        let second_clock = BAR_TICKS.saturating_mul(CLOCK_AT_120);
+        let third_clock = second_clock.saturating_add(BAR_TICKS.saturating_mul(CLOCK_AT_60));
+        TempoMapEdit::new()
+            .push_tempo(tempo_point(0, 0, 120))
+            .push_tempo(tempo_point(BAR_TICKS, second_clock, 60))
+            .push_tempo(tempo_point(BAR_TICKS.saturating_mul(2), third_clock, 90))
+            .finish()
+            .expect("the three entries rise in every view")
+    }
+
+    /// A map of three meter entries, two of which start inside a bar.
+    ///
+    /// It is the fixture of `bbt_round_trips_over_a_multi_meter_map` in
+    /// `tests/kernel.rs`, and it holds two segment boundaries.
+    fn three_meter_map() -> TempoMap {
+        let second = BAR_TICKS.saturating_mul(4).saturating_add(1_920);
+        let third = second.saturating_add(THREE_FOUR_BAR_TICKS.saturating_mul(3));
+        TempoMapEdit::new()
+            .push_meter(meter_point(0, Bbt::ORIGIN, 4))
+            .push_meter(meter_point(second, bbt(5, 2, 0), 3))
+            .push_meter(meter_point(third, bbt(8, 2, 0), 5))
+            .finish()
+            .expect("each entry states the address the entry before it produces")
     }
 
     proptest! {
@@ -157,22 +250,60 @@ mod tests {
     proptest! {
         #![proptest_config(soak())]
 
+        /// The strategy draws two arbitrary counts with `any::<i64>()`.
         #[test]
         #[ignore = "the nightly soak target: only the soak.yml workflow runs it"]
-        fn proptest_large_tuplet_parts_sum_to_span(span in 1_i64..=7_680, divisor in 2_u8..=13) {
-            let parts = NonZeroU8::new(divisor).expect("the divisor is not zero");
-            let split = split_tuplet(Ticks::new(span), parts);
-            prop_assert_eq!(
-                split.len(),
-                usize::from(divisor),
-                "the split holds one entry for each part"
+        fn proptest_large_tempo_queries_are_monotonic(
+            first in any::<i64>(),
+            second in any::<i64>(),
+        ) {
+            let map = three_tempo_map();
+            let low = first.min(second);
+            let high = first.max(second);
+            prop_assert!(
+                map.superclock_at(Ticks::new(low)) <= map.superclock_at(Ticks::new(high)),
+                "a larger tick count never gives a smaller superclock count"
             );
-            let total: i64 = split.iter().map(|part| part.get()).sum();
-            prop_assert_eq!(total, span, "the parts sum to the span exactly");
-            let head = split.first().expect("the split holds at least one part");
-            for part in split.iter().take(usize::from(divisor).saturating_sub(1)) {
-                prop_assert_eq!(part, head, "every part but the last holds the same count");
-            }
+            prop_assert!(
+                map.ticks_at(SuperClock::new(low)) <= map.ticks_at(SuperClock::new(high)),
+                "a larger superclock count never gives a smaller tick count"
+            );
+        }
+    }
+
+    proptest! {
+        #![proptest_config(soak())]
+
+        /// The strategy draws a tick count from `0..=1_000_000_000`.
+        #[test]
+        #[ignore = "the nightly soak target: only the soak.yml workflow runs it"]
+        fn proptest_large_bbt_round_trips_over_a_multi_meter_map(
+            ticks in 0_i64..=1_000_000_000,
+        ) {
+            let map = three_meter_map();
+            prop_assert_eq!(
+                map.ticks_at_bbt(map.bbt_at(Ticks::new(ticks))),
+                Ok(Ticks::new(ticks)),
+                "an address names the tick it came from on a map of three meter entries"
+            );
+        }
+    }
+
+    proptest! {
+        #![proptest_config(soak())]
+
+        /// The strategy draws two arbitrary tick counts with `any::<i64>()`.
+        #[test]
+        #[ignore = "the nightly soak target: only the soak.yml workflow runs it"]
+        fn proptest_large_bbt_at_is_monotonic(first in any::<i64>(), second in any::<i64>()) {
+            let map = three_meter_map();
+            let low = Ticks::new(first.min(second));
+            let high = Ticks::new(first.max(second));
+            prop_assert_ne!(
+                map.bbt_at(low).lexicographic_cmp(map.bbt_at(high)),
+                Ordering::Greater,
+                "the address never falls as the tick rises, over the whole 64-bit range"
+            );
         }
     }
 }

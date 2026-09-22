@@ -305,28 +305,33 @@ impl Meter {
 
 /// One tempo entry.
 ///
-/// It carries its own position in all three views, so a lookup never calls
-/// back into the map.
+/// It carries its own tick position and its own superclock position, so
+/// `TempoMap::superclock_at` and `TempoMap::ticks_at` never call back into the
+/// map. `TempoMapEdit::finish` gates both views: the tick rises strictly, the
+/// clock never falls, and the clock is the value that the rate of the entry
+/// before it produces.
+///
+/// The entry carries no address, because no query reads one. `bbt_at` and
+/// `ticks_at_bbt` read the meter list alone. A stored address here could not
+/// be gated at all on a map with an empty meter list, and the address rise made
+/// the true address of every such entry illegal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TempoPoint {
     /// The tick position of the entry.
     ticks: Ticks,
     /// The superclock position of the entry.
     clock: SuperClock,
-    /// The address of the entry.
-    bbt: Bbt,
     /// The tempo the entry starts.
     tempo: Tempo,
 }
 
 impl TempoPoint {
-    /// A tempo entry at `ticks`, `clock`, and `bbt`.
+    /// A tempo entry at `ticks` and `clock`.
     #[must_use]
-    pub const fn new(ticks: Ticks, clock: SuperClock, bbt: Bbt, tempo: Tempo) -> Self {
+    pub const fn new(ticks: Ticks, clock: SuperClock, tempo: Tempo) -> Self {
         Self {
             ticks,
             clock,
-            bbt,
             tempo,
         }
     }
@@ -343,12 +348,6 @@ impl TempoPoint {
         self.clock
     }
 
-    /// The address of the entry.
-    #[must_use]
-    pub const fn bbt(self) -> Bbt {
-        self.bbt
-    }
-
     /// The tempo the entry starts.
     #[must_use]
     pub const fn tempo(self) -> Tempo {
@@ -356,13 +355,25 @@ impl TempoPoint {
     }
 }
 
-/// One meter entry, with the same three views as a tempo entry.
+/// One meter entry.
+///
+/// It carries its own tick position and its own address, so `TempoMap::bbt_at`
+/// and `TempoMap::ticks_at_bbt` never call back into the map.
+/// `TempoMapEdit::finish` gates both views: the tick and the address rise, the
+/// address is the value that the meter of the entry before it produces, and the
+/// meter of the entry itself names that address.
+///
+/// The last rule holds an entry at a tick whose address its own meter can name:
+/// the beat is at or below the beats of one bar, and the tick is below one
+/// beat. A meter change on a barline always meets the rule, and a change at
+/// beat 7 of a bar of seven beats to a meter of four beats does not.
+///
+/// The entry carries no superclock position, because no query reads one.
+/// `superclock_at` and `ticks_at` read the tempo list alone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MeterPoint {
     /// The tick position of the entry.
     ticks: Ticks,
-    /// The superclock position of the entry.
-    clock: SuperClock,
     /// The address of the entry.
     bbt: Bbt,
     /// The meter the entry starts.
@@ -370,27 +381,16 @@ pub struct MeterPoint {
 }
 
 impl MeterPoint {
-    /// A meter entry at `ticks`, `clock`, and `bbt`.
+    /// A meter entry at `ticks` and `bbt`.
     #[must_use]
-    pub const fn new(ticks: Ticks, clock: SuperClock, bbt: Bbt, meter: Meter) -> Self {
-        Self {
-            ticks,
-            clock,
-            bbt,
-            meter,
-        }
+    pub const fn new(ticks: Ticks, bbt: Bbt, meter: Meter) -> Self {
+        Self { ticks, bbt, meter }
     }
 
     /// The tick position of the entry.
     #[must_use]
     pub const fn ticks(self) -> Ticks {
         self.ticks
-    }
-
-    /// The superclock position of the entry.
-    #[must_use]
-    pub const fn clock(self) -> SuperClock {
-        self.clock
     }
 
     /// The address of the entry.
@@ -675,6 +675,49 @@ impl TempoMapEdit {
         self
     }
 
+    /// The tempo entries the builder holds.
+    ///
+    /// A caller reads the list, decides what to change, and then calls one of
+    /// the edit methods. Without this the caller must read `TempoMap::tempos`
+    /// before it calls `TempoMap::edit`.
+    #[must_use]
+    pub fn tempos(&self) -> &[TempoPoint] {
+        &self.tempos
+    }
+
+    /// The meter entries the builder holds.
+    ///
+    /// It answers the meter list, for the reason `tempos` states.
+    #[must_use]
+    pub fn meters(&self) -> &[MeterPoint] {
+        &self.meters
+    }
+
+    /// This builder with `point` placed in the tempo list in tick order.
+    ///
+    /// An entry that already sits at that tick is replaced. "Add a tempo change
+    /// at bar 12" is this method, and `push_tempo` appends instead.
+    ///
+    /// Every entry after the new one keeps the clock of the list it came from,
+    /// so a caller calls `recompute_cached_views` before `finish`, the way a
+    /// removal does.
+    #[must_use]
+    pub fn insert_tempo(mut self, point: TempoPoint) -> Self {
+        insert_by_tick(&mut self.tempos, point, TempoPoint::ticks);
+        self
+    }
+
+    /// This builder with `point` placed in the meter list in tick order.
+    ///
+    /// An entry that already sits at that tick is replaced, and every entry
+    /// after the new one keeps the address of the list it came from, for the
+    /// reason `insert_tempo` states.
+    #[must_use]
+    pub fn insert_meter(mut self, point: MeterPoint) -> Self {
+        insert_by_tick(&mut self.meters, point, MeterPoint::ticks);
+        self
+    }
+
     /// This builder with every tempo entry at `ticks` removed.
     ///
     /// The entries after the removed one keep the clock of the list they came
@@ -700,23 +743,24 @@ impl TempoMapEdit {
     ///
     /// The tick axis is authoritative, and so is the tempo of a tempo entry and
     /// the meter of a meter entry. The first entry of a list is the anchor and
-    /// keeps its stored views. Every later tempo entry takes the clock that the
+    /// keeps its stored view. Every later tempo entry takes the clock that the
     /// rate of the entry before it produces, and every later meter entry takes
-    /// the address that the meter of the entry before it produces. Those are
-    /// the two views that `finish` cross-checks.
+    /// the address that the meter of the entry before it produces. An entry
+    /// holds one cached view, and this method rebuilds it.
     ///
-    /// Two cached views carry no rule of their own and stay as they are: the
-    /// address of a tempo entry and the clock of a meter entry. Neither one is
-    /// arithmetic over its own list, and `finish` reads each one for the order
-    /// rule alone.
-    ///
-    /// A caller removes an entry from the middle of a list, calls this, and
-    /// then calls `finish`. `finish` itself rebuilds nothing, so a caller that
-    /// edits the lists by hand and forgets this call is still refused.
+    /// A caller inserts an entry, or removes one, calls this, and then calls
+    /// `finish`. `finish` itself rebuilds nothing, so a caller that edits the
+    /// lists by hand and forgets this call is still refused.
     ///
     /// It is total: it uses the saturating scale the queries use, and it holds
     /// an address that leaves the range of a `Bbt` at the limit `bbt_at` holds
-    /// it at.
+    /// it at. The PAIR of this method and `finish` is not total at the top of
+    /// the address range. This method holds an address above the last bar at
+    /// that clamp limit, and `finish` compares the stored address against the
+    /// exact address, which no bar above `u32::MAX` has. A meter entry above
+    /// bar 4294967295 therefore answers `TimeError::UnorderedMap` after the
+    /// rebuild. A meter entry whose own meter cannot name the rebuilt address
+    /// answers the same error, and a meter change on a barline never does.
     #[must_use]
     pub fn recompute_cached_views(mut self) -> Self {
         recompute_tempo_clocks(&mut self.tempos);
@@ -733,11 +777,12 @@ impl TempoMapEdit {
     ///
     /// # Errors
     /// Returns `TimeError::NoFirstPoint` when a list is not empty and its first
-    /// entry does not sit at tick zero, at superclock zero, and at
-    /// `Bbt::ORIGIN`. Returns `TimeError::UnorderedMap` when the ticks or the
-    /// addresses of a list do not rise, when a superclock value falls, or when
-    /// a stored view of an entry disagrees with the arithmetic the map itself
-    /// performs: the clock of a tempo entry, and the address of a meter entry.
+    /// entry does not sit at tick zero and at the origin of its own second
+    /// view: superclock zero for a tempo entry, and `Bbt::ORIGIN` for a meter
+    /// entry. Returns `TimeError::UnorderedMap` when the ticks of a list do not
+    /// rise, when a tempo clock falls, when a meter address does not rise, when
+    /// a stored view disagrees with the arithmetic the map itself performs, or
+    /// when a meter entry stores an address that its own meter cannot name.
     pub fn finish(self) -> Result<TempoMap, TimeError> {
         validate_map(&self.tempos, &self.meters)?;
         Ok(TempoMap {
@@ -757,22 +802,52 @@ impl TempoMapEdit {
 fn validate_map(tempos: &[TempoPoint], meters: &[MeterPoint]) -> Result<(), TimeError> {
     validate_list(
         tempos,
-        |point| PointViews {
-            ticks: point.ticks(),
-            clock: point.clock(),
-            bbt: point.bbt(),
-        },
+        tempo_starts_at_origin,
+        tempo_pair_rises,
         tempo_pair_agrees,
     )?;
     validate_list(
         meters,
-        |point| PointViews {
-            ticks: point.ticks(),
-            clock: point.clock(),
-            bbt: point.bbt(),
-        },
+        meter_starts_at_origin,
+        meter_pair_rises,
         meter_pair_agrees,
     )
+}
+
+/// Whether the first tempo entry sits at the origin of both its views.
+fn tempo_starts_at_origin(point: &TempoPoint) -> bool {
+    point.ticks() == Ticks::ZERO && point.clock() == SuperClock::ZERO
+}
+
+/// Whether the first meter entry sits at the origin of both its views.
+///
+/// It also tests the stored address against the entry's own meter, so that no
+/// meter entry escapes that rule. Every meter names `Bbt::ORIGIN`, so the test
+/// refuses no list that the origin rule accepts.
+fn meter_starts_at_origin(point: &MeterPoint) -> bool {
+    point.ticks() == Ticks::ZERO && point.bbt() == Bbt::ORIGIN && meter_names_its_address(*point)
+}
+
+/// Whether the two views of a tempo pair rise.
+///
+/// The tick must rise strictly: a duplicate tick names an entry that no query
+/// can reach. The superclock value must not fall: at an extreme rate two
+/// neighbouring ticks round to one superclock tick, and the lookup takes the
+/// last entry of an equal run.
+fn tempo_pair_rises(previous: &TempoPoint, next: &TempoPoint) -> bool {
+    next.ticks() > previous.ticks() && next.clock() >= previous.clock()
+}
+
+/// Whether the two views of a meter pair rise strictly.
+///
+/// A duplicate tick names an entry that no query can reach, and the address
+/// lookup of `ticks_at_bbt` is wrong on a list whose addresses do not rise. The
+/// cross-check implies the address rule on every pair whose ticks rise, because
+/// a higher tick under one meter names a higher address, so the address rule is
+/// defence in depth.
+fn meter_pair_rises(previous: &MeterPoint, next: &MeterPoint) -> bool {
+    next.ticks() > previous.ticks()
+        && next.bbt().lexicographic_cmp(previous.bbt()) == Ordering::Greater
 }
 
 /// Whether the stored clock of `next` is the clock `previous` produces.
@@ -789,17 +864,39 @@ fn tempo_pair_agrees(previous: &TempoPoint, next: &TempoPoint) -> bool {
             .saturating_add(SuperClock::new(delta_clock))
 }
 
-/// Whether the stored address of `next` is the address `previous` produces.
+/// Whether the stored address of `next` agrees with both meters of the pair.
 ///
 /// `bbt_at` selects its anchor by tick and `ticks_at_bbt` selects its anchor by
-/// address. Without this rule the two selections name different segments and
-/// the round trip moves the position by a whole bar.
+/// address. Without the first rule the two selections name different segments
+/// and the round trip moves the position by a whole bar. Without the second
+/// rule `ticks_at_bbt` refuses the very address that the entry stores, and
+/// `bbt_at` answers an address that the list does not hold.
 ///
-/// It asks for no bar alignment: a meter entry may start inside a bar, and the
-/// rule is only that the stored address equal the arithmetic answer. The stored
-/// meter clock carries no rule, because no query reads it.
+/// It asks for no bar alignment: a meter entry may start inside a bar, at any
+/// tick whose address its own meter names.
 fn meter_pair_agrees(previous: &MeterPoint, next: &MeterPoint) -> bool {
-    exact_address(*previous, next.ticks()) == Some(next.bbt())
+    exact_address(*previous, next.ticks()) == Some(next.bbt()) && meter_names_its_address(*next)
+}
+
+/// Whether the meter of `point` names the address that `point` stores.
+///
+/// It is the pair of tests that `TempoMap::ticks_at_bbt` makes on a query: the
+/// beat is at or below the beats of one bar, and the tick is below one beat.
+fn meter_names_its_address(point: MeterPoint) -> bool {
+    let meter = point.meter();
+    point.bbt().beat().get() <= u16::from(meter.beats_per_bar().get())
+        && i64::from(point.bbt().tick()) < meter.beat_unit().ticks().get()
+}
+
+/// Place `point` in `points` by tick, and replace an entry at the same tick.
+///
+/// The list stays ordered by tick, which is the order that `finish` demands and
+/// the order that every query reads.
+fn insert_by_tick<P: Copy>(points: &mut Vec<P>, point: P, ticks: impl Fn(P) -> Ticks) {
+    let at = ticks(point);
+    points.retain(|held| ticks(*held) != at);
+    let index = points.partition_point(|held| ticks(*held) < at);
+    points.insert(index, point);
 }
 
 /// Rebuild the clock of every tempo entry after the first.
@@ -822,7 +919,8 @@ fn recompute_tempo_clocks(tempos: &mut [TempoPoint]) {
 ///
 /// Each entry takes the address that `meter_pair_agrees` demands of it, so a
 /// list this leaves is a list the meter cross-check accepts whenever the
-/// address of every entry fits the range a `Bbt` names.
+/// address of every entry fits the range a `Bbt` names and the meter of every
+/// entry names its own new address.
 fn recompute_meter_addresses(meters: &mut [MeterPoint]) {
     let mut anchor: Option<MeterPoint> = None;
     for point in meters {
@@ -833,54 +931,33 @@ fn recompute_meter_addresses(meters: &mut [MeterPoint]) {
     }
 }
 
-/// The three views of one map entry that the validation reads.
-#[derive(Debug, Clone, Copy)]
-struct PointViews {
-    /// The tick position of the entry.
-    ticks: Ticks,
-    /// The superclock position of the entry.
-    clock: SuperClock,
-    /// The address of the entry.
-    bbt: Bbt,
-}
-
 /// Refuse a point list that starts off the origin, that is out of order, or
-/// whose cached views disagree with the map arithmetic.
+/// whose cached view disagrees with the map arithmetic.
 ///
-/// `views` reads the three positions of one entry and `agrees` cross-checks an
-/// adjacent pair, so the tempo list and the meter list share one rule and each
-/// one states its own cross-check.
-///
-/// The tick and the address must rise strictly: a duplicate tick names an
-/// entry that no query can reach, and the address lookup of `ticks_at_bbt` is
-/// wrong on an unordered list. The superclock value must not fall: at an
-/// extreme rate two neighbouring ticks round to one superclock tick, and the
-/// lookup takes the last entry of an equal run.
+/// `at_origin` tests the first entry, `rises` tests the order of an adjacent
+/// pair, and `agrees` cross-checks that pair against the arithmetic. The tempo
+/// list and the meter list share this walk, and each one states its own three
+/// rules.
 ///
 /// # Errors
 /// Returns `TimeError::NoFirstPoint` or `TimeError::UnorderedMap`.
 fn validate_list<P>(
     points: &[P],
-    views: impl Fn(&P) -> PointViews,
+    at_origin: impl Fn(&P) -> bool,
+    rises: impl Fn(&P, &P) -> bool,
     agrees: impl Fn(&P, &P) -> bool,
 ) -> Result<(), TimeError> {
     let Some(first) = points.first() else {
         return Ok(());
     };
-    let start = views(first);
-    if start.ticks != Ticks::ZERO || start.clock != SuperClock::ZERO || start.bbt != Bbt::ORIGIN {
+    if !at_origin(first) {
         return Err(TimeError::NoFirstPoint);
     }
     for pair in points.windows(2) {
         let [previous, next] = pair else {
             continue;
         };
-        let earlier = views(previous);
-        let later = views(next);
-        let rises = later.ticks > earlier.ticks
-            && later.clock >= earlier.clock
-            && later.bbt.lexicographic_cmp(earlier.bbt) == Ordering::Greater;
-        if !rises {
+        if !rises(previous, next) {
             return Err(TimeError::UnorderedMap);
         }
         if !agrees(previous, next) {

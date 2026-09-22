@@ -142,15 +142,36 @@ impl SuperClock {
     }
 }
 
-/// The sample rates that the superclock rate divides exactly, from section 2.1
-/// of `roadmap/duet-v1/architecture.md`.
-const SUPPORTED_SAMPLE_RATES: [u32; 6] = [44_100, 48_000, 88_200, 96_000, 176_400, 192_000];
+/// A non-zero 32-bit constant, built at compile time.
+///
+/// It is the 32-bit form of `non_zero`, and it states the same reason.
+const fn non_zero_u32(value: u32) -> NonZeroU32 {
+    match NonZeroU32::new(value) {
+        Some(checked) => checked,
+        None => NonZeroU32::MIN,
+    }
+}
 
 /// A device sample rate. The type makes a zero divisor impossible.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct SampleRate(NonZeroU32);
 
 impl SampleRate {
+    /// The sample rates that the superclock rate divides exactly, from section
+    /// 2.1 of `roadmap/duet-v1/architecture.md`.
+    ///
+    /// `is_supported` tests this set, and a caller that draws a rate picker
+    /// lists it. The set has one declaration, so the picker and the test can
+    /// never differ.
+    pub const SUPPORTED: [Self; 6] = [
+        Self(non_zero_u32(44_100)),
+        Self(non_zero_u32(48_000)),
+        Self(non_zero_u32(88_200)),
+        Self(non_zero_u32(96_000)),
+        Self(non_zero_u32(176_400)),
+        Self(non_zero_u32(192_000)),
+    ];
+
     /// A rate of `value` samples per second.
     #[must_use]
     pub const fn new(value: NonZeroU32) -> Self {
@@ -172,7 +193,7 @@ impl SampleRate {
     /// decides once, off the audio thread.
     #[must_use]
     pub fn is_supported(self) -> bool {
-        SUPPORTED_SAMPLE_RATES.contains(&self.0.get())
+        Self::SUPPORTED.contains(&self)
     }
 }
 
@@ -322,7 +343,10 @@ impl SchemaVersion {
 }
 
 /// A gain in decibels. Every stored gain on a region and on a strip is one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// It derives `Ord`, because a caller sorts a strip list by gain. `Finite`
+/// carries a total order, so the derive adds no rule of its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct GainDb(Finite);
 
 impl GainDb {
@@ -345,7 +369,10 @@ impl GainDb {
 /// stored value outside the 24-bit range is refused with a serde error. A
 /// derived `Deserialize` would write the inner field directly, and the
 /// suppression reason on `convert::i24_to_f32` reads the range as a fact.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
+///
+/// It derives `Ord`, because a caller sorts samples. The order is the order of
+/// the inner `i32`, which is the order of the sample values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(try_from = "i32")]
 pub struct I24(i32);
 
