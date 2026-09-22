@@ -353,6 +353,34 @@ path = "other/lib.rs"
         report
     }
 
+    /// Run the plan-graph guard over one standing plan directory.
+    ///
+    /// A manifest probe runs the guard twice over one fixture, once to write
+    /// `plan-graph.md` and once to read it, so the fixture outlives the run
+    /// and the probe cleans it up itself.
+    fn plan_graph_run(root: &Path, flags: &[&str]) -> (i32, String) {
+        let named = root.display().to_string();
+        let mut args = vec!["check-plan-graph", named.as_str()];
+        args.extend_from_slice(flags);
+        xtask(root, &args)
+    }
+
+    /// The architecture document every manifest probe reads.
+    fn manifest_architecture() -> String {
+        architecture(&[(1, "none", "A1"), (2, "none", "B2")], &["A1 before B2"])
+    }
+
+    /// The two chunk files every manifest probe writes.
+    fn manifest_chunks(scope: &str) -> Vec<(&'static str, String)> {
+        vec![
+            (
+                "a1.md",
+                chunk("A1", "core", &[], &["crates/alpha/src/a.rs"]),
+            ),
+            ("b2.md", chunk("B2", "core", &["A1"], &[scope])),
+        ]
+    }
+
     #[test]
     fn conversion_clean_workspace_exits_zero() {
         let (code, report) = conversions(
@@ -1064,6 +1092,242 @@ path = "other/lib.rs"
         assert!(
             report.contains("FAIL: cannot open"),
             "the guard states that it cannot open the plan: {report}"
+        );
+    }
+
+    #[test]
+    fn plan_graph_manifest_that_the_front_matter_generates_is_clean() {
+        let root = plan(
+            "pg-manifest-clean",
+            &manifest_architecture(),
+            &manifest_chunks("crates/beta/src/b.rs"),
+        );
+        let (written, write_report) = plan_graph_run(&root, &["--write-manifest"]);
+        let (code, report) = plan_graph_run(&root, &["--check-manifest"]);
+        clean(&root);
+        assert_eq!(written, 0, "the write run is clean: {write_report}");
+        assert!(
+            write_report.contains("MANIFEST: plan-graph.md written"),
+            "the write run states that it wrote the manifest: {write_report}"
+        );
+        assert_eq!(
+            code, 0,
+            "a manifest the front matter generates is clean: {report}"
+        );
+        assert!(
+            report.contains("FINDINGS: 0"),
+            "the summary line counts no finding: {report}"
+        );
+    }
+
+    #[test]
+    fn plan_graph_manifest_that_a_changed_chunk_leaves_behind_is_a_finding() {
+        let root = plan(
+            "pg-manifest-drift",
+            &manifest_architecture(),
+            &manifest_chunks("crates/beta/src/b.rs"),
+        );
+        let (written, write_report) = plan_graph_run(&root, &["--write-manifest"]);
+        write_bytes(
+            &root.join("b2.md"),
+            chunk("B2", "core", &["A1"], &["crates/beta/src/moved.rs"]).as_bytes(),
+        );
+        let (code, report) = plan_graph_run(&root, &["--check-manifest"]);
+        clean(&root);
+        assert_eq!(written, 0, "the write run is clean: {write_report}");
+        assert_eq!(
+            code, 1,
+            "a manifest the front matter no longer generates is a finding: {report}"
+        );
+        assert!(
+            report.contains("FINDING:") && report.contains("plan-graph.md is out of step"),
+            "the finding names the file and the front matter: {report}"
+        );
+        assert!(
+            report.contains("FINDINGS: 1"),
+            "the summary line counts the drift: {report}"
+        );
+    }
+
+    #[test]
+    fn plan_graph_manifest_edited_by_hand_is_a_finding() {
+        let root = plan(
+            "pg-manifest-edited",
+            &manifest_architecture(),
+            &manifest_chunks("crates/beta/src/b.rs"),
+        );
+        let (written, write_report) = plan_graph_run(&root, &["--write-manifest"]);
+        let manifest = root.join("plan-graph.md");
+        let text = fs::read_to_string(&manifest).expect("the write run left a manifest");
+        write_bytes(
+            &manifest,
+            format!("{text}A hand-written line.\n").as_bytes(),
+        );
+        let (code, report) = plan_graph_run(&root, &["--check-manifest"]);
+        clean(&root);
+        assert_eq!(written, 0, "the write run is clean: {write_report}");
+        assert_eq!(code, 1, "a hand-edited manifest is a finding: {report}");
+        assert!(
+            report.contains("plan-graph.md is out of step"),
+            "the finding names the file: {report}"
+        );
+    }
+
+    #[test]
+    fn plan_graph_manifest_that_is_not_there_is_a_finding() {
+        let root = plan(
+            "pg-manifest-absent",
+            &manifest_architecture(),
+            &manifest_chunks("crates/beta/src/b.rs"),
+        );
+        let (code, report) = plan_graph_run(&root, &["--check-manifest"]);
+        clean(&root);
+        assert_eq!(
+            code, 1,
+            "a manifest that is not there is a finding: {report}"
+        );
+        assert!(
+            report.contains("plan-graph.md is out of step"),
+            "the finding names the file the run expected: {report}"
+        );
+    }
+
+    #[test]
+    fn plan_graph_a_finding_of_the_rules_hides_the_manifest_check() {
+        let arch = architecture(&[(1, "none", "A1")], &[]);
+        let root = plan(
+            "pg-manifest-after-finding",
+            &arch,
+            &[(
+                "a1.md",
+                chunk("A1", "core", &["Z9"], &["crates/alpha/src/a.rs"]),
+            )],
+        );
+        let (code, report) = plan_graph_run(&root, &["--check-manifest"]);
+        clean(&root);
+        assert_eq!(code, 1, "a rule finding is a finding: {report}");
+        assert!(
+            report.contains("FINDING: A1 depends on Z9, which has no chunk file"),
+            "the rules report first: {report}"
+        );
+        assert!(
+            !report.contains("out of step"),
+            "a run that already has a finding reads no manifest: {report}"
+        );
+    }
+
+    #[test]
+    fn plan_graph_both_manifest_flags_fail_closed() {
+        let root = plan(
+            "pg-manifest-both",
+            &manifest_architecture(),
+            &manifest_chunks("crates/beta/src/b.rs"),
+        );
+        let (code, report) = plan_graph_run(&root, &["--write-manifest", "--check-manifest"]);
+        let written = root.join("plan-graph.md").exists();
+        clean(&root);
+        assert_eq!(code, 2, "two manifest flags are fail-closed: {report}");
+        assert!(
+            report.contains("FAIL: give --write-manifest or --check-manifest, not both"),
+            "the guard states the usage rule on stdout: {report}"
+        );
+        assert!(!written, "a refused run writes no manifest: {report}");
+    }
+
+    #[test]
+    fn plan_graph_front_matter_the_parser_rejects_is_a_finding() {
+        let arch = architecture(&[(1, "none", "A1")], &[]);
+        let (code, report) = plan_graph(
+            "pg-front-matter",
+            &arch,
+            &[
+                (
+                    "a1.md",
+                    chunk("A1", "core", &[], &["crates/alpha/src/a.rs"]),
+                ),
+                (
+                    "broken.md",
+                    "---\nid: B1\nline: edge\n\n# B1 opens a fence it never closes\n".to_owned(),
+                ),
+            ],
+        );
+        assert_eq!(
+            code, 1,
+            "a front-matter fence the parser rejects is a finding: {report}"
+        );
+        assert!(
+            report.contains("FINDING: broken.md opens front matter the guard cannot parse"),
+            "the finding names the file: {report}"
+        );
+        assert!(
+            report.contains("CHUNKS: 1   PHASES: 1   LINKS 13.4: 0   FINDINGS: 1"),
+            "the malformed file counts as a finding and as no chunk: {report}"
+        );
+    }
+
+    #[test]
+    fn plan_graph_file_with_no_front_matter_stays_silent() {
+        let arch = architecture(&[(1, "none", "A1")], &[]);
+        let (code, report) = plan_graph(
+            "pg-no-front-matter",
+            &arch,
+            &[
+                (
+                    "a1.md",
+                    chunk("A1", "core", &[], &["crates/alpha/src/a.rs"]),
+                ),
+                (
+                    "notes.md",
+                    "# Notes\n\nThis file is no chunk and opens no fence.\n".to_owned(),
+                ),
+            ],
+        );
+        assert_eq!(code, 0, "a file with no fence is no chunk: {report}");
+        assert!(
+            report.contains("CHUNKS: 1   PHASES: 1   LINKS 13.4: 0   FINDINGS: 0"),
+            "the guard reads the file and says nothing about it: {report}"
+        );
+    }
+
+    /// How many chunks the deep-chain probe writes.
+    ///
+    /// A recursive walk of this chain overflows the process stack and aborts
+    /// with a status outside the three the guard contract states. The walk the
+    /// guard runs holds its own stack, so the depth reaches a verdict.
+    const DEEP_CHAIN: usize = 40_000;
+
+    #[test]
+    fn plan_graph_deep_dependency_chain_reaches_a_verdict() {
+        let root = scratch("pg-deep");
+        write_bytes(
+            &root.join("architecture.md"),
+            architecture(&[(1, "none", "A1")], &[]).as_bytes(),
+        );
+        for index in 0..DEEP_CHAIN {
+            let next = index + 1;
+            let depends = if next < DEEP_CHAIN {
+                format!("D{next}")
+            } else {
+                String::new()
+            };
+            let scope = format!("crates/c{index}/src/lib.rs");
+            let text = format!(
+                "---\nid: D{index}\nline: core\ndepends_on: [{depends}]\n\
+                 write_scope: [{scope}]\nparallelism: independent\n\
+                 completion: cargo nextest run passes\n---\n\n# D{index}\n"
+            );
+            fs::write(root.join(format!("d{index:07}.md")), text).expect("chain chunk file");
+        }
+        let (code, report) = plan_graph_run(&root, &[]);
+        clean(&root);
+        let summary = report.lines().last().unwrap_or_default().to_owned();
+        assert_eq!(
+            code, 1,
+            "a chain of {DEEP_CHAIN} chunks reaches a verdict: {summary}"
+        );
+        assert!(
+            summary.starts_with(&format!("CHUNKS: {DEEP_CHAIN}")),
+            "the summary line counts every chunk of the chain: {summary}"
         );
     }
 

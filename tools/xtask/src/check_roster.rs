@@ -17,6 +17,14 @@
 //! exits 2 on a usage or input failure, 1 on a finding, and 0 when the roster
 //! compiles clean and every recorded size is true.
 //!
+//! The port hardens one case the prototype leaves undefined. The prototype
+//! reads a non-zero clippy status as a finding of the plan, so a machine that
+//! cannot build the dependency tree makes the guard blame the roster. This
+//! port reads the clippy report: a lint diagnostic is the finding the
+//! prototype states, and a run that decided nothing is fail closed with a
+//! `FAIL:` line that names the cause. Every prototype line and every prototype
+//! exit code is unchanged, because the prototype defines neither case.
+//!
 //! One scratch directory and one cargo target, and the target does not outlive
 //! the run that made it. A target for this workspace holds the whole `gpui`
 //! dependency tree, which is several gigabytes, and one run per revision filled
@@ -351,10 +359,10 @@ fn compile(out: &mut impl io::Write, places: &Places) -> anyhow::Result<Outcome>
     }
     let workspace = places.workspace();
     let before = package_count(&places.repo.join("Cargo.lock"))?;
-    if !generate_lockfile(places, &workspace) {
+    if let Resolution::Refused(reason) = generate_lockfile(places, &workspace) {
         writeln!(
             out,
-            "FAIL: the scratch workspace does not resolve; the guard is fail-closed."
+            "FAIL: the scratch workspace does not resolve; the guard is fail-closed. CARGO: {reason}"
         )?;
         return Ok(Outcome::FailClosed);
     }
@@ -368,9 +376,16 @@ fn compile(out: &mut impl io::Write, places: &Places) -> anyhow::Result<Outcome>
         "ROSTER LINT:     cargo clippy --workspace --all-targets -- -D warnings"
     )?;
     out.flush()?;
-    if !lint(places, &workspace) {
-        writeln!(out, "ROSTER CLIPPY:   FAIL")?;
-        return Ok(Outcome::Findings);
+    match lint(out, places, &workspace)? {
+        LintRun::Clean => {},
+        LintRun::Diagnostics => {
+            writeln!(out, "ROSTER CLIPPY:   FAIL")?;
+            return Ok(Outcome::Findings);
+        },
+        LintRun::Unavailable(reason) => {
+            writeln!(out, "FAIL: {reason}; the guard is fail-closed.")?;
+            return Ok(Outcome::FailClosed);
+        },
     }
     writeln!(out, "ROSTER CLIPPY:   clean")?;
     out.flush()?;
@@ -407,29 +422,69 @@ fn cargo(places: &Places, workspace: &Path) -> Process {
     command
 }
 
+/// How many characters of a cargo reason one printed line carries.
+const REASON_WIDTH: usize = 400;
+
+/// What the two resolution attempts produced.
+#[derive(Debug)]
+enum Resolution {
+    /// One attempt resolved the scratch workspace.
+    Resolved,
+    /// Neither attempt resolved it, and cargo gave this reason.
+    Refused(String),
+}
+
 /// Resolve the scratch workspace, offline first and online second.
-fn generate_lockfile(places: &Places, workspace: &Path) -> bool {
+///
+/// Both attempts keep the stderr of cargo, so the caller states the cause
+/// beside the verdict. An operator who reads the verdict alone cannot tell a
+/// broken roster from a machine that reaches no registry.
+fn generate_lockfile(places: &Places, workspace: &Path) -> Resolution {
+    let mut reasons: Vec<String> = Vec::new();
     for offline in [true, false] {
         let mut command = cargo(places, workspace);
         command.arg("generate-lockfile");
         if offline {
             command.arg("--offline");
         }
-        let done = command
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .is_ok_and(|status| status.success());
-        if done {
-            return true;
+        match command
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+        {
+            Ok(done) if done.status.success() => return Resolution::Resolved,
+            Ok(done) => reasons.push(cargo_reason(&String::from_utf8_lossy(&done.stderr))),
+            Err(error) => reasons.push(format!("cargo generate-lockfile did not start: {error}")),
         }
     }
-    false
+    Resolution::Refused(reasons.join(" / "))
+}
+
+/// What one clippy run over the scratch workspace produced.
+#[derive(Debug)]
+enum LintRun {
+    /// Clippy ran over every crate and every crate passed.
+    Clean,
+    /// Clippy ran and printed at least one lint diagnostic.
+    Diagnostics,
+    /// Clippy decided nothing: it did not start, or it stopped before a lint
+    /// diagnostic reached the report.
+    Unavailable(String),
 }
 
 /// Run the real lint invocation over the scratch workspace.
-fn lint(places: &Places, workspace: &Path) -> bool {
-    cargo(places, workspace)
+///
+/// A roster that breaks a lint and a machine that cannot build the dependency
+/// tree are two different verdicts. The first is a finding of the plan; the
+/// second is fail closed, because the guard decided nothing about the plan.
+/// The two are told apart by the report: a lint diagnostic carries a file
+/// position and a bare level, a compiler error carries a code such as
+/// `error[E0308]`, and a resolution failure carries no file position at all.
+///
+/// # Errors
+/// Returns an error when a write of the cargo report fails.
+fn lint(out: &mut impl io::Write, places: &Places, workspace: &Path) -> anyhow::Result<LintRun> {
+    let started = cargo(places, workspace)
         .args([
             "clippy",
             "--workspace",
@@ -440,8 +495,90 @@ fn lint(places: &Places, workspace: &Path) -> bool {
             "-D",
             "warnings",
         ])
-        .status()
-        .is_ok_and(|status| status.success())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output();
+    let done = match started {
+        Ok(done) => done,
+        Err(error) => {
+            return Ok(LintRun::Unavailable(format!(
+                "cargo clippy did not start: {error}"
+            )));
+        },
+    };
+    let report = String::from_utf8_lossy(&done.stdout).into_owned();
+    let diagnostics = String::from_utf8_lossy(&done.stderr).into_owned();
+    out.write_all(report.as_bytes())?;
+    out.flush()?;
+    let stderr = io::stderr();
+    let mut sink = stderr.lock();
+    sink.write_all(diagnostics.as_bytes())?;
+    sink.flush()?;
+    if done.status.success() {
+        return Ok(LintRun::Clean);
+    }
+    if lint_diagnostic(&diagnostics) || lint_diagnostic(&report) {
+        return Ok(LintRun::Diagnostics);
+    }
+    Ok(LintRun::Unavailable(format!(
+        "cargo clippy stopped with no lint diagnostic: {}",
+        cargo_reason(&diagnostics)
+    )))
+}
+
+/// True when one cargo report holds a lint diagnostic.
+fn lint_diagnostic(report: &str) -> bool {
+    report.lines().any(is_lint_line)
+}
+
+/// True when one report line states a lint at a file position.
+///
+/// `src/lib.rs:2:1: error: missing documentation for a function` is a lint.
+/// `src/lib.rs:2:23: error[E0308]: mismatched types` is a compiler error, and
+/// `error: could not compile` is the summary cargo prints for either one.
+fn is_lint_line(line: &str) -> bool {
+    ["error: ", "warning: "]
+        .into_iter()
+        .filter_map(|level| line.split_once(level))
+        .any(|(head, _)| is_position(head))
+}
+
+/// True when the head of one report line ends with `path:line:column: `.
+fn is_position(head: &str) -> bool {
+    let Some(rest) = head.strip_suffix(": ") else {
+        return false;
+    };
+    let mut fields = rest.rsplitn(3, ':');
+    let (Some(column), Some(row), Some(file)) = (fields.next(), fields.next(), fields.next())
+    else {
+        return false;
+    };
+    !file.is_empty()
+        && !row.is_empty()
+        && !column.is_empty()
+        && row.bytes().all(|mark| mark.is_ascii_digit())
+        && column.bytes().all(|mark| mark.is_ascii_digit())
+}
+
+/// One line of cargo output that states why a cargo run stopped.
+///
+/// The first line that names an error carries the cause; the lines after it
+/// repeat the cause as a build summary. The text is bounded, because a cargo
+/// report is not, and it holds one line, because the caller prints it beside
+/// the verdict.
+fn cargo_reason(report: &str) -> String {
+    let first = report
+        .lines()
+        .map(str::trim)
+        .find(|line| line.contains("error"))
+        .or_else(|| report.lines().map(str::trim).find(|line| !line.is_empty()))
+        .unwrap_or("cargo printed no reason");
+    let bounded: String = first.chars().take(REASON_WIDTH).collect();
+    if bounded.chars().count() < first.chars().count() {
+        format!("{bounded} ...")
+    } else {
+        bounded
+    }
 }
 
 /// The output of the size oracle, or `None` when the oracle did not run.

@@ -12,6 +12,24 @@
 //! `cargo xtask check-roster <document> <scratch> <repo>` are guards. Each one
 //! exits 0 when it finds nothing, 1 when it finds at least one breach, and 2
 //! when it cannot decide.
+//!
+//! Three rules find a root, and each task takes exactly one of them. A task
+//! that rewrites this repository takes [`repo_root`], the directory two levels
+//! above the compiled-in `CARGO_MANIFEST_DIR`; `sync-agents` is that task and
+//! the only one. A guard that reads the workspace it runs inside takes
+//! [`guard_root`], the workspace root `cargo metadata` names from the current
+//! directory; `check-manifests` and `check-conversions` are those guards. A
+//! guard that reads a named document or a named directory takes the path the
+//! operator states on the command line; `check-plan-graph`, `check-closure`,
+//! `check-roster`, and `check-placement` are those guards.
+//!
+//! A guard that a probe must reach never takes the compiled-in root. A probe
+//! builds a throwaway workspace in a temporary directory and spawns the guard
+//! over it, so a guard that took the compiled-in root would read this
+//! repository and report on the wrong tree. `check-closure` reads
+//! `crate::repo_root` inside one helper, and for one file alone: the plan-store
+//! launcher `.claude/plan-coordination/db.sh`, which belongs to this repository
+//! and never to the tree under review.
 
 #![forbid(unsafe_code)]
 
@@ -84,6 +102,10 @@ enum Command {
         /// alone.
         #[arg(long)]
         write_manifest: bool,
+        /// Report `plan-graph.md` as a finding when the front-matter no longer
+        /// generates it.
+        #[arg(long)]
+        check_manifest: bool,
     },
 }
 
@@ -187,7 +209,16 @@ fn main() -> ExitCode {
         Command::CheckPlanGraph {
             plan_dir,
             write_manifest,
-        } => check_plan_graph::run(&plan_dir, write_manifest),
+            check_manifest,
+        } => {
+            let Some(mode) = check_plan_graph::ManifestMode::select(write_manifest, check_manifest)
+            else {
+                return report_failure(&anyhow::anyhow!(
+                    "give --write-manifest or --check-manifest, not both"
+                ));
+            };
+            check_plan_graph::run(&plan_dir, mode)
+        },
     };
     match result {
         Ok(outcome) => exit_code(outcome),
@@ -212,19 +243,21 @@ fn exit_code(outcome: Outcome) -> ExitCode {
     }
 }
 
-/// Print an error to stderr and return the fail-closed exit code.
+/// Print an error to stdout and return the fail-closed exit code.
 ///
 /// Every error that reaches this function names a condition the task could not
 /// decide: an unreadable file, a file that is not UTF-8, an unreadable
 /// directory, a missing cargo binary, or a closed output stream. Each one is
-/// fail-closed, so the code is 2 and never the 1 a breach carries. A write
-/// that itself fails leaves the plain failure code, because the reason can no
-/// longer reach the operator.
+/// fail-closed, so the code is 2 and never the 1 a breach carries. The code
+/// stays 2 when the write of the `FAIL:` line itself fails, because a stream
+/// that refuses the fail-closed line is the most fail-closed state of all, and
+/// 1 would tell the operator that the input broke a rule.
+///
+/// The line goes to stdout, where every guard prints its own `FAIL:` line, so
+/// one redirection carries the whole report.
 fn report_failure(error: &anyhow::Error) -> ExitCode {
-    let stderr = io::stderr();
-    let mut err = stderr.lock();
-    if writeln!(err, "FAIL: {error:#}").is_err() {
-        return ExitCode::FAILURE;
-    }
+    let stdout = io::stdout();
+    let mut out = stdout.lock();
+    let _unwritten = writeln!(out, "FAIL: {error:#}");
     ExitCode::from(2)
 }

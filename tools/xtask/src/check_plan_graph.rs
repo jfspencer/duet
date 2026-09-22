@@ -17,6 +17,14 @@
 //! 5. Two chunks of one line never share a phase.
 //! 6. Every chunk of section 13.3 has a file, and every file has a row.
 //! 7. Every serial link of section 13.4 appears as a `depends_on` edge.
+//! 8. Every file that opens a front-matter fence parses. A file that opens the
+//!    fence and that the parser then rejects leaves the rules and the manifest
+//!    with no trace, so it is a finding.
+//!
+//! `plan-graph.md` is generated, so [`ManifestMode::Check`] holds the file
+//! against the text the front matter generates now. The rules run first: a run
+//! that already has a finding reports that finding and reads the file no
+//! further.
 
 use std::collections::{BTreeSet, HashMap};
 use std::fs;
@@ -43,11 +51,41 @@ const MANIFEST_NOTE: &str = "Derived from the chunk front-matter by `tools/plan_
 /// The objective paragraph of the generated manifest.
 const OBJECTIVE: &str = "Duet v1: a vocal-first composition, record, mix, and master application on GPUI Kit, AI-first with a git-like history, on macOS 26 and Ubuntu 26.04. The measurable completion outcome is architecture.md section 14 (three rungs: `scripts/dod.sh` green on both platforms, the named test commands, and the human product review gate).";
 
+/// The name of the generated manifest inside the plan directory.
+const MANIFEST_FILE: &str = "plan-graph.md";
+
+/// What one run does with the generated manifest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ManifestMode {
+    /// Report the rules alone and leave `plan-graph.md` untouched.
+    Report,
+    /// Write `plan-graph.md` from the front matter.
+    Write,
+    /// Hold `plan-graph.md` against the front matter and report a difference.
+    Check,
+}
+
+impl ManifestMode {
+    /// The mode the two command-line flags name.
+    ///
+    /// Returns `None` for both flags at once, which is a usage failure: one
+    /// run writes the manifest or reads it, never both.
+    pub(crate) const fn select(write: bool, check: bool) -> Option<Self> {
+        match (write, check) {
+            (true, true) => None,
+            (true, false) => Some(Self::Write),
+            (false, true) => Some(Self::Check),
+            (false, false) => Some(Self::Report),
+        }
+    }
+}
+
 /// Run the plan-graph guard over every chunk file of the plan directory.
 ///
 /// # Errors
-/// Returns an error when the plan directory cannot be read.
-pub(crate) fn run(plan_dir: &Path, write_manifest: bool) -> anyhow::Result<Outcome> {
+/// Returns an error when the plan directory, one chunk file, or the generated
+/// manifest cannot be read, or when `plan-graph.md` cannot be written.
+pub(crate) fn run(plan_dir: &Path, mode: ManifestMode) -> anyhow::Result<Outcome> {
     let stdout = io::stdout();
     let mut out = stdout.lock();
     let arch_path = plan_dir.join("architecture.md");
@@ -71,14 +109,18 @@ pub(crate) fn run(plan_dir: &Path, write_manifest: bool) -> anyhow::Result<Outco
             return Ok(Outcome::FailClosed);
         },
     };
-    let chunks = match collect_chunks(plan_dir)? {
-        Ok(chunks) => chunks,
+    let collected = match collect_chunks(plan_dir)? {
+        Ok(collected) => collected,
         Err(reason) => {
             writeln!(out, "FAIL: {reason}")?;
             return Ok(Outcome::Findings);
         },
     };
+    let Collected { chunks, malformed } = collected;
     let mut report = Report::default();
+    for name in malformed {
+        report.finding(format!("{name} opens front matter the guard cannot parse"));
+    }
     check_dependencies(&chunks, &mut report);
     check_cycles(&chunks, &mut report);
     check_rows(&chunks, &phases, &mut report);
@@ -86,6 +128,12 @@ pub(crate) fn run(plan_dir: &Path, write_manifest: bool) -> anyhow::Result<Outco
     let groups = group_by_phase(&chunks, &phases);
     check_phase_scopes(&chunks, &groups, &mut report);
     check_link_edges(&links, &chunks, &mut report);
+    if mode == ManifestMode::Check && report.findings.is_empty() {
+        let wanted = manifest_text(&chunks, &phases, &groups);
+        if let Some(finding) = manifest_drift(plan_dir, &wanted)? {
+            report.finding(finding);
+        }
+    }
     for finding in &report.findings {
         writeln!(out, "FINDING: {finding}")?;
     }
@@ -97,17 +145,38 @@ pub(crate) fn run(plan_dir: &Path, write_manifest: bool) -> anyhow::Result<Outco
         links.len(),
         report.findings.len()
     )?;
-    if write_manifest && report.findings.is_empty() {
+    if mode == ManifestMode::Write && report.findings.is_empty() {
         let text = manifest_text(&chunks, &phases, &groups);
-        let path = plan_dir.join("plan-graph.md");
+        let path = plan_dir.join(MANIFEST_FILE);
         fs::write(&path, text).with_context(|| format!("cannot write {}", path.display()))?;
-        writeln!(out, "MANIFEST: plan-graph.md written")?;
+        writeln!(out, "MANIFEST: {MANIFEST_FILE} written")?;
     }
     Ok(if report.findings.is_empty() {
         Outcome::Clean
     } else {
         Outcome::Findings
     })
+}
+
+/// The finding `--check-manifest` reports, or `None` when the file is current.
+///
+/// A file the front matter no longer generates and a file that is not there
+/// are one finding, because both leave the operator with a manifest that no
+/// longer states the plan.
+///
+/// # Errors
+/// Returns an error when the file is there and cannot be read.
+fn manifest_drift(plan_dir: &Path, wanted: &str) -> anyhow::Result<Option<String>> {
+    let path = plan_dir.join(MANIFEST_FILE);
+    let drift = format!(
+        "{} is out of step with the chunk front-matter; regenerate it with --write-manifest",
+        path.display()
+    );
+    match fs::read_to_string(&path) {
+        Ok(found) => Ok((found != wanted).then_some(drift)),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Some(drift)),
+        Err(error) => Err(error).with_context(|| format!("cannot read {}", path.display())),
+    }
 }
 
 /// One front-matter value.
@@ -303,13 +372,28 @@ impl ChunkSet {
     }
 }
 
+/// What one read of the plan directory produced.
+#[derive(Debug, Default)]
+struct Collected {
+    /// Every file the guard read as a chunk.
+    chunks: ChunkSet,
+    /// The name of every file that opens a front-matter fence the parser
+    /// rejects.
+    malformed: Vec<String>,
+}
+
+/// True when the first line of one file opens a front-matter fence.
+fn opens_front_matter(text: &str) -> bool {
+    text.lines().next().is_some_and(|line| line.trim() == "---")
+}
+
 /// Read every chunk file of the plan directory.
 ///
 /// The inner `Err` holds the reason the guard stops with a finding.
 ///
 /// # Errors
 /// Returns an error when the plan directory or one chunk file cannot be read.
-fn collect_chunks(plan_dir: &Path) -> anyhow::Result<Result<ChunkSet, String>> {
+fn collect_chunks(plan_dir: &Path) -> anyhow::Result<Result<Collected, String>> {
     let entries =
         fs::read_dir(plan_dir).with_context(|| format!("cannot read {}", plan_dir.display()))?;
     let mut names: Vec<String> = Vec::new();
@@ -324,12 +408,16 @@ fn collect_chunks(plan_dir: &Path) -> anyhow::Result<Result<ChunkSet, String>> {
         }
     }
     names.sort();
-    let mut chunks = ChunkSet::default();
+    let mut collected = Collected::default();
     for name in names {
         let path = plan_dir.join(&name);
         let text =
             fs::read_to_string(&path).with_context(|| format!("cannot read {}", path.display()))?;
+        let fenced = opens_front_matter(&text);
         let Some(front) = parse_front_matter(&text) else {
+            if fenced {
+                collected.malformed.push(name);
+            }
             continue;
         };
         let (Some(id), Some(line), Some(depends_on), Some(write_scope)) = (
@@ -338,16 +426,20 @@ fn collect_chunks(plan_dir: &Path) -> anyhow::Result<Result<ChunkSet, String>> {
             front.list("depends_on"),
             front.list("write_scope"),
         ) else {
+            if fenced {
+                collected.malformed.push(name);
+            }
             continue;
         };
-        if let Some(first) = chunks.get(id) {
+        if let Some(first) = collected.chunks.get(id) {
             return Ok(Err(format!(
                 "duplicate chunk id {id} in {name} and {}",
                 first.file_name
             )));
         }
-        chunks.index.insert(id.to_owned(), chunks.items.len());
-        chunks.items.push(Chunk {
+        let position = collected.chunks.items.len();
+        collected.chunks.index.insert(id.to_owned(), position);
+        collected.chunks.items.push(Chunk {
             id: id.to_owned(),
             line: line.to_owned(),
             depends_on: depends_on.to_vec(),
@@ -355,10 +447,10 @@ fn collect_chunks(plan_dir: &Path) -> anyhow::Result<Result<ChunkSet, String>> {
             file_name: name,
         });
     }
-    if chunks.items.is_empty() {
+    if collected.chunks.items.is_empty() {
         return Ok(Err("no chunk file found".to_owned()));
     }
-    Ok(Ok(chunks))
+    Ok(Ok(collected))
 }
 
 /// The section 13.3 phase table.
@@ -651,44 +743,77 @@ enum Mark {
     Closed,
 }
 
-/// Report every cycle of the dependency graph.
-fn check_cycles(chunks: &ChunkSet, report: &mut Report) {
-    let mut state: HashMap<&str, Mark> = HashMap::new();
-    let mut chain: Vec<&str> = Vec::new();
-    for chunk in chunks.iter() {
-        visit(&chunk.id, chunks, &mut state, &mut chain, report);
-    }
+/// One step of the depth-first walk.
+///
+/// The walk holds its own stack of these steps. A recursive walk of a plan
+/// whose dependency chain is long enough overflows the process stack and
+/// aborts, which is a status outside the three the guard contract states.
+#[derive(Debug, Clone, Copy)]
+enum Step<'a> {
+    /// Enter one chunk.
+    Enter(&'a str),
+    /// Leave one chunk the walk entered.
+    Leave(&'a str),
 }
 
-/// Walk one chunk and its dependencies depth first.
-fn visit<'a>(
-    id: &'a str,
-    chunks: &'a ChunkSet,
-    state: &mut HashMap<&'a str, Mark>,
-    chain: &mut Vec<&'a str>,
-    report: &mut Report,
-) {
-    match state.get(id) {
-        Some(Mark::Open) => {
-            chain.push(id);
-            report.finding(format!("cycle: {}", chain.join(" -> ")));
-            chain.pop();
-            return;
-        },
-        Some(Mark::Closed) => return,
-        None => {},
-    }
-    state.insert(id, Mark::Open);
-    chain.push(id);
-    if let Some(chunk) = chunks.get(id) {
-        for dep in &chunk.depends_on {
-            if let Some(next) = chunks.get(dep) {
-                visit(&next.id, chunks, state, chain, report);
+/// Where one depth-first walk of the dependency graph stands.
+#[derive(Debug, Default)]
+struct Walk<'a> {
+    /// Where the walk stands on each chunk it reached.
+    state: HashMap<&'a str, Mark>,
+    /// The chunks the walk entered and has not left, in entry order.
+    chain: Vec<&'a str>,
+    /// The steps the walk has still to take, the next one last.
+    steps: Vec<Step<'a>>,
+}
+
+impl<'a> Walk<'a> {
+    /// Walk one chunk and every dependency below it.
+    fn run(&mut self, root: &'a str, chunks: &'a ChunkSet, report: &mut Report) {
+        self.steps.push(Step::Enter(root));
+        while let Some(step) = self.steps.pop() {
+            match step {
+                Step::Enter(id) => self.enter(id, chunks, report),
+                Step::Leave(id) => {
+                    self.chain.pop();
+                    self.state.insert(id, Mark::Closed);
+                },
             }
         }
     }
-    chain.pop();
-    state.insert(id, Mark::Closed);
+
+    /// Enter one chunk and queue every dependency below it.
+    fn enter(&mut self, id: &'a str, chunks: &'a ChunkSet, report: &mut Report) {
+        match self.state.get(id) {
+            Some(Mark::Open) => {
+                self.chain.push(id);
+                report.finding(format!("cycle: {}", self.chain.join(" -> ")));
+                self.chain.pop();
+                return;
+            },
+            Some(Mark::Closed) => return,
+            None => {},
+        }
+        self.state.insert(id, Mark::Open);
+        self.chain.push(id);
+        self.steps.push(Step::Leave(id));
+        let Some(chunk) = chunks.get(id) else {
+            return;
+        };
+        for dep in chunk.depends_on.iter().rev() {
+            if let Some(next) = chunks.get(dep) {
+                self.steps.push(Step::Enter(next.id.as_str()));
+            }
+        }
+    }
+}
+
+/// Report every cycle of the dependency graph.
+fn check_cycles(chunks: &ChunkSet, report: &mut Report) {
+    let mut walk = Walk::default();
+    for chunk in chunks.iter() {
+        walk.run(&chunk.id, chunks, report);
+    }
 }
 
 /// Report every chunk file with no phase row and every phase row with no file.
