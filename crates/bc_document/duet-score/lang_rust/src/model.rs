@@ -1449,9 +1449,26 @@ impl Score {
     /// Take the identifier counter that `score/meta.json` carried.
     ///
     /// The canonical reader is the one caller. Every other path takes the next
-    /// number through `mint_id`.
+    /// number through `mint_id`. The reader raises the counter through
+    /// `reserve_id` afterwards, because a stored counter is only a claim.
     pub(crate) const fn set_next_id(&mut self, next_id: u64) {
         self.next_id = next_id;
+    }
+
+    /// Raise the counter above `number`, and leave it where it already is.
+    ///
+    /// **The counter stands above every identifier the score holds.** `mint_id`
+    /// answers the counter and checks no map, and every map is a `BTreeMap`, so
+    /// an insert at a live key REPLACES a live entity with no refusal. Every
+    /// identifier that enters the score without a mint therefore goes through
+    /// this: the canonical reader, which cannot trust the counter a hand edit
+    /// wrote, and the paste path, which keeps the identifier that a clipboard
+    /// carries.
+    pub(crate) const fn reserve_id(&mut self, number: u64) {
+        let above = number.saturating_add(1);
+        if above > self.next_id {
+            self.next_id = above;
+        }
     }
 
     /// The bag of unknown fields, for a change.

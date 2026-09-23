@@ -15,7 +15,11 @@
 //! 2. **`score/meta.json` carries `revision` and `next_id`** beside `schema`,
 //!    and `read` restores both. Section 3.2 makes the identifier counter a
 //!    counter that the document persists, so no mint after a reload aliases a
-//!    live identifier.
+//!    live identifier. The stored counter is a claim and not a fact: `read`
+//!    raises it above every identifier the document holds, whatever the
+//!    document states. Decision 4b of ADR 0002 makes a hand edit a product
+//!    path, and a counter at or below a live identifier would make the next
+//!    mint replace a live entity.
 //! 3. **Every block ends with a newline**: the meta object and each record of
 //!    both JSON Lines files. One rule serves all three files.
 //! 4. **An unknown key reaches the `extra` bag of the record that carried it,
@@ -23,12 +27,14 @@
 //!    `duet-command` type, and that crate sits above this one, so the `read`
 //!    signature of section 3.6 carries no warning channel. The bag is the
 //!    whole report at this boundary (`escalation:T2-2`).
-//! 5. **One identifier names one line of `score/notes.jsonl`.** `Score` mints
-//!    each identifier once, so only a hand edit can give one number to a note
-//!    and to a rest, or to two notes. The score holds the notes and the rests
-//!    in two maps under one identifier type, so such a document would put two
-//!    elements behind one reference and every later command would reach both.
-//!    `read` refuses it as malformed text.
+//! 5. **One identifier names one record of one keyspace.** `Score` mints each
+//!    identifier once, so only a hand edit can give one number to two records.
+//!    Such a document would put two entities behind one reference, and a map
+//!    insert at a live key replaces the entity that stood there, so the second
+//!    record would delete the first. `read` refuses it as malformed text, over
+//!    every keyspace of the document: the five lists of `score/meta.json`,
+//!    `score/notes.jsonl`, where the notes and the rests answer to one
+//!    identifier type, and `score/spanners.jsonl`.
 //!
 //! The schema gate is a comparison, not an equality: a number above `SCHEMA`
 //! is `ScoreError::Schema`, and a number below it is the score of a build that
@@ -42,11 +48,32 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ScoreError;
-use crate::ids::{NoteId, Revision, StaffId, VoiceId};
+use crate::ids::{MarkId, MeasureId, NoteId, PartId, Revision, SpannerId, StaffId, VoiceId};
 use crate::model::{
     Measure, Note, Part, Pitch, Rest, SCHEMA, Score, ScoreMark, Spanner, Staff, Voice,
     note_order_key, rest_order_key, spanner_order_key,
 };
+
+/// The part of the document that the parts of `score/meta.json` come from.
+const PARTS_LIST: &str = "the parts list of score/meta.json";
+
+/// The part of the document that the staves of `score/meta.json` come from.
+const STAVES_LIST: &str = "the staves list of score/meta.json";
+
+/// The part of the document that the voices of `score/meta.json` come from.
+const VOICES_LIST: &str = "the voices list of score/meta.json";
+
+/// The part of the document that the measures of `score/meta.json` come from.
+const MEASURES_LIST: &str = "the measures list of score/meta.json";
+
+/// The part of the document that the marks of `score/meta.json` come from.
+const MARKS_LIST: &str = "the marks list of score/meta.json";
+
+/// The file that holds one note or one rest per line.
+const NOTES_FILE: &str = "score/notes.jsonl";
+
+/// The file that holds one spanner per line.
+const SPANNERS_FILE: &str = "score/spanners.jsonl";
 
 /// The byte blocks of one canonical score document, in `paths` order.
 ///
@@ -82,12 +109,22 @@ impl CanonicalDocument {
     }
 }
 
-/// Read a canonical document and migrate it to the current schema.
+/// Read a canonical document.
+///
+/// The read runs no migration step. A document above `SCHEMA` is refused, and a
+/// document below it is the score of a build that no release carried, so the
+/// score comes back under `SCHEMA` with its content as it stands. A document
+/// that lacks a field this build reads is malformed text, not an older schema.
+///
+/// The reader checks the SHAPE of the document and not its references: a hand
+/// edit that names a staff, a voice, or a note the document does not carry
+/// reads back as an aggregate that no command of `apply` would build.
+/// `escalation:T2-2` records the gap.
 ///
 /// # Errors
 /// Returns `ScoreError::Schema` for a document above the schema that this
 /// build reads, and `ScoreError::Parse` for malformed text, which includes a
-/// `score/notes.jsonl` that gives one identifier to two lines (rule 5).
+/// document that gives one identifier to two records of one keyspace (rule 5).
 pub fn read(meta: &str, notes: &str, spanners: &str) -> Result<Score, ScoreError> {
     let found = schema_of(meta)?;
     if found > SCHEMA {
@@ -97,12 +134,12 @@ pub fn read(meta: &str, notes: &str, spanners: &str) -> Result<Score, ScoreError
         });
     }
     let stored: Meta = from_json(meta)?;
-    let mut score = stored.into_score();
+    let mut score = stored.into_score()?;
     for line in text_records(notes) {
         let record: TimedRecord = from_json(line)?;
         let id = record.id();
         if score.notes().contains_key(&id) || score.rests().contains_key(&id) {
-            return Err(repeated_timed_id(id));
+            return Err(repeated_id(NOTES_FILE, id.get()));
         }
         match record {
             TimedRecord::Note(note) => {
@@ -115,7 +152,14 @@ pub fn read(meta: &str, notes: &str, spanners: &str) -> Result<Score, ScoreError
     }
     for line in text_records(spanners) {
         let spanner: Spanner = from_json(line)?;
-        score.spanners_mut().insert(spanner.id(), spanner);
+        let id = spanner.id();
+        if score.spanners().contains_key(&id) {
+            return Err(repeated_id(SPANNERS_FILE, id.get()));
+        }
+        score.spanners_mut().insert(id, spanner);
+    }
+    if let Some(number) = greatest_identifier(&score) {
+        score.reserve_id(number);
     }
     Ok(score)
 }
@@ -180,18 +224,22 @@ impl Meta {
     }
 
     /// The score that this block states, with no note, rest, or spanner.
-    fn into_score(self) -> Score {
+    ///
+    /// # Errors
+    /// Returns `ScoreError::Parse` when two records of one list carry one
+    /// identifier (rule 5).
+    fn into_score(self) -> Result<Score, ScoreError> {
         let mut score = Score::new();
-        *score.parts_mut() = keyed(self.parts, Part::id);
-        *score.staves_mut() = keyed(self.staves, Staff::id);
-        *score.voices_mut() = keyed(self.voices, Voice::id);
-        *score.measures_mut() = keyed(self.measures, Measure::id);
-        *score.marks_mut() = keyed(self.marks, ScoreMark::id);
+        *score.parts_mut() = keyed(self.parts, Part::id, PartId::get, PARTS_LIST)?;
+        *score.staves_mut() = keyed(self.staves, Staff::id, StaffId::get, STAVES_LIST)?;
+        *score.voices_mut() = keyed(self.voices, Voice::id, VoiceId::get, VOICES_LIST)?;
+        *score.measures_mut() = keyed(self.measures, Measure::id, MeasureId::get, MEASURES_LIST)?;
+        *score.marks_mut() = keyed(self.marks, ScoreMark::id, MarkId::get, MARKS_LIST)?;
         score.set_tempo_map(self.tempo_map);
         score.set_revision(self.revision);
         score.set_next_id(self.next_id);
         *score.extra_mut() = self.extra;
-        score
+        Ok(score)
     }
 }
 
@@ -297,26 +345,70 @@ impl NoteFilePlace {
 }
 
 /// The records of `list`, by the identifier that each one carries.
-fn keyed<Id: Ord, Record>(list: Vec<Record>, id: impl Fn(&Record) -> Id) -> BTreeMap<Id, Record> {
-    list.into_iter()
-        .map(|record| (id(&record), record))
-        .collect()
+///
+/// `place` names the part of the document that the list came from, for the
+/// refusal of a repeated identifier.
+///
+/// # Errors
+/// Returns `ScoreError::Parse` when two records carry one identifier (rule 5).
+fn keyed<Id, Record>(
+    list: Vec<Record>,
+    id: impl Fn(&Record) -> Id,
+    number: impl Fn(Id) -> u64,
+    place: &str,
+) -> Result<BTreeMap<Id, Record>, ScoreError>
+where
+    Id: Ord + Copy,
+{
+    let mut held = BTreeMap::new();
+    for record in list {
+        let key = id(&record);
+        if held.insert(key, record).is_some() {
+            return Err(repeated_id(place, number(key)));
+        }
+    }
+    Ok(held)
 }
 
-/// The refusal of a `score/notes.jsonl` that names `id` twice.
+/// The greatest number that any identifier of `score` carries.
+///
+/// Every map of the aggregate sorts by its own identifier, so the last key of
+/// each one is the greatest of that keyspace and the greatest of the eight is
+/// the greatest of the score. The answer is `None` for a score that holds
+/// nothing at all.
+fn greatest_identifier(score: &Score) -> Option<u64> {
+    [
+        score.parts().keys().next_back().copied().map(PartId::get),
+        score.staves().keys().next_back().copied().map(StaffId::get),
+        score.voices().keys().next_back().copied().map(VoiceId::get),
+        score
+            .measures()
+            .keys()
+            .next_back()
+            .copied()
+            .map(MeasureId::get),
+        score.notes().keys().next_back().copied().map(NoteId::get),
+        score.rests().keys().next_back().copied().map(NoteId::get),
+        score
+            .spanners()
+            .keys()
+            .next_back()
+            .copied()
+            .map(SpannerId::get),
+        score.marks().keys().next_back().copied().map(MarkId::get),
+    ]
+    .into_iter()
+    .flatten()
+    .max()
+}
+
+/// The refusal of a document that names one identifier twice in `place`.
 ///
 /// `ScoreError::Parse` is the arm that the roster holds for a document the
-/// reader cannot take, and a repeated identifier is such a document: the notes
-/// and the rests of a score answer to one identifier type, so the second line
-/// would hide the first behind one reference (rule 5 of this module).
-fn repeated_timed_id(id: NoteId) -> ScoreError {
-    ScoreError::Parse(
-        format!(
-            "two lines of score/notes.jsonl carry identifier {}",
-            id.get()
-        )
-        .into_boxed_str(),
-    )
+/// reader cannot take, and a repeated identifier is such a document: the second
+/// record would hide the first behind one reference (rule 5 of this module).
+fn repeated_id(place: &str, number: u64) -> ScoreError {
+    ScoreError::Parse(format!("two records of {place} carry identifier {number}").into_boxed_str())
 }
 
 /// The schema number that `meta` states.
@@ -387,7 +479,9 @@ mod tests {
     use crate::error::ScoreError;
     use crate::event::ScoreEvent;
     use crate::ids::{NoteId, PartId, PartName, StaffId};
-    use crate::model::{Clef, Duration, Pitch, Rest, SCHEMA, Score, Step, VoiceType};
+    use crate::model::{
+        Clef, Duration, MarkKind, Pitch, Rest, SCHEMA, Score, SpannerKind, Step, VoiceType,
+    };
 
     /// The tick count of one quarter note.
     const QUARTER_TICKS: i64 = 1_920;
@@ -483,6 +577,83 @@ mod tests {
                 .expect("an InsertNote at a free onset is accepted");
         }
         score
+    }
+
+    /// A score that holds one record of every kind the document carries.
+    ///
+    /// The eight keyspaces of the aggregate reach the document through the five
+    /// lists of `score/meta.json`, the two shapes of `score/notes.jsonl`, and
+    /// `score/spanners.jsonl`, so one fixture exercises the repeated-identifier
+    /// rule over every one of them.
+    fn sut_with_every_kind() -> Score {
+        let mut score = sut();
+        let mut notes = score.notes().keys().copied();
+        let from = notes.next().expect("the fixture score holds two notes");
+        let to = notes.next().expect("the fixture score holds two notes");
+        score
+            .apply(ScoreCommand::AddSpanner {
+                kind: SpannerKind::Slur,
+                from,
+                to,
+            })
+            .expect("an AddSpanner between two notes the score holds is accepted");
+        score
+            .apply(ScoreCommand::AddMark {
+                at: Ticks::ZERO,
+                kind: MarkKind::SystemBreak,
+            })
+            .expect("an AddMark is accepted");
+        score
+    }
+
+    /// The greatest number that any identifier of `score` carries.
+    ///
+    /// The helper reads the eight maps on its own, so the expectation of the
+    /// counter test does not come from the code under test.
+    fn greatest_identifier(score: &Score) -> u64 {
+        let parts = score.parts().keys().map(|id| id.get());
+        let staves = score.staves().keys().map(|id| id.get());
+        let voices = score.voices().keys().map(|id| id.get());
+        let measures = score.measures().keys().map(|id| id.get());
+        let notes = score.notes().keys().map(|id| id.get());
+        let rests = score.rests().keys().map(|id| id.get());
+        let spanners = score.spanners().keys().map(|id| id.get());
+        let marks = score.marks().keys().map(|id| id.get());
+        parts
+            .chain(staves)
+            .chain(voices)
+            .chain(measures)
+            .chain(notes)
+            .chain(rests)
+            .chain(spanners)
+            .chain(marks)
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// The meta block of `score` with the entries of `list` doubled.
+    ///
+    /// The answer is the text of the document and the number that two entries
+    /// of the list then carry.
+    fn meta_with_a_repeated_entry(meta: &str, list: &str) -> (String, u64) {
+        let mut object = meta_object(meta);
+        let entries = object
+            .get(list)
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_else(|| panic!("meta.json carries the {list} list"));
+        let first = entries
+            .first()
+            .cloned()
+            .unwrap_or_else(|| panic!("the fixture score fills the {list} list"));
+        let number = first
+            .get("id")
+            .and_then(Value::as_u64)
+            .unwrap_or_else(|| panic!("every record of the {list} list carries its identifier"));
+        let mut doubled = entries;
+        doubled.push(first);
+        object.insert(list.to_owned(), Value::Array(doubled));
+        (object_text(object), number)
     }
 
     /// The block as an owned string. Every canonical block is UTF-8.
@@ -759,6 +930,87 @@ mod tests {
                 HIGHER_REST_ID
             ],
             "a note stands before a rest at one (staff, voice, onset), and two rests there stand in identifier order"
+        );
+    }
+
+    #[test]
+    fn canonical_read_raises_the_counter_above_every_identifier() {
+        let score = sut();
+        let (meta, notes, spanners) = blocks(&score);
+        let mut object = meta_object(&meta);
+        object.insert("next_id".to_owned(), Value::from(0_u64));
+
+        let mut read_back = read(&object_text(object), &notes, &spanners)
+            .expect("a document that states a low counter reads back");
+
+        let greatest = greatest_identifier(&read_back);
+        assert!(
+            read_back.next_id() > greatest,
+            "the reader raises the counter above the greatest identifier the document holds, and it stands at {} against {greatest}",
+            read_back.next_id()
+        );
+        let parts_before = read_back.parts().len();
+        read_back
+            .apply(ScoreCommand::AddPart {
+                voice_type: VoiceType::Alto,
+                name: PartName::new("Alto 1").expect("a name with text"),
+            })
+            .expect("an AddPart is accepted");
+        assert_eq!(
+            read_back.parts().len(),
+            parts_before + 1,
+            "a mint after the read takes a free number, so it adds a part rather than replacing a live one"
+        );
+    }
+
+    #[test]
+    fn canonical_read_refuses_a_repeated_identifier_in_every_list_of_meta() {
+        let score = sut_with_every_kind();
+        let (meta, notes, spanners) = blocks(&score);
+        for list in ["parts", "staves", "voices", "measures", "marks"] {
+            let (broken, number) = meta_with_a_repeated_entry(&meta, list);
+
+            let refusal = read(&broken, &notes, &spanners);
+
+            let Err(ScoreError::Parse(ref message)) = refusal else {
+                panic!(
+                    "two records of the {list} list under one identifier are refused as malformed text, and the reader answered {refusal:?}"
+                );
+            };
+            assert!(
+                message.contains(&number.to_string()),
+                "the refusal of the {list} list names the repeated number, and it reads {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn canonical_read_refuses_a_repeated_spanner_identifier() {
+        let score = sut_with_every_kind();
+        let (meta, notes, spanners) = blocks(&score);
+        let mut lines = records(&spanners);
+        let first = lines
+            .first()
+            .cloned()
+            .expect("the fixture score writes one spanner line");
+        let number = serde_json::from_str::<Map<String, Value>>(&first)
+            .expect("a spanners.jsonl line is one JSON object")
+            .get("id")
+            .and_then(Value::as_u64)
+            .expect("every spanner record carries its identifier");
+        lines.push(first);
+        let doubled = rejoin(&lines, &spanners);
+
+        let refusal = read(&meta, &notes, &doubled);
+
+        let Err(ScoreError::Parse(ref message)) = refusal else {
+            panic!(
+                "two lines of score/spanners.jsonl under one identifier are refused as malformed text, and the reader answered {refusal:?}"
+            );
+        };
+        assert!(
+            message.contains(&number.to_string()),
+            "the refusal of a repeated spanner identifier names the number, and it reads {message}"
         );
     }
 

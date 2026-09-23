@@ -121,6 +121,65 @@ struct Placement {
     earlier_voice: VoiceId,
 }
 
+/// One tick range that a command hands to one staff and one voice.
+struct Taken {
+    /// The staff that takes the range.
+    staff: StaffId,
+    /// The voice that takes the range.
+    voice: VoiceId,
+    /// The first tick of the range.
+    onset: Ticks,
+    /// The first tick after the range.
+    end: Ticks,
+}
+
+impl Taken {
+    /// The range that `duration` covers from `onset` in `staff` and `voice`.
+    fn new(staff: StaffId, voice: VoiceId, onset: Ticks, duration: Duration) -> Self {
+        Self {
+            staff,
+            voice,
+            onset,
+            end: onset.saturating_add(duration.ticks()),
+        }
+    }
+
+    /// Whether this range and `other` cover one tick of one staff and voice.
+    const fn meets(&self, other: &Self) -> bool {
+        if self.staff.get() != other.staff.get() || self.voice.get() != other.voice.get() {
+            return false;
+        }
+        let other_opens_first = other.onset.get() < self.end.get();
+        let this_opens_first = self.onset.get() < other.end.get();
+        other_opens_first && this_opens_first
+    }
+}
+
+/// Refuse a range that an earlier range of the same command already took.
+///
+/// `check_free` reads the score, and the score still holds every moved element
+/// at its earlier place, so the skip set of a group command hides the group
+/// from itself: a moved element must not collide with where it came from. This
+/// is the other half of the D15 rule. Every range that the command hands out
+/// is checked against the ranges it has already handed out, so two elements of
+/// one command cannot cover one tick range of one staff and one voice.
+///
+/// # Errors
+/// Returns `ScoreError::OverlappingNote` with the staff, the voice, and the
+/// onset of the range under test.
+fn check_taken(taken: &[Taken], next: &Taken) -> Result<(), ScoreError> {
+    for held in taken {
+        if held.meets(next) {
+            return Err(ScoreError::OverlappingNote {
+                staff: next.staff,
+                voice: next.voice,
+                onset: next.onset,
+            });
+        }
+    }
+    Ok(())
+}
+
 /// The elements that one paste mints, with its events and its inverse.
 struct Pasted {
     /// The notes that the paste inserts.
@@ -143,10 +202,18 @@ fn bar_ticks(meter: Meter) -> Ticks {
     Ticks::new(beat.saturating_mul(i64::from(meter.beats_per_bar().get())))
 }
 
+/// `count` as a non-zero 16-bit number, held inside the two bounds.
+///
+/// A count of zero and a count above the 16-bit bound both answer the bound
+/// they cross: one for zero, `u16::MAX` for a count above the range.
+fn non_zero_u16(count: usize) -> NonZeroU16 {
+    let raw = u16::try_from(count).unwrap_or(u16::MAX);
+    NonZeroU16::new(raw).unwrap_or(NonZeroU16::MIN)
+}
+
 /// The ordinal that follows `count` parts of one voice type.
 fn next_ordinal(count: usize) -> NonZeroU16 {
-    let raw = u16::try_from(count.saturating_add(1)).unwrap_or(u16::MAX);
-    NonZeroU16::new(raw).unwrap_or(NonZeroU16::MIN)
+    non_zero_u16(count.saturating_add(1))
 }
 
 /// The notes and the rests that one `(staff, voice)` pair of a clipboard holds.
@@ -1160,6 +1227,59 @@ impl Score {
             .map_err(ScoreError::from)
     }
 
+    /// The meter of the measure that stands before `measure` on the timeline.
+    ///
+    /// The answer is `None` for the first measure of the score, and for a
+    /// measure the score does not hold.
+    fn meter_before(&self, measure: MeasureId) -> Option<Meter> {
+        let ordered = self.measures_in_order();
+        let place = ordered.iter().position(|id| *id == measure)?;
+        let earlier = place.checked_sub(1)?;
+        ordered
+            .get(earlier)
+            .and_then(|id| self.measures().get(id))
+            .map(Measure::meter)
+    }
+
+    /// The tempo map that states `meter` from `start` on.
+    ///
+    /// A measure carries a meter entry of its own when its meter differs from
+    /// the meter of the measure before it, and it carries none when the two
+    /// agree, because the entry that governs the earlier measure governs that
+    /// tick too. `governing` is the meter of the measure before, and `None`
+    /// names the first measure of the score, which always carries an entry:
+    /// the meter list opens at tick zero.
+    ///
+    /// The rule is what makes the do-and-undo pair of a `SetTimeSignature` an
+    /// identity on the map. An insert alone cannot be one, because no command
+    /// of the declared set removes a meter entry, so the undo of a change to a
+    /// measure that carried no entry would leave one behind.
+    ///
+    /// A document that already carries an entry the rule does not ask for
+    /// loses it here. The meter at every tick is unchanged by that, because the
+    /// entry it drops states the meter that the entry before it already states.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::Time` when the new list breaks a rule of
+    /// `TempoMapEdit::finish`.
+    fn meters_at(
+        &self,
+        start: Ticks,
+        meter: Meter,
+        governing: Option<Meter>,
+    ) -> Result<TempoMap, ScoreError> {
+        let edit = self.tempo_map().edit();
+        let placed = if governing == Some(meter) {
+            edit.remove_meter_at(start)
+        } else {
+            edit.insert_meter(MeterPoint::new(start, Bbt::ORIGIN, meter))
+        };
+        placed
+            .recompute_cached_views()
+            .finish()
+            .map_err(ScoreError::from)
+    }
+
     /// Move every measure, mark, note, and rest at or after `from` by `by`,
     /// and take `meters` as the new tempo map.
     fn shift_from(&mut self, from: Ticks, by: Ticks, meters: TempoMap) {
@@ -1234,11 +1354,31 @@ impl Score {
 
     /// Remove a run of empty measures and move later content earlier.
     ///
+    /// The run stops at the last measure of the score, and the event and the
+    /// inverse both carry the number of measures REMOVED, which is below the
+    /// number asked for where the run reaches the end.
+    ///
+    /// A score holds at least one measure, so a run that would cover every
+    /// measure is refused. `ScoreError` declares no variant for that state, and
+    /// the arm answers `MeasureNotEmpty` of the named measure: the message names
+    /// a note and a rest, which this path has neither of, so the refusal reads
+    /// wrong to a person. The roster needs a variant of its own, and
+    /// `escalation:T2-9` records the gap. A refusal with a poor message is still
+    /// the honest answer, because the alternative is an accepted command that
+    /// destroys the measure grid and answers an inverse that undoes nothing.
+    ///
+    /// **The inverse rebuilds equivalent structure, and not the structure that
+    /// stood.** `InsertMeasures` names the measure that the new ones follow, so
+    /// the inverse can name only a measure that stays: a run that starts at the
+    /// first measure comes back AFTER the measure that followed it, and the
+    /// rebuilt measures take NEW identifiers and the meter and the key of their
+    /// anchor. `escalation:T2-9` records that gap too.
+    ///
     /// # Errors
     /// Returns `ScoreError::MissingMeasure` for an absent measure,
     /// `ScoreError::MeasureNotEmpty` for a measure of the run that holds a note
-    /// or a rest, and `ScoreError::Time` when the new meter list breaks a map
-    /// rule.
+    /// or a rest and for a run that covers every measure of the score, and
+    /// `ScoreError::Time` when the new meter list breaks a map rule.
     fn remove_measures(
         &mut self,
         from: MeasureId,
@@ -1253,7 +1393,11 @@ impl Score {
             .take(usize::from(count.get()))
             .copied()
             .collect();
+        if run.len() >= ordered.len() {
+            return Err(ScoreError::MeasureNotEmpty(from));
+        }
         self.check_measures_empty(&run)?;
+        let removed = non_zero_u16(run.len());
         let (start, span) = self.run_span(&run);
         let end = start.saturating_add(span);
         let meters = self.meters_without(start, end)?;
@@ -1261,11 +1405,11 @@ impl Score {
             .get(start_index.saturating_add(run.len()))
             .copied()
             .unwrap_or(from);
-        let inverse = remove_measures_inverse(&ordered, start_index, run.len(), count);
+        let inverse = remove_measures_inverse(&ordered, start_index, run.len(), removed);
         let outcome = Outcome::new(
             vec![ScoreEvent::MeasuresChanged {
                 from: next,
-                count: count.get(),
+                count: removed.get(),
             }],
             inverse,
         )?;
@@ -1302,7 +1446,20 @@ impl Score {
     /// Change the meter of one measure, in the measure and in the tempo map.
     ///
     /// The two statements of the meter move together, so a query of the map and
-    /// a read of the measure can never disagree.
+    /// a read of the measure can never disagree. `meters_at` states the rule
+    /// that decides whether the measure carries a meter entry of its own, and
+    /// that rule is what makes the inverse restore the map the score held.
+    ///
+    /// **The start tick of every later measure is left as it stands.** A bar of
+    /// three quarter notes and a bar of four cover different spans, so after a
+    /// meter change the start ticks and the meters of the measure list state two
+    /// timelines, and a tick range between them belongs to no measure. A
+    /// re-lay-out is not a change this arm can make on its own: shifting the
+    /// later measures earlier would move a note of the shortened measure onto a
+    /// note of the measure that follows, and no decision states which note then
+    /// gives way. Decision D13 states the measure and the map, and states
+    /// nothing about the measures that follow. `escalation:T2-10` records the
+    /// gap.
     ///
     /// # Errors
     /// Returns `ScoreError::MissingMeasure` for an absent measure, and
@@ -1315,13 +1472,8 @@ impl Score {
         let record = self.measure_of(measure)?;
         let earlier = record.meter();
         let start = record.start();
-        let map = self
-            .tempo_map()
-            .edit()
-            .insert_meter(MeterPoint::new(start, Bbt::ORIGIN, meter))
-            .recompute_cached_views()
-            .finish()
-            .map_err(ScoreError::from)?;
+        let governing = self.meter_before(measure);
+        let map = self.meters_at(start, meter, governing)?;
         let outcome = Outcome::new(
             vec![ScoreEvent::SignatureChanged(measure)],
             vec![ScoreCommand::SetTimeSignature {
@@ -1688,27 +1840,35 @@ impl Score {
 impl Score {
     /// Move every named note into one voice.
     ///
+    /// A voice belongs to one staff, so the target voice is checked against the
+    /// staff of EVERY named note: a note keeps its own staff, and a note whose
+    /// staff does not hold the target voice would carry a dangling reference.
+    ///
     /// An empty note list changes nothing and answers an empty inverse.
     ///
     /// # Errors
     /// Returns `ScoreError::MissingElement` for an absent note,
-    /// `ScoreError::MissingStaff` for a voice that the staff of the first named
-    /// note does not hold, and `ScoreError::OverlappingNote` for a note that
-    /// the target voice already sounds over.
+    /// `ScoreError::MissingStaff` for a voice that the staff of a named note
+    /// does not hold, and `ScoreError::OverlappingNote` for a note that the
+    /// target voice already sounds over and for two named notes that would
+    /// cover one tick range of it.
     fn set_voice(&mut self, notes: &[NoteId], voice: VoiceId) -> Result<Outcome, ScoreError> {
         self.check_notes(notes)?;
-        let Some(first) = notes.first() else {
-            return Outcome::new(Vec::new(), Vec::new());
-        };
-        let staff = self.note_of(*first)?.staff();
-        self.voice_in(staff, voice)?;
         let skip: BTreeSet<NoteId> = notes.iter().copied().collect();
+        let mut taken: Vec<Taken> = Vec::with_capacity(notes.len());
         let mut events = Vec::with_capacity(notes.len());
         let mut inverse = Vec::with_capacity(notes.len());
         for id in notes {
             let note = self.note_of(*id)?;
+            let staff = note.staff();
             let earlier = note.voice();
-            self.check_free(note.staff(), voice, note.onset(), note.duration(), &skip)?;
+            let onset = note.onset();
+            let duration = note.duration();
+            self.voice_in(staff, voice)?;
+            self.check_free(staff, voice, onset, duration, &skip)?;
+            let next = Taken::new(staff, voice, onset, duration);
+            check_taken(&taken, &next)?;
+            taken.push(next);
             events.push(ScoreEvent::NoteChanged(*id));
             inverse.push(ScoreCommand::SetVoice {
                 notes: vec![*id],
@@ -1734,7 +1894,8 @@ impl Score {
     /// Returns `ScoreError::MissingPart` for an absent part,
     /// `ScoreError::MissingStaff` for a staff the part does not hold,
     /// `ScoreError::MissingElement` for an absent note, and
-    /// `ScoreError::OverlappingNote` for a note the target already sounds over.
+    /// `ScoreError::OverlappingNote` for a note the target already sounds over
+    /// and for two named notes that would cover one tick range of it.
     fn set_part(
         &mut self,
         notes: &[NoteId],
@@ -1750,16 +1911,22 @@ impl Score {
         let voice = self.first_voice(staff)?;
         self.check_notes(notes)?;
         let skip: BTreeSet<NoteId> = notes.iter().copied().collect();
+        let mut taken: Vec<Taken> = Vec::with_capacity(notes.len());
         let mut events = Vec::with_capacity(notes.len());
         let mut inverse = Vec::with_capacity(notes.len());
         for id in notes {
             let note = self.note_of(*id)?;
             let earlier_staff = note.staff();
             let earlier_voice = note.voice();
+            let onset = note.onset();
+            let duration = note.duration();
             let Some(earlier_part) = self.part_of_staff(earlier_staff) else {
                 return Err(ScoreError::MissingStaff(earlier_staff));
             };
-            self.check_free(staff, voice, note.onset(), note.duration(), &skip)?;
+            self.check_free(staff, voice, onset, duration, &skip)?;
+            let next = Taken::new(staff, voice, onset, duration);
+            check_taken(&taken, &next)?;
+            taken.push(next);
             events.push(ScoreEvent::NoteChanged(*id));
             inverse.push(ScoreCommand::SetPart {
                 notes: vec![*id],
@@ -1799,6 +1966,7 @@ impl Score {
     ) -> Result<Outcome, ScoreError> {
         let resolved = self.resolve(selection)?;
         let skip = resolved.element_set();
+        let mut taken: Vec<Taken> = Vec::new();
         let mut places = Vec::new();
         for id in resolved.elements() {
             let Some((staff, voice, onset, duration)) = self.place_of(id) else {
@@ -1811,6 +1979,9 @@ impl Score {
             };
             let moved = onset.saturating_add(by);
             self.check_free(target_staff, target_voice, moved, duration, &skip)?;
+            let next = Taken::new(target_staff, target_voice, moved, duration);
+            check_taken(&taken, &next)?;
+            taken.push(next);
             places.push(Placement {
                 id,
                 staff: target_staff,
@@ -1914,6 +2085,9 @@ impl Score {
     }
 
     /// The identifier that `wanted` keeps, or a new one where it is taken.
+    ///
+    /// A kept identifier is reserved, so the counter stands above it and no
+    /// later mint aliases it. `Score::reserve_id` states why.
     fn free_note_id(&mut self, wanted: NoteId, taken: &BTreeSet<NoteId>) -> NoteId {
         if self.notes().contains_key(&wanted)
             || self.rests().contains_key(&wanted)
@@ -1921,6 +2095,7 @@ impl Score {
         {
             return NoteId::new(self.mint_id());
         }
+        self.reserve_id(wanted.get());
         wanted
     }
 
@@ -1937,7 +2112,9 @@ impl Score {
     ///
     /// # Errors
     /// Returns `ScoreError::OverlappingNote` for a target that a note or a rest
-    /// already fills.
+    /// already fills, and for two clipboard elements that would cover one tick
+    /// range of the target: a paste that names one staff and one voice sends
+    /// every element of the clipboard there, whatever staff each came from.
     fn paste_clipboard(
         &mut self,
         clipboard: &Clipboard,
@@ -1946,15 +2123,22 @@ impl Score {
     ) -> Result<Outcome, ScoreError> {
         let shift = at.saturating_sub(clipboard.origin());
         let free = BTreeSet::new();
+        let mut taken: Vec<Taken> = Vec::new();
         for note in clipboard.notes() {
             let (staff, voice) = to.unwrap_or_else(|| (note.staff(), note.voice()));
             let onset = note.onset().saturating_add(shift);
             self.check_free(staff, voice, onset, note.duration(), &free)?;
+            let next = Taken::new(staff, voice, onset, note.duration());
+            check_taken(&taken, &next)?;
+            taken.push(next);
         }
         for rest in clipboard.rests() {
             let (staff, voice) = to.unwrap_or_else(|| (rest.staff(), rest.voice()));
             let onset = rest.onset().saturating_add(shift);
             self.check_free(staff, voice, onset, rest.duration(), &free)?;
+            let next = Taken::new(staff, voice, onset, rest.duration());
+            check_taken(&taken, &next)?;
+            taken.push(next);
         }
         let pasted = self.mint_paste(clipboard, shift, to);
         let outcome = Outcome::new(pasted.events.clone(), pasted.inverse.clone())?;
@@ -2021,6 +2205,7 @@ impl Score {
             let id = if self.spanners().contains_key(&spanner.id()) {
                 SpannerId::new(self.mint_id())
             } else {
+                self.reserve_id(spanner.id().get());
                 spanner.id()
             };
             let from = renamed
@@ -2049,6 +2234,7 @@ impl Score {
             let id = if self.marks().contains_key(&mark.id()) {
                 MarkId::new(self.mint_id())
             } else {
+                self.reserve_id(mark.id().get());
                 mark.id()
             };
             let mut placed = mark.clone().with_id(id);
@@ -2095,7 +2281,7 @@ mod tests {
     };
     use crate::model::{
         Accidental, Articulation, Clef, Duration, Dynamic, KeySignature, MarkKind, Note, Pitch,
-        RepeatSide, Rest, Score, ScoreMark, Spanner, SpannerKind, Step, TieState, VoiceType,
+        RepeatSide, Rest, Score, ScoreMark, Spanner, SpannerKind, Step, TieState, Voice, VoiceType,
     };
 
     /// A part identifier that no score of this module mints.
@@ -2121,6 +2307,9 @@ mod tests {
 
     /// A rest identifier that no score of this module mints.
     const ABSENT_REST: NoteId = NoteId::new(9_007);
+
+    /// The identifier of the second voice that `add_voice` writes into a staff.
+    const SECOND_VOICE: VoiceId = VoiceId::new(8_000);
 
     /// A run of one measure.
     const ONE_MEASURE: NonZeroU16 = NonZeroU16::MIN;
@@ -2311,6 +2500,55 @@ mod tests {
             .first()
             .expect("AddStaff gives the staff one voice");
         (staff, voice)
+    }
+
+    /// Give the staff of `stage` a second voice, and answer it.
+    ///
+    /// No command of the declared set mints a voice, so the fixture writes one
+    /// through the crate-private mutators. A staff with two voices is the one
+    /// shape in which a `SetVoice` moves a note from one voice of a staff into
+    /// another.
+    fn add_voice(stage: &mut Stage) -> VoiceId {
+        let staff = stage.staff;
+        stage.score.voices_mut().insert(
+            SECOND_VOICE,
+            Voice::new(
+                SECOND_VOICE,
+                NonZeroU8::new(2).expect("two is not zero"),
+                false,
+            ),
+        );
+        if let Some(record) = stage.score.staves_mut().get_mut(&staff) {
+            record.push_voice(SECOND_VOICE);
+        }
+        SECOND_VOICE
+    }
+
+    /// The measures of `score`, ordered by start tick.
+    fn measures_by_start(score: &Score) -> Vec<MeasureId> {
+        let mut ordered: Vec<(Ticks, MeasureId)> = score
+            .measures()
+            .values()
+            .map(|measure| (measure.start(), measure.id()))
+            .collect();
+        ordered.sort_unstable();
+        ordered.into_iter().map(|(_, id)| id).collect()
+    }
+
+    /// A score of two measures, and the measure that stands second.
+    fn stage_with_two_measures() -> (Score, MeasureId) {
+        let mut score = Score::new();
+        let first = first_measure(&score);
+        score
+            .apply(ScoreCommand::InsertMeasures {
+                after: first,
+                count: ONE_MEASURE,
+            })
+            .expect("an InsertMeasures after the one measure of a new score is accepted");
+        let second = *measures_by_start(&score)
+            .get(1)
+            .expect("the score holds two measures after the insert");
+        (score, second)
     }
 
     /// Insert one quarter note into the named staff and voice of `stage`.
@@ -3264,6 +3502,249 @@ mod tests {
             lower.staff(),
             lower_staff,
             "the note of the lower staff comes back into the lower staff, and not into the staff of the first Paste"
+        );
+    }
+
+    #[test]
+    fn set_voice_refuses_a_voice_that_the_staff_of_a_named_note_does_not_hold() {
+        let mut stage = stage();
+        let upper = insert_note(&mut stage, 0, Step::C);
+        let (lower_staff, lower_voice) = add_staff(&mut stage);
+        let lower = insert_note_in(&mut stage, lower_staff, lower_voice, 0, Step::G);
+        let target = stage.voice;
+        let before = stage.score.clone();
+
+        let refusal = stage.score.apply(ScoreCommand::SetVoice {
+            notes: vec![upper, lower],
+            voice: target,
+        });
+
+        assert_eq!(
+            refusal,
+            Err(ScoreError::MissingStaff(lower_staff)),
+            "a SetVoice checks the target voice against the staff of EVERY named note, and the lower staff does not hold the voice of the upper staff"
+        );
+        assert_eq!(
+            stage.score, before,
+            "the refused SetVoice leaves every note in the voice it held"
+        );
+    }
+
+    #[test]
+    fn set_voice_refuses_a_group_that_would_cover_one_tick_range() {
+        let mut stage = stage();
+        let upper = insert_note(&mut stage, 0, Step::C);
+        let second_voice = add_voice(&mut stage);
+        let staff = stage.staff;
+        let lower = insert_note_in(&mut stage, staff, second_voice, 0, Step::G);
+        let target = stage.voice;
+        let before = stage.score.clone();
+
+        let refusal = stage.score.apply(ScoreCommand::SetVoice {
+            notes: vec![upper, lower],
+            voice: target,
+        });
+
+        assert_eq!(
+            refusal,
+            Err(ScoreError::OverlappingNote {
+                staff,
+                voice: target,
+                onset: Ticks::ZERO,
+            }),
+            "two notes of one staff that move into one voice at one onset cover one tick range, so the SetVoice refuses"
+        );
+        assert_eq!(
+            stage.score, before,
+            "the refused SetVoice leaves every note in the voice it held"
+        );
+    }
+
+    #[test]
+    fn set_part_refuses_a_group_that_would_cover_one_tick_range() {
+        let mut stage = stage();
+        let upper = insert_note(&mut stage, 0, Step::C);
+        let (lower_staff, lower_voice) = add_staff(&mut stage);
+        let lower = insert_note_in(&mut stage, lower_staff, lower_voice, 0, Step::G);
+        let part = stage.part;
+        let staff = stage.staff;
+        let voice = stage.voice;
+        let before = stage.score.clone();
+
+        let refusal = stage.score.apply(ScoreCommand::SetPart {
+            notes: vec![upper, lower],
+            part,
+            staff,
+        });
+
+        assert_eq!(
+            refusal,
+            Err(ScoreError::OverlappingNote {
+                staff,
+                voice,
+                onset: Ticks::ZERO,
+            }),
+            "two notes of two staves that move into one staff at one onset cover one tick range, so the SetPart refuses"
+        );
+        assert_eq!(
+            stage.score, before,
+            "the refused SetPart leaves every note in the staff it held"
+        );
+    }
+
+    #[test]
+    fn a_move_into_one_staff_refuses_a_group_that_would_cover_one_tick_range() {
+        let mut stage = stage();
+        let upper = insert_note(&mut stage, 0, Step::C);
+        let (lower_staff, lower_voice) = add_staff(&mut stage);
+        let lower = insert_note_in(&mut stage, lower_staff, lower_voice, 0, Step::G);
+        let staff = stage.staff;
+        let voice = stage.voice;
+        let before = stage.score.clone();
+
+        let refusal = stage.score.apply(ScoreCommand::Move {
+            selection: Selection::Notes(vec![upper, lower]),
+            by: Ticks::ZERO,
+            to_staff: Some(staff),
+        });
+
+        assert_eq!(
+            refusal,
+            Err(ScoreError::OverlappingNote {
+                staff,
+                voice,
+                onset: Ticks::ZERO,
+            }),
+            "two notes of two staves that move into one staff at one onset cover one tick range, so the Move refuses"
+        );
+        assert_eq!(
+            stage.score, before,
+            "the refused Move leaves every note where it stood"
+        );
+    }
+
+    #[test]
+    fn a_paste_into_one_staff_refuses_a_clipboard_that_would_cover_one_tick_range() {
+        let mut stage = stage();
+        let upper = insert_note(&mut stage, 0, Step::C);
+        let (lower_staff, lower_voice) = add_staff(&mut stage);
+        let lower = insert_note_in(&mut stage, lower_staff, lower_voice, 0, Step::G);
+        let staff = stage.staff;
+        let voice = stage.voice;
+        let selection = Selection::Notes(vec![upper, lower]);
+        let clipboard = stage
+            .score
+            .copy(&selection)
+            .expect("a copy of two notes the score holds is accepted");
+        stage
+            .score
+            .apply(ScoreCommand::Remove { selection })
+            .expect("the remove half of a cut is accepted");
+        let before = stage.score.clone();
+
+        let refusal = stage.score.apply(ScoreCommand::Paste {
+            clipboard: Box::new(clipboard),
+            at: Ticks::ZERO,
+            staff,
+            voice,
+        });
+
+        assert_eq!(
+            refusal,
+            Err(ScoreError::OverlappingNote {
+                staff,
+                voice,
+                onset: Ticks::ZERO,
+            }),
+            "two clipboard notes that land in one staff and voice at one onset cover one tick range, so the Paste refuses"
+        );
+        assert_eq!(
+            stage.score, before,
+            "the refused Paste puts no element into the score"
+        );
+    }
+
+    #[test]
+    fn a_move_of_a_whole_group_is_accepted_where_the_group_vacates_the_target() {
+        let (mut stage, first, second) = stage_with_two_notes();
+
+        let moved = stage.score.apply(ScoreCommand::Move {
+            selection: Selection::Notes(vec![first, second]),
+            by: Ticks::new(QUARTER_TICKS),
+            to_staff: None,
+        });
+
+        assert!(
+            moved.is_ok(),
+            "a moved element never collides with the earlier place of another moved element, and the answer was {moved:?}"
+        );
+        let onsets: Vec<i64> = [first, second]
+            .iter()
+            .map(|id| {
+                stage
+                    .score
+                    .notes()
+                    .get(id)
+                    .expect("the move keeps both notes")
+                    .onset()
+                    .get()
+            })
+            .collect();
+        assert_eq!(
+            onsets,
+            vec![QUARTER_TICKS, QUARTER_TICKS * 2],
+            "each note of the moved group takes its own new onset"
+        );
+    }
+
+    #[test]
+    fn the_inverse_of_a_time_signature_change_restores_the_tempo_map() {
+        let (mut score, second) = stage_with_two_measures();
+        let before = score.clone();
+
+        let applied = score
+            .apply(ScoreCommand::SetTimeSignature {
+                measure: second,
+                meter: three_four(),
+            })
+            .expect("a SetTimeSignature on a measure the score holds is accepted");
+        undo_all(
+            &mut score,
+            applied.inverse,
+            "a SetTimeSignature on the second measure",
+        );
+
+        assert_eq!(
+            score.tempo_map(),
+            before.tempo_map(),
+            "the inverse of a SetTimeSignature restores the tempo map the score held, and leaves no meter entry the score never carried"
+        );
+        assert_same_content(
+            &score,
+            &before,
+            "a SetTimeSignature on the second measure inverts",
+        );
+    }
+
+    #[test]
+    fn remove_measures_refuses_the_last_measure_of_the_score() {
+        let mut score = Score::new();
+        let only = first_measure(&score);
+        let before = score.clone();
+
+        let refusal = score.apply(ScoreCommand::RemoveMeasures {
+            from: only,
+            count: ONE_MEASURE,
+        });
+
+        assert_eq!(
+            refusal,
+            Err(ScoreError::MeasureNotEmpty(only)),
+            "a score holds at least one measure, so a run that covers every measure is refused rather than accepted with an inverse that undoes nothing"
+        );
+        assert_eq!(
+            score, before,
+            "the refused RemoveMeasures leaves the measure grid as it stood"
         );
     }
 
