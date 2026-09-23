@@ -6,12 +6,16 @@
 
 #![forbid(unsafe_code)]
 
+mod command;
 mod error;
+mod event;
 mod ids;
 mod model;
 
+pub use command::{Clipboard, PitchEdit, ScoreCommand, ScoreSelector, Selection};
 pub use duet_time::{Meter, NoteValue, Tempo};
 pub use error::ScoreError;
+pub use event::ScoreEvent;
 pub use ids::{
     ElementRef, LyricText, MarkId, MeasureId, NoteId, PartId, PartName, RehearsalText, Revision,
     SpannerId, StaffId, VerseNumber, VoiceId,
