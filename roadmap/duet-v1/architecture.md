@@ -950,9 +950,48 @@ file is identified.** Appendix C carries one registered block per review. The ru
   flag that printed `STORE: skipped` and exited 0, so a run in which every closure block skipped its
   second source was, by exit code, identical to a run in which every one matched; the CL1b site
   above condemns exactly that shape in its own words. The flag is gone, and a run that reaches the
-  end with the store half unrun is a failure that says so. The `plan-lint` job of chunk M0 runs
-  `cargo xtask check-closure` against the store the workflow restores, and a workflow that cannot
-  restore the store fails rather than passes.
+  end with the store half unrun is a failure that says so.
+
+  **`check-closure` runs at review time and in no job, and section 14 states why** (escalation
+  M0-2). A hosted runner carries no store under `~/.claude/plan-dbs/`, and the three ways to give it
+  one each break this rule: a restore needs a secret no chunk owns, a copy inside the repository
+  puts the second source back inside the Architect's write scope, and a pass on an absent store is
+  the vacuous green the paragraph above refuses. Chunk M0 measured both states and removed the nine
+  job lines that revision 23 promised. **The party that runs the guard is the party that holds the
+  store**: the Architect runs it before a plan revision, and the Engineering Critic re-runs it over
+  the same store when it verifies a closure. Revision 23 wrote that the job runs it "against the
+  store the workflow restores", and no chunk owned that restore.
+- **CL1d. Every run of the guard is recorded in the store, and a closure section of revision 24 or
+  later cites the run that verified it** (critic C1-10). CL1c moved the guard out of every job, and
+  revision 24 left the verdict as a claim in prose with no party able to reproduce it, which is the
+  state CL1b refuses one rule above. The party that runs the guard appends one row with
+  `.claude/plan-coordination/db.sh append roadmap/duet-v1 closure-run "<body>"`, which mints the key
+  `<simpleflake>-closure-run`. The body opens with `COMMAND: `, `EXIT: ` and `TREE: `, one per line,
+  and then holds the whole stdout of the run. **The closure section records the key** in the
+  sentence ``The `check-closure` run that verified this block is recorded at plan-store key `<key>`.``,
+  which carries its own head and never collides with the CL1c review-key sentence. The guard reads
+  the key back with `db.sh get`. **A section of revision 24 or later with no run-key sentence, a key
+  whose suffix is not `closure-run`, a store that does not answer, and a body whose `EXIT: ` line
+  states anything but `0` are each a failure.** A section below revision 24 prints
+  `RUN KEY: absent`, which is the forward cut-off CL1b already uses for the count sentence, and the
+  guard states the cut-off in its own source rather than in a flag a runner passes.
+
+  **The order is append first, then record, and the rule states why that is not circular.** A run
+  cannot record the key of itself. The run a section cites is the run the Critic made over the
+  FROZEN document of the revision the section closes, exactly as the stored review is appended
+  before the section that names it. So the `EXIT: 0` the guard demands is the verdict on the
+  document the closure was verified against, and the next revision's Critic appends its own row.
+
+  **A PREFIX scan cannot enumerate this family** (critic C2-2). The suffix sits at the END of the
+  minted key, and `scan` matches a key prefix, so `db.sh scan roadmap/duet-v1 closure-run` prints
+  nothing however many rows exist. The enumeration that works is
+  ``.claude/plan-coordination/db.sh keys roadmap/duet-v1 | grep -- '-closure-run"'``, which prints
+  one record per key with its byte size and no value. Section 14 states the same command.
+
+  **The rule's own limit, stated here.** The guard reads the exit code of a recorded run and it
+  cannot prove that the run is the one the author meant. The `TREE: ` line names the commit, and a
+  reader compares it; no rule does. That is a smaller gap than the one CL1d closes, and the record
+  is the thing a later party can check at all.
 
   **One append per review, and the cost of a second one is stated** (critic C23I-N4). The keyspace is
   append-only and `plan-db` offers no command that removes a key, so a second append under one
@@ -1368,13 +1407,13 @@ Every workspace constant is declared here, so no other Rust block carries a lite
 
 <!-- GUARD BLOCK id=constants rows>=122 -->
 ```rust
-/// Build a non-zero constant with no panic primitive.
-///
-/// `NonZeroI64::new` returns an `Option`, and `expect` is denied. A `const fn`
-/// match gives the same compile-time check with a total fallback arm.
+/// Build a non-zero constant with no panic primitive (house form 5, 12.3).
+/// # Panics
+/// It panics when `value` is zero, so a bad constant fails the build.
 const fn non_zero(value: i64) -> NonZeroI64 {
+    assert!(value != 0, "a non-zero constant must not be zero");
     match NonZeroI64::new(value) {
-        Some(non_zero) => non_zero,
+        Some(checked) => checked,
         None => NonZeroI64::MIN,
     }
 }
@@ -1504,15 +1543,36 @@ pub const FADER_SILENCE_DB: Finite = Finite::from_finite_const(-96.0);
 pub const FADER_CEILING_DB: Finite = Finite::from_finite_const(6.0);
 ```
 
-**Chunk T1 proved the `non_zero` fallback arm wrong, and the Architect owns the repair.** The arm
-substitutes `NonZeroI64::MIN`, which is `i64::MIN`, so a bad constant SHIPS, where
-`Finite::from_finite_const` asserts and a bad constant fails the build. The two constants this block
-builds are positive divisors and positive scale factors everywhere in `duet-time`, so a negative
-value for either would invert the whole timeline. The two compile-time helpers of the workspace
-answer a bad input in opposite ways. The repair is the same assertion `Finite` already uses. The
-body is mandated character for character, so only an edit here may change it. Chunk T1 added a
-second site of the same shape, `duet-time::units::non_zero_u32`, which the repair must cover. Plan
-store `fluid:next_steps_from_T1`, item FU-3 (chunk T1, 2026-09-22).
+**The `non_zero` body above is the repair of the defect chunk T1 found, and it is mandated character
+for character.** Revision 23 wrote a fallback arm that substitutes `NonZeroI64::MIN`, which is
+`i64::MIN`, so a zero constant SHIPPED where `Finite::from_finite_const` asserts and a zero fails
+the build. Both constants this block builds are positive divisors everywhere in `duet-time`, so a
+negative value for either would invert the whole timeline. The two compile-time helpers of the
+workspace answered a bad input in opposite ways, and one of the two answers was wrong. **The repair
+is the assertion `Finite::from_finite_const` already carries**, which is house form 5 of section
+12.3: in a `const` item the assertion runs at compile time, so a zero fails the build and no binary
+carries the panic. The `None` arm stays, because a `match` over an `Option` must be total, and the
+assertion above it makes that arm unreachable. `clippy::missing_assert_message` is denied, so the
+assertion carries its message. Plan store `fluid:next_steps_from_T1`, item FU-3 (chunk T1,
+2026-09-22); ADR 0008 records the decision.
+
+**`duet-time::units::non_zero_u32` takes the identical shape, and chunk M91 lands both.** Chunk T1
+added that second helper for `SampleRate::SUPPORTED`, and it carries the same wrong arm. Its body is
+`assert!(value != 0, "a non-zero constant must not be zero");` followed by the same `match` over
+`NonZeroU32::new`, with `None => NonZeroU32::MIN`. It takes no row of this block, because this block
+states every workspace CONSTANT and `non_zero_u32` builds none of the eleven `duet-command` values.
+
+**Each helper carries a `# Panics` section in the crate, and REVIEW is what holds that rule**
+(critic C1-13). House form 5 of section 12.3 requires the section unconditionally. Revision 24 named
+`clippy::missing_panics_doc` as the enforcer, and that lint fires on an EXPORTED item alone: both
+helpers are private to `duet-time::units`, so the lint reads neither. The requirement is real and
+its stated enforcer was not.
+
+**The block above holds the SUMMARY and step 15 of chunk M91 holds the full text** (critic C1-14).
+The `constants` block sits exactly at its `rows>=122` floor, so no line may be added to it; the
+three-line doc comment above is what fits. **Chunk M91 step 15 is the authority for the doc comment
+the crate carries**, and step 16 is the authority for `non_zero_u32`. The BODY of `non_zero` is
+mandated character for character by the block above, and no step of any chunk may change it.
 
 A test in `duet-time` asserts that both non-zero constants hold their literal values, so a wrong
 fallback arm cannot pass unseen. **Nine of the eleven `duet-command` constants need no such test**:
@@ -1583,8 +1643,8 @@ showed that an invented family of ten ids could be added to this table with a gr
 | CP1 to CP8, with CP1b, CP2b, CP3b, and CP4b | The conversion-guard probes | 1.9 |
 | VR1 to VR6 | The vocabulary rules | 3.5 |
 | TH1 to TH13 | The thread rules | 5.7 |
-| CL0 to CL5, with CL1b and CL1c | The closure rules, which PG32 runs | 1.5 |
-| SM0 to SM8 | The plan seam rules | 13.0 |
+| CL0 to CL5, with CL1b, CL1c and CL1d | The closure rules, which PG32 runs | 1.5 |
+| SM0 to SM9 | The plan seam rules | 13.0 |
 
 ### 1.8 The `BundleDocument` trait
 
@@ -1648,7 +1708,7 @@ run that writes `__pycache__` mutates the tree it is verifying (critic C20-N7).
 | Harness | What it runs | What it needs |
 |---|---|---|
 | `tools/probe_run.py <document>` | Every placement probe but PP25, and SIX PP27 and PP27b shapes for every registered block | The document and nothing else |
-| `tools/probe_conversion.py <document>` | CP1 to CP8, each shape in its own throwaway cargo workspace | `cargo metadata` and the repository root as the working directory. It reads the document for the recorded-text compare alone |
+| `tools/probe_conversion.py <document>` | CP1 to CP9, each shape in its own throwaway cargo workspace. It runs CP1 to CP8 until chunk M90 lands CP9 | `cargo metadata` and the repository root as the working directory. It reads the document for the recorded-text compare alone |
 | `tools/probe_roster.sh <document> <scratch> <repo>` | PP25 in all four shapes, the mixed-impl shape, the six planted gate defects below, and the recorded-text compare through `probe_roster_text.py` | A toolchain and a scratch directory outside the repository |
 | `tools/probe_closure.py <document> <repo>` | PP32 in all fifteen shapes, over a throwaway review and a throwaway block it writes itself, and one throwaway suffix in the plan store | The document and the repository root that holds `.claude/plan-coordination/db.sh` |
 | `tools/run_all_gates.py <document>` | Every guard and every harness above, in order, and it refuses to finish when any file under `roadmap/duet-v1/` is newer than the run | Everything the rows above need |
@@ -1676,13 +1736,129 @@ until then the rule is that an edit to a `rows>=` marker edits both files, and a
 one guard has not run the other.
 
 **Four prototypes carry the rules.** `roadmap/duet-v1/tools/placement_check.py` holds every PG
-rule but PG25, `roadmap/duet-v1/tools/conversion_check.py` holds CG1 to CG8, and
+rule but PG25, `roadmap/duet-v1/tools/conversion_check.py` holds CG1 to CG9 once chunk M90 step 21e
+adds the `CG9` token and CG1 to CG8 until then, and
 `roadmap/duet-v1/tools/roster_compile.sh` holds PG25, and `roadmap/duet-v1/tools/closure_check.py`
 holds PG32. PG29 reads the table below against the ids those four files themselves carry, so the DR5 equality is a run and not a reading. All four are files this plan carries, so the
 Critic re-runs every probe against the same code an implementer reads. **PG25 needs a toolchain and
 a scratch directory**, and it takes the document, the scratch directory, and the repository root as
 three arguments; it refuses a scratch directory inside the repository and it is fail-closed on every
 input failure.
+
+#### The guard family speaks two words, and each one names an exit code
+
+**`FAIL:` marks exit 2 and nothing else.** Exit 2 is the fail-closed state: the guard could not
+decide. Exit 1 is a finding: the guard decided, and the input breaks a rule. Exit 0 is a clean run.
+The six guards are `check-conversions`, `check-manifests`, `check-placement`, `check-plan-graph`,
+`check-closure`, and `check-roster`.
+
+**At exit 1 a guard prints `FINDING: ` when the finding carries no rule tag, and the rule tag when
+the rule has a name.** `check-manifests` and `check-plan-graph` print `FINDING: `.
+`check-placement`, `check-closure`, and `check-conversions` print an indented rule tag such as
+``  UNPLACED:   `` or ``  CLOSURE:    ``, and this section records more than sixty of those lines
+by their exact text. **A blanket `FINDING: ` prefix over every exit-1 line was refused**, because
+the tag names the rule that fired and a bare prefix would delete that name from every recorded
+line at no gain.
+
+**The dividing line is the SUBJECT of the failure, and one sentence states it.** Exit 1 is a breach
+of a rule the guard measures about the DOCUMENT it judges. Exit 2 is a failure of the guard's OWN
+input: its register, its parse, or the transform table it applies before it measures anything. A
+guard whose own input is broken has measured nothing, so it may not report a breach it never made.
+
+**Two counts, measured and not estimated** (critic C1-11). `tools/xtask/src/` holds 49 `"FAIL:`
+string sites: 5 in `check_closure.rs`, 8 in `check_conversions.rs`, 3 in `check_manifests.rs`, 11 in
+`check_placement.rs`, 4 in `check_plan_graph.rs`, 17 in `check_roster.rs`, and 1 in `main.rs`. **Five
+of the 49 reach exit 1 and the other 44 are fail-closed.** Revision 24 wrote "a fail-closed state on
+five paths and a finding on four", which inverted the denominator and miscounted the numerator; the
+five exit-1 sites are `check_plan_graph.rs` `collect_chunks`, which carries both the duplicate id
+and the empty directory, `check_placement.rs` `run` at the empty candidate set, and the three
+verdict paths of `check_roster.rs` `report`.
+
+**Chunk M90 repairs the four sites that broke the rule** (escalation M0-4).
+
+| Site | Today | Decision | Why |
+|---|---|---|---|
+| `check_plan_graph`, two files state one chunk id | `FAIL:` at exit 1 | `FINDING: duplicate chunk id <id> in <file> and <file>` at **exit 1** | Rule 1 of the guard is that every id is unique. Two files that state one id BREAK that rule, the guard names both files, and an author repairs it. A decidable breach is exit 1 |
+| `check_plan_graph`, the directory holds no chunk file | `FAIL: no chunk file found` at exit 1 | `FAIL: no chunk file found; the guard is fail-closed.` at **exit 2** | It is a zero denominator. Rule CG1b part 1 of section 2.3 already states the same answer for a member set, and for the same reason: an empty read is a broken read and never a clean verdict |
+| `check_placement`, the candidate set is empty | `FAIL:` at exit 1 | `FAIL: the candidate set is empty, so the parse is broken.` at **exit 2** | The line says the PARSE is broken. A guard whose parse produced nothing has measured nothing about the document, so exit 1 would report a breach the run never made |
+| `check_roster`, three verdict paths | `FAIL:` at exit 1 | `FINDING: ` at **exit 1**, with the same text after the word | The roster below the section 1.5 denominator, a mixed impl block, and an impl count that differs from the `impl-sites` block are each a breach of a rule this guard measures about the document |
+
+**The two roster SUBSTITUTION sites keep exit 2, and the sentence above is why** (critic C1-17).
+`check_roster.rs` refuses a run when the section 1.9 substitution block and the `SUBSTITUTIONS` list
+the guard compiles disagree, and when a substitution line states a number. Both breaches are
+decidable, and neither one is about the document the guard judges. **The substitution block is the
+guard's own transform table**: the guard applies it to turn the section 15 declarations into a
+compilable workspace. A disagreement means the workspace the guard is about to write is not the
+workspace this document describes, so every counter downstream of it is unattributable, and a stated
+number inside that block is the one input DR3 says only a run may produce. Those are failures of the
+guard's input, so they take the same answer as the empty candidate set and the empty plan directory.
+**They stay at exit 2 and chunk M90 does not move them**; this paragraph is the site that states the
+reason, which revision 24 left unexamined.
+
+#### `check-roster --generate-only` splits PG25 at the compiler edge
+
+**The rule stays ONE subcommand and one rule id, and a flag names the half that runs.** PG25 has no
+probe group today, because every shape of it compiles the whole `gpui` dependency tree: one measured
+run reached 4.0 GB and several minutes cold. The generator half of the rule reads the document,
+writes the scratch workspace, and counts, in about one second. Chunk M90 gives `check-roster` a
+`--generate-only` flag with this contract (escalation M0-5).
+
+```
+cargo xtask check-roster <document> <scratch> <repo> [--generate-only]
+```
+
+1. **With the flag the guard writes the scratch workspace and runs NO cargo command.** It prints
+   every `ROSTER ...` counter line it prints today, then one further line,
+   `ROSTER COMPILE:   skipped (--generate-only)`, and it exits 0, 1, or 2 on the parse rules and the
+   count rules alone.
+2. **Without the flag the guard does everything it does today**, the compile and the lint included,
+   and it prints `ROSTER CLIPPY:   clean` or `ROSTER CLIPPY:   FAIL` as it does now. The two forms
+   are therefore never confusable by exit code alone, because the skipped form always prints the
+   line that names itself.
+3. **A gate never takes the flag, and a PROBE holds that rule** (critic C1-8). The `plan-lint` job
+   of `.github/workflows/ci.yml` runs the full command, and section 14 records that.
+   `tools/xtask/tests/probes.rs` takes the flag and holds the cheap shapes: the roster below the
+   section 1.5 denominator, the mixed impl block, and the impl count that differs from the
+   `impl-sites` block. **One further probe reads EVERY file under `.github/workflows/` and fails
+   when a `check-roster` line in any of them carries `--generate-only`** (critic C2-7). It reads the
+   directory at test time rather than one path through `include_str!`, because the heading of the
+   rule is "every job" and a second workflow that runs the roster is unguarded from the day it is
+   written, and this plan itself adds `soak.yml` and `audio-smoke.yml`. The directory holds `ci.yml`
+   alone today, so the wider denominator costs one directory read and changes no result now. **The probe is fail-closed
+   on its own input**: a directory that does not open, and a directory that holds no file, are each
+   a failure, because a denominator of zero is the vacuous green CG1b refuses. A committed positive
+   control passes a two-line fixture that carries the flag and asserts that the helper returns
+   false. Chunk M90 writes both files, so the rule and its red run land in one commit.
+
+   **The rule's own limit, stated here.** The probe reads one LINE at a time. A folded YAML scalar,
+   a shell variable that holds the flag, and an `env:` entry each defeat it, and no rule catches
+   those; review holds them. Widening the denominator from one file to every file closes the case
+   that a new workflow creates, which is the case this plan can create by itself.
+4. **A second subcommand was refused.** PG25 is one rule, and DR5 gives one rule one probe. A second
+   subcommand would give one rule two names, repeat the argument triple, and let the two drift.
+
+**The flag DOES remove a rule clause, and this is the honest statement of what it removes** (critic
+C1-8). The PG25 row of the table above defines the rule as three clauses: a roster that the real
+lint table refuses, a roster below the section 1.5 denominator, and a roster below the `impl-sites`
+floor. **The compiler is the only oracle for clause one**, so the skipped form decides clauses two
+and three and decides nothing about clause one. Revision 24 wrote that the flag "removes no rule the
+skipped form can reach", which is true of the two clauses it keeps and false of the rule.
+
+**The difference from `--no-store` is real, and it is these three properties and not that claim.**
+Revision 22 shipped a `--no-store` flag on the closure guard that printed `STORE: skipped` and
+exited 0, so a skipped run and a matching run had one exit code between them. Here the skipped run
+prints `ROSTER COMPILE:   skipped (--generate-only)`, a line no full run prints; the full form is
+the only form any job runs; and **a probe now refuses a `--generate-only` on a `check-roster` line
+of ANY file under `.github/workflows/`**, so the rule that keeps the flag out of a job has a red run
+of its own. Revision 24
+left that rule as prose, which is exactly how `--no-store` reached a job in the first place.
+
+**The prototypes under `roadmap/duet-v1/tools/` keep their historical text, and this document states
+the divergence.** The Rust ports in `tools/xtask` are the rules of record from chunk M0 onward, and
+PG29 reads the prototypes for rule IDS alone and never for message text. The precedent is R3-W1 of
+the chunk M0 report: `roster_compile.sh` defines exit 1 for a class where the port returns 2, the
+port is right, and the record now says so. A second stated divergence is cheaper than fourteen
+Python edits that no rule reads.
 
 **One scratch directory, one cargo target, and the target does not outlive the run.** A `target`
 for the roster workspace holds the whole `gpui` dependency tree, which is several gigabytes. One
@@ -1758,6 +1934,18 @@ document. Every other row is the guard on one copy with one planted defect.
 PG29 reads this table. Every row names one rule id, one probe id, and a recorded result that states
 an exit code.
 
+**Chunk M90 adds ONE row to this block, for rule CG9, and the row is atomic with a register bump**
+(critic C1-4, rule SM9 part 4). The `DATA_BLOCKS` register of `tools/xtask/src/check_placement.rs`
+states the floor of this block, PG27 refuses a marker that differs from the register, and PG27b
+refuses a block that holds more rows than its floor, so the document edit and the Rust edit are one
+commit and the Architect alone cannot make it. **The chunk body of M90 carries FIVE registration
+sub-items, a to e of its step 21** (critic C2-6): the register line, the exact `rows>=` marker, the
+exact row text, the two section 1.7 index cells that PG39 reads, and the `CG9` token for
+`roadmap/duet-v1/tools/conversion_check.py` that PG29 reads. **Five is the size of this set at every
+site that names it**, and a site that names only the document half names the sub-items b, c, d and e
+rather than a count. All five land together or none of them does. Section 2.3 states the rule
+itself.
+
 <!-- GUARD BLOCK id=probe-table rows>=64 -->
 | Rule | What the rule refuses | Probe | What the probe plants | Recorded result |
 |---|---|---|---|---|
@@ -1789,7 +1977,7 @@ an exit code.
 | PG22 | A `Hash` or an `Ord` derive with no VR1 row | PP22 | The `NoteId` name changed to `NoteIdx` in its section 3.5 VR1 row | `exit 1`; `VR1:        duet-score::NoteId derives Hash, Ord with no VR1 row` |
 | PG23 | A `PartialEq` derive with no `Eq` over a field set that supplies `Eq` | PP23 | The `Eq` derive removed from `Revision` in section 15.3 | `exit 1`; `EQ:         duet-score::Revision derives PartialEq and every field supplies Eq` |
 | PG24 | An enum arm that passes three times the next largest, with no sanctioned expectation | PP24 | The `#[expect(variant_size_differences, ...)]` attribute removed from `SlotState` in section 5.5 | `exit 1`; `VARIANT:    duet-dsp::SlotState: arm Equalizer is 224 bytes and the next largest is 72` |
-| PG25 | A roster that the real lint table refuses, a roster below the section 1.5 denominator, or a roster below the `impl-sites` floor | PP25 | Four shapes, each in its own run: the `Eq` derive removed from `AgentError` in section 15.15, where no container demands `Eq`; `HotplugSubscription` replaced by `MidiSink` in the section 1.9 Drop block, so substitution S8 emits no `Drop` impl for it; the `RenderJob` declaration renamed, which shrinks the denominator; and `impl Global for DuetTokens {}` deleted from section 15.16, which shrinks the impl count (concern N-3) | `exit 1` all four times; ``duet-agent/src/lib.rs:5:24: error: you are deriving `PartialEq` and can implement `Eq`: help: consider deriving `Eq` as well: `PartialEq, Eq` ``, ``duet-midi/src/lib.rs:59:1: error: type could implement `Copy`; consider adding `impl Copy` ``, `FAIL: the roster holds 423 items and section 1.5 places 424; the first name with no declaration is RenderJob.`, and ``FAIL: the roster parsed 64 impl blocks and the `impl-sites` block lists 65; the two are one set and they differ by 1.``. **A MIXED impl block is refused** (concern N17-4). `full_impls` drops a whole `impl` block when any one item is a bodiless signature, which is correct for a signature-only block and wrong for a block that carries one body beside one signature: the body leaves the roster and no counter moves. The seventeenth Critic planted three gate defects inside `impl Transport`, which carries a bodiless signature, and all three were green; the same three inside `impl Debug for ChainSetHandle`, which is fully bodied, were all red. No block in this document is mixed today, so the rule guards the day one is written. The roster prints `ROSTER IMPL MIXED` on every run and exits 1 above zero, and probe PP25-mixed plants one body inside `impl Transport`, which answers `exit 1` with ``FAIL: the impl block for Transport carries a body beside a bodiless signature, so the whole block leaves the roster; write every item as a signature or write every item with a body.``. **Six gate defects run beside the four**, three at revision-15 sites and three at the declarations THIS revision wrote, so the probe set tracks the revision and never only the sites of two revisions ago. `GATE17-allow` plants `#[allow(dead_code)]` on `GraphConfigurator::backend`, which closed critic C16-7; `GATE17-unwrap` plants `unwrap_or_default()` on a `None` in the `GraphConfigurator` `Debug` body; and `GATE17-as` plants `0_i64 as u16` in the `MeterView::silent` body, which this revision rewrote for C16-8. All three are `exit 1`: ``duet-engine/src/lib.rs:188:11: error: #[allow] attribute found: help: replace it with: `expect` ``, ``duet-engine/src/lib.rs:203:22: error: used `unwrap_or_default()` on `None` value``, and ``duet-dsp/src/lib.rs:112:19: error: casting `i64` to `u16` may truncate the value``. **The three revision-15 plants run beside them and this cell records each one**, which is the half the floor of fourteen exists to hold (critic C20-2): ``duet-score/src/lib.rs:58:3: error: #[allow] attribute found: help: replace it with: `expect` ``, ``duet-time/src/lib.rs:100:22: error: used `unwrap()` on `Some` value``, ``duet-time/src/lib.rs:104:50: error: casting `f64` to `f32` may truncate the value``, ``duet-engine/src/lib.rs:131:3: error: #[allow] attribute found: help: replace it with: `expect` ``, ``duet-engine/src/lib.rs:203:22: error: used `unwrap()` on `Some` value``, and ``duet-engine/src/lib.rs:145:22: error: casting `i64` to `u16` may truncate the value``. **Three `ROSTER_TARGET_DIR` shapes run beside them** (critic C21-W4, C22I-W6), because that value reaches an `rm -rf`: a relative path, a path inside the repository, and **an absolute path OUTSIDE the repository that RESOLVES inside it through a symbolic link**, which revision 22 accepted in silence while CG7 already recorded that a symbolic link defeats a path exemption. Both roster scripts resolve the path before the compare now. All three are `exit 2`. The first prints `FAIL: ROSTER_TARGET_DIR must be an absolute path; the guard is fail-closed.`, the second prints `FAIL: ROSTER_TARGET_DIR must sit outside ...; the guard is fail-closed.`, and the third prints the same refusal, `FAIL: ROSTER_TARGET_DIR must sit outside ...; the guard is fail-closed.`, which is the line revision 22 did not print at all. **A roster probe needs its own run**: `tools/probe_roster.sh` is that run, because the placement harness starts no compiler |
+| PG25 | A roster that the real lint table refuses, a roster below the section 1.5 denominator, or a roster below the `impl-sites` floor | PP25 | Four shapes, each in its own run: the `Eq` derive removed from `AgentError` in section 15.15, where no container demands `Eq`; `HotplugSubscription` replaced by `MidiSink` in the section 1.9 Drop block, so substitution S8 emits no `Drop` impl for it; the `RenderJob` declaration renamed, which shrinks the denominator; and `impl Global for DuetTokens {}` deleted from section 15.16, which shrinks the impl count (concern N-3) | `exit 1` all four times; ``duet-agent/src/lib.rs:5:24: error: you are deriving `PartialEq` and can implement `Eq`: help: consider deriving `Eq` as well: `PartialEq, Eq` ``, ``duet-midi/src/lib.rs:59:1: error: type could implement `Copy`; consider adding `impl Copy` ``, `FINDING: the roster holds 423 items and section 1.5 places 424; the first name with no declaration is RenderJob.`, and ``FINDING: the roster parsed 64 impl blocks and the `impl-sites` block lists 65; the two are one set and they differ by 1.``. **A MIXED impl block is refused** (concern N17-4). `full_impls` drops a whole `impl` block when any one item is a bodiless signature, which is correct for a signature-only block and wrong for a block that carries one body beside one signature: the body leaves the roster and no counter moves. The seventeenth Critic planted three gate defects inside `impl Transport`, which carries a bodiless signature, and all three were green; the same three inside `impl Debug for ChainSetHandle`, which is fully bodied, were all red. No block in this document is mixed today, so the rule guards the day one is written. The roster prints `ROSTER IMPL MIXED` on every run and exits 1 above zero, and probe PP25-mixed plants one body inside `impl Transport`, which answers `exit 1` with ``FINDING: the impl block for Transport carries a body beside a bodiless signature, so the whole block leaves the roster; write every item as a signature or write every item with a body.``. **Six gate defects run beside the four**, three at revision-15 sites and three at the declarations THIS revision wrote, so the probe set tracks the revision and never only the sites of two revisions ago. `GATE17-allow` plants `#[allow(dead_code)]` on `GraphConfigurator::backend`, which closed critic C16-7; `GATE17-unwrap` plants `unwrap_or_default()` on a `None` in the `GraphConfigurator` `Debug` body; and `GATE17-as` plants `0_i64 as u16` in the `MeterView::silent` body, which this revision rewrote for C16-8. All three are `exit 1`: ``duet-engine/src/lib.rs:188:11: error: #[allow] attribute found: help: replace it with: `expect` ``, ``duet-engine/src/lib.rs:203:22: error: used `unwrap_or_default()` on `None` value``, and ``duet-dsp/src/lib.rs:112:19: error: casting `i64` to `u16` may truncate the value``. **The three revision-15 plants run beside them and this cell records each one**, which is the half the floor of fourteen exists to hold (critic C20-2): ``duet-score/src/lib.rs:58:3: error: #[allow] attribute found: help: replace it with: `expect` ``, ``duet-time/src/lib.rs:100:22: error: used `unwrap()` on `Some` value``, ``duet-time/src/lib.rs:104:50: error: casting `f64` to `f32` may truncate the value``, ``duet-engine/src/lib.rs:131:3: error: #[allow] attribute found: help: replace it with: `expect` ``, ``duet-engine/src/lib.rs:203:22: error: used `unwrap()` on `Some` value``, and ``duet-engine/src/lib.rs:145:22: error: casting `i64` to `u16` may truncate the value``. **Three `ROSTER_TARGET_DIR` shapes run beside them** (critic C21-W4, C22I-W6), because that value reaches an `rm -rf`: a relative path, a path inside the repository, and **an absolute path OUTSIDE the repository that RESOLVES inside it through a symbolic link**, which revision 22 accepted in silence while CG7 already recorded that a symbolic link defeats a path exemption. Both roster scripts resolve the path before the compare now. All three are `exit 2`. The first prints `FAIL: ROSTER_TARGET_DIR must be an absolute path; the guard is fail-closed.`, the second prints `FAIL: ROSTER_TARGET_DIR must sit outside ...; the guard is fail-closed.`, and the third prints the same refusal, `FAIL: ROSTER_TARGET_DIR must sit outside ...; the guard is fail-closed.`, which is the line revision 22 did not print at all. **A roster probe needs its own run**: `tools/probe_roster.sh` is that run, because the placement harness starts no compiler. **Chunk M90 splits the rule at the compiler edge with a `--generate-only` flag**, and the paragraph below this table states the contract (escalation M0-5) |
 | PG26 | A heap-owning field inside an audio-owned declaration outside a deferring wrapper, or a damaged audio-owned or exemption block | PP26 | Five shapes, each in its own run: `Equalizer(Box<EqualizerState>)` in place of `Equalizer(EqualizerState)` in section 5.5, which is the revision-11 shape; `probe: Arc<Generation>` added to `ChainState`, which is a heap handle that never grows so the rule and not PG26b answers it; the `Owned` wrapper removed from `DiskWriter.samples`; the same wrapper removed from `DiskReader.requests`; the one exemption row removed; and a bare `Box<[u8]>` in place of the `Arc` on the one exempt field, which is the Critic shape that a path-only row let through | `exit 1`; ``HEAP:       duet-engine::ChainSlot holds Box<EqualizerState> through state.pre_fader.Equalizer``; `exit 1`; ``HEAP:       duet-engine::ChainSlot holds Arc<Generation> through state.probe``; `exit 1`; ``HEAP:       duet-engine::ChainSlot holds Producer<f32> through state.writer.samples``; `exit 1`; ``HEAP:       duet-engine::EngineProcess holds Producer<RefillRequest> through refills``; and `exit 2`; ``FAIL: the `audio-exempt` block of this document: it holds 0 rows and the stated minimum is 1; the guard is fail-closed (DR7).``; and `exit 1`; ``HEAP:       duet-engine::GraphState holds Box<[u8]> through resets``. **The wrapped shape is the baseline run**, which is green, so the pair proves the escape and not only the refusal (critic CR-16) |
 | PG26b | A container that GROWS inside an audio-owned declaration, at any depth and inside a deferring wrapper | PP26b | Three shapes, each in its own run: `probe_grow: Owned<Vec<u8>>` added to `DiskReader`, which is the Critic shape MINE-A1; `probe_shared: Shared<Vec<u8>>` added to `ChainState`; and `probe_fixed: Owned<Box<[f32]>>` added to `ChainState`, which is the GREEN control that proves the rule refuses a shape and not a wrapper | `exit 1`; ``GROW:       duet-engine::ChainSlot holds Owned<Vec<u8>> through state.reader.probe_grow``; `exit 1`; ``GROW:       duet-engine::ChainSlot holds Shared<Vec<u8>> through state.probe_shared``; and `exit 0` on the control, with `GROW IN AUDIO: 0`. **The root the line names is the first audio-owned root that reaches the field**, which is `ChainSetHandle` and not the declaration the probe edited, because the walk now continues through a deferring wrapper |
 | PG26c | A LOCK inside an audio-owned declaration, at any depth, inside a deferring wrapper and behind an exemption line alike | PP26c | Three shapes, each in its own run: `probe_lock: Mutex<u32>` added to `ChainState`, which is the Critic shape MINE-A4; `probe_rw: RwLock<u32>` added to `ChainState`, which is MINE-A6; and `probe_pl: parking_lot::Mutex<u32>` added to `ChainState`, which proves the rule reads the last path segment | `exit 1` all three times; ``LOCK:       duet-engine::ChainSetHandle holds Mutex<u32> through Owned<Box<[ChainSlot]>>.state.probe_lock``; the same line with `RwLock<u32>` and `probe_rw`; and the same line with `parking_lot::Mutex<u32>` and `probe_pl`. **The third shape red only after a parser fix**: `field_exprs` split a field on every top-level colon and rejoined two halves, so `parking_lot::Mutex<u32>` reached `parse_type` as `parking_lot:Mutex<u32>` and every rule that reads the field saw nothing. `field_colon` now skips a `::` pair |
@@ -2846,16 +3034,21 @@ pub fn muldiv(value: i64, numerator: i64, denominator: NonZeroI64, rounding: Rou
 /// A 16-bit sample as a float. Lossless; uses `f32::from`, no suppression.
 pub fn i16_to_f32(sample: i16) -> Unit;
 
-/// A 24-bit sample as a float. Lossless; 24 bits fit the f32 mantissa.
+/// A 24-bit sample as a float. Lossless; 24 bits fit the f32 mantissa and
+/// the divisor is 2^23.
 pub fn i24_to_f32(sample: I24) -> Unit;
 
-/// A 32-bit sample as a float. Lossy below the 24th bit.
+/// A 32-bit sample as a float. Exact below a magnitude of 2^24, and lossy
+/// above it, because the f32 mantissa holds 24 bits. The divisor is 2^31.
 pub fn i32_to_f32(sample: i32) -> Unit;
 
-/// A unit sample as a 24-bit integer. The type carries the range.
+/// A unit sample as a 24-bit integer. The type carries the range, the scale
+/// factor is 2^23, and `I24::new` clamps the one product above `I24::MAX`.
 pub fn unit_to_i24(value: Unit) -> I24;
 
-/// A unit sample as a 32-bit integer. The type carries the range.
+/// A unit sample as a 32-bit integer. The type carries the range, the scale
+/// factor is 2^31, and `i32::try_from` clamps the one product above
+/// `i32::MAX`.
 pub fn unit_to_i32(value: Unit) -> i32;
 
 /// A double as a single.
@@ -2887,18 +3080,24 @@ pub fn samples_to_superclock(samples: i64, rate: SampleRate) -> Result<SuperCloc
 
 /// A finite double as a single, with no error path.
 ///
-/// **It returns no `Result`, and that is the whole reason it exists.** The
-/// caller is `LogicalPx::to_f32`, which paints a window length in logical
-/// pixels and has no error surface to return one on. A `Finite` is never a
-/// NaN and never an infinity, so the only loss the narrowing can carry is a
-/// magnitude above the `f32` range, which saturates to an `f32` infinity.
-/// `LogicalPx` is bounded by B102 and B104, so that case is unreachable and
-/// the saturation is the documented behaviour rather than a silent one.
+/// **It returns no `Result`, and that is the whole reason it exists.** A
+/// caller that paints a length has no error surface to return one on. Every
+/// constructor of `Finite` refuses a NaN and an infinity, so the input is
+/// finite and the narrowing carries two losses and no third: it drops
+/// mantissa bits, and it saturates to an `f32` infinity above the `f32`
+/// range. Both are documented behaviour rather than silent behaviour.
 /// `f64_to_f32` stays the fallible form for every caller that can report
-/// (section 10.2, critic C16-14, C17-2).
+/// (section 10.2, critic C16-14, C17-2, Appendix B.1 item 3).
 #[must_use]
 pub fn finite_to_f32_saturating(value: Finite) -> f32;
 ```
+
+**`finite_to_f32_saturating` names no window bound, and that is the repair of Appendix B.1 item 3.**
+Revision 23 wrote that `LogicalPx` is bounded by B102 and B104, so the saturating case is
+unreachable. Both budget rows are true of a window, and neither is true of this function: it takes
+every `Finite` from every crate, and `LogicalPx` is a `duet-command` type that `duet-time` cannot
+name without an inversion of the section 1.3 graph. B102 and B104 bound the window and they bind
+`duet-command`, which is where section 10.2 states them; they bind nothing in this module.
 
 Seven functions carry a suppression: `i24_to_f32`, `i32_to_f32`, `unit_to_i24`, `unit_to_i32`,
 `f64_to_f32`, `ticks_to_f64`, and `finite_to_f32_saturating`. **PG33 holds this list and the
@@ -2909,9 +3108,48 @@ N17-9). Appendix B.1 gives the reason text for each. `i16_to_f32` uses
 `f32::from`. A length converts through `u32::try_from` and then `f64::from`, so `len_to_f64` does
 not exist.
 
+**Duet is a lossless editing system, so every sample round trip this module offers is exact where
+the two types can carry it, and it states an exact bound where they cannot.** Every scale factor
+above is a power of two, so a scaling adds no rounding of its own and the only loss any pair can
+carry is the mantissa of the float. Three statements follow, and each one is a measurement.
+
+| Round trip | Result | Why |
+|---|---|---|
+| `i24_to_f32` then `unit_to_i24` | **Exact for all 16,777,216 values** | A 24-bit integer fits the f32 mantissa exactly, and both scale factors are 2^23 |
+| `i32_to_f32` then `unit_to_i32` | **Exact at a magnitude of 2^24 or below; bounded by 64 above it** | The f32 mantissa holds 24 bits, so a larger sample rounds by at most one half of a unit in the last place. The paragraph below derives the 64 |
+| `unit_to_i24` then `i24_to_f32`, and the 32-bit pair | **Quantized, and exact for every unit value the encode produces** | An encode maps a continuous range onto 2^24 or 2^32 integers, so the loss is the quantization the sample format states and nothing more. The one unit value that does not return itself is exactly +1.0, which clamps to `I24::MAX` or to `i32::MAX` |
+
+**The clamp is at exactly +1.0 and nowhere else.** A scale factor of 2^23 sends +1.0 to 8_388_608.0,
+which is one above `I24::MAX`, and `I24::new` answers `None` there. The `None => I24::MAX` arm the
+body already carries is the clamp, so the repair of item 1 of Appendix B.1 changes one constant and
+no control flow. The 32-bit form takes the same shape with `i32::try_from` (Appendix B.1 item 2).
+**The negative arm of each match is UNREACHABLE at these scale factors and it stays for totality.**
+A scale factor of 2^23 sends -1.0 to exactly -8_388_608.0, which `I24::new` accepts, and 2^31 sends
+-1.0 to exactly -2_147_483_648.0, which `i32::try_from` accepts. Section 1.6 states the same
+property for the `None` arm of `non_zero`, and each site names its binding accordingly.
+
+**The 64 is one half of the f32 spacing at the top of the 32-bit range, and this is its derivation.**
+An `f32` carries a 24-bit significand, so inside one binade every representable value sits one unit
+in the last place from the next. The widest binade an `i32` magnitude reaches is 2^30 up to 2^31,
+where that unit is 2^(30 - 23), which is 2^7, or 128. Round to nearest moves a value by at most one
+half of that unit, which is 64. Both scale factors are 2^31, a power of two, so neither scaling adds
+a term: a division and a multiplication by a power of two move the exponent alone. The rounding back
+to an integer adds none either, because the product of an exact `f32` and 2^31 is an integer here.
+**The bound is 64 and no sample exceeds it**, which an exhaustive scan of all 4,294,967,296 values
+confirms.
+
+**No sample is THE worst case, and this document names one only as AN example.** Many samples attain
+the bound, and three independent models each named a different one: 1_195_673_408, 1_073_741_888 and
+1_946_040_768 all drift by exactly 64. The first the ascending scan finds is
+**-2_147_483_584**, which is `i32::MIN` plus 64. Revision 24 wrote one of them as "the worst case",
+which is a singular claim the measurement does not support. `i32::MIN` and `i32::MAX` each round
+trip EXACTLY: `i32::MIN` is -2^31, which an `f32` holds, and `i32::MAX` clamps back to itself
+through the match.
+
 Required tests in `duet-time`:
 
-1. A round trip for each sample conversion, over every `I24` value a proptest draws.
+1. A round trip for each sample conversion, over every `I24` value a proptest draws. The 24-bit
+   assert is equality over the whole range, and the 32-bit assert is the stated bound of 64.
 2. A round trip for the clock at every supported rate.
 3. A proptest that `muldiv` matches an `i128` reference and never overflows.
 4. A proptest that `f64_to_f32` and `ticks_to_f64` return an error for every out-of-range input.
@@ -3142,11 +3380,97 @@ line that names the command and the exit status, and it exits 2. It is **fail-cl
 PG2 makes the placement guard. Revision 7 raised an uncaught exception, which was fail-closed by
 accident and stated by no rule (critic Q17).
 
+**CG9. The Appendix B.1 reason cell and the `reason =` string of the code WILL be one text, and
+chunk M90 adds the rule** (critic C1-4). Today no guard compares them. `check_placement::run` takes
+the document alone and never reads a crate source, so its `B.1 SITES: 7     2.3 LISTED: 7` counter
+compares two lists inside one document. `check-conversions` scans member files for a cast token and
+never reads `architecture.md`. **That gap is the mechanism that let the T1-1 defect live through a
+whole revision**: the appendix stated one scale factor, the code carried another, and every gate was
+green. Revision 24 repaired the value and left the mechanism, so this rule repairs the mechanism.
+
+The rule joins `check-conversions`, because that guard already resolves the workspace through
+`cargo metadata` and already owns `crates/duet-time/src/convert.rs` as its one exempt file. It has
+SIX parts.
+
+1. **It reads the document the `--appendix <path>` argument names**, and it reads no document when
+   the caller passes no such argument. A document the argument names and the guard cannot open is
+   **exit 2** with one named line, exactly as CG8 answers a workspace that does not read.
+2. **It takes the site set from the `b1-convert` guard block**: cell one of each row is the function
+   name and cell three is the reason text, between its outer quotation marks.
+3. **It takes the code set from the one exempt file.** For each `fn` item of that file it reads the
+   attribute run above the item and, when that run holds an `#[expect(...)]` with a `reason =`
+   string, it records the function name and the string.
+4. **The two sets are ONE set in both directions.** A `b1-convert` row whose site the file does not
+   declare, a site the file declares with a `reason =` string that no `b1-convert` row names, and a
+   reason text that differs from its cell are each a **finding at exit 1**, with one indented line
+   per failure under the tag ``  REASON TEXT: ``. The guard prints
+   `REASON TEXTS:    <n>     REASON TEXT BAD: <n>`, so the denominator is readable.
+5. **The compare is exact, character for character.** Appendix B.1 opens with the rule that a reason
+   names an invariant a reader CHECKS in the body, and a paraphrase is not that reason. **The
+   compare reads the DECODED value of the string literal and not its raw source token**, so a
+   backslash continuation, two adjacent literals, and a `\"` escape each answer the text a reader
+   sees. A cell that must hold a vertical bar writes it as `\|`, which is the escape the markdown
+   table already needs, and the guard reads the cell after it removes that escape. No cell needs
+   either convention today.
+6. **CG9 is PATH CONDITIONAL, and the caller turns it on** (critic C2-1). `scripts/dod.sh` passes
+   `--appendix roadmap/duet-v1/architecture.md` only when the change under test names a path that
+   opens `roadmap/` OR names `crates/duet-time/src/convert.rs`. It passes no argument otherwise, and
+   the guard then prints `REASON TEXTS:    skipped (no --appendix)` while CG1 to CG8 run unchanged.
+   A skip PRINTS; it is never silent. The `plan-lint` job of `.github/workflows/ci.yml` passes the
+   argument always.
+
+**Why part 6 exists, and it is not an exception.** `scripts/dod.sh` runs `cargo xtask
+check-conversions` on EVERY commit with no path condition. An unconditional CG9 would therefore make
+every commit in this repository depend on one roadmap markdown file, which is the exact coupling
+section 14 refuses two paragraphs before it states the path-conditional plan step. Two named failures
+follow from that coupling. A document that moves or is archived turns every commit in the workspace
+red for a reason unrelated to the commit. An Architect edit to one B.1 reason cell turns every commit
+red until a repair chunk lands the matching code, and no engineer may clear it: SM9 part 1 makes
+`architecture.md` the Architect's, and the `reason =` strings need a chunk that holds `convert.rs` in
+its write scope. This act already met that deadlock once and answered it by the M91-before-M90 order
+of section 13.3; the next occurrence may have no such order available.
+
+**The denominator of part 6 is the SAME three-clause union `scripts/dod.sh` computes for the plan
+step**, and the script computes it once and reads it twice. Section 14 rung one states the three
+clauses, the no-upstream fallback, and the rule that the step RUNS when neither ref resolves. **Both
+halves of the binding are in the condition, and one half alone would be wrong**: a `roadmap/`-only
+condition would skip CG9 on a commit that edits `convert.rs`, and that commit is exactly a commit
+that can break the binding.
+
+**What part 6 covers and what it does not.** It covers every commit and every push that carries a
+change to either half, on the machine that makes it. It does NOT cover the two residual limits that
+clause 3 carries, which section 14 states: a force update that moves the remote ref backward, and a
+long-lived branch that already pushed the change. It also does not cover a pull request that touches
+`crates/duet-time/src/convert.rs` and no `roadmap/` or `tools/xtask/` path, because the `plan-lint`
+job filter names neither path and the roster compile in that job costs 4.0 GB and several minutes,
+which section 14 states as the reason the job is narrow. **The local step is the cover for that
+case**, and its two residual limits are the whole gap.
+
+**Who clears a red CG9.** The red is local and path conditional, so it blocks the author who created
+the divergence and nobody else. The Architect owns `architecture.md` under SM9 part 1, and only a
+chunk that holds `crates/duet-time/src/convert.rs` in its write scope may change the code. **The
+Orchestrator adjudicates** and takes one of two paths under SM9: it dispatches a repair chunk that
+lands the code half, or it reverts the appendix edit until such a chunk exists. **No engineer may
+clear a red CG9 by editing the appendix**, and no party may clear it by removing the row: the marker
+`<!-- GUARD BLOCK id=b1-convert rows>=7 -->` asserts the denominator, and PG27 refuses a block cut
+below its stated minimum while PG27b refuses a floor below the block's own row count.
+
+**The rule's own limit, stated here.** It binds the appendix to `duet-time::convert` alone, which is
+the one file CG7 exempts and the one file whose reasons Appendix B.1 mandates character for
+character. The complexity, copy and variant blocks of that appendix name sites in other crates, and
+no rule binds those; PG24 and PG33 hold what they hold. **Cell two, the lint list, is UNBOUND**
+(critic C2-5): each `b1-convert` row names its lints, CG9 reads cell one and cell three, and a
+function may therefore carry `#[expect(clippy::some_other_lint, reason = "<the exact cell three
+text>")]` while CG9 stays green. `clippy::unfulfilled_lint_expectation` is the PARTIAL enforcer: it
+fires on a named lint that does not fire, so it catches a lint the site does not need, and it catches
+neither a superset nor a different lint that does fire. Review holds the rest. Chunk M90 lands CG9,
+its probe CP9, the `b1-convert` half of the contract, and nothing wider.
+
 **There is no denominator floor.** A floor stopped chunk M0 from passing its own Completion command.
 It also protected nothing that CG1 and CG8 do not already protect. A file set drawn from
 `cargo metadata` is empty only when the workspace is empty, and CG8 fails first.
 
-**Twelve tests in `tools/xtask` cover it, one per rule (DR5).** Revision 16 said eleven against a twelve-rule contract, and the rule most likely to be dropped in the port was CG1b, which is the rule the last two revisions added (critic C16-W14, C17-W1). Section 1.9 names the probe of each
+**Twelve tests in `tools/xtask` cover it, one per rule (DR5), and chunk M90 makes them thirteen.** Revision 16 said eleven against a twelve-rule contract, and the rule most likely to be dropped in the port was CG1b, which is the rule the last two revisions added (critic C16-W14, C17-W1). Section 1.9 names the probe of each
 rule and records the result. Each test builds a throwaway cargo workspace with one member in a
 temporary directory; no conversion test reads this repository and none reads any file under
 `roadmap/`.
@@ -10570,8 +10894,10 @@ is the only caller; a `const fn` is an ordinary function at run time, and `[prof
 documentation rule is that the function carries a `# Panics` section, because
 `clippy::missing_panics_doc` is in `pedantic` and the workspace denies it; revision 10 declared
 `Finite::from_finite_const` with an assertion, named no house form, and carried no `# Panics`
-section, so the function did not build (critic W-9). `Finite::from_finite_const` is the one site
-(section 2.6a), and it needs no Appendix B.1 row, because it carries no suppression.
+section, so the function did not build (critic W-9). **Three sites take form 5**, and each one needs no Appendix B.1 row, because none carries a
+suppression: `Finite::from_finite_const` (section 2.6a), `duet-time::units::non_zero`, and
+`duet-time::units::non_zero_u32` (section 1.6). Revision 23 named one site and gave the two `NonZero`
+helpers a fallback arm that shipped a wrong constant instead; ADR 0008 records the repair.
 
 ### 12.4 How an engine fault reaches the user interface as a message
 
@@ -10892,6 +11218,35 @@ passes at every commit.
 Phases 5, 6, and 9 to 14 add none of the three, so none has one. The manifest chunks are therefore
 M0, M1, M2, M3, M4, M7, and M8, and the gap in the numbering is a fact, not an omission.
 
+**The `M` class holds two kinds of chunk, and the number tells them apart.** An `M` chunk is a
+chunk in no LINE, so SM6 does not bind it and PG40 reads no crate ownership for it. A **phase
+manifest** takes the number of its own phase and does the four things above; `M0` to `M8` are
+those. A **repair chunk** takes a number at or above 90 and lands a repair that the Architect
+mandates after a line chunk has closed; SM9 states when one exists and what it may write. The two
+ranges never overlap, so no reader takes `M90` for the manifest of a phase, and this plan states no
+phase above 15.
+
+**SM1 runs EVERY `M` chunk of a phase before EVERY line chunk of that phase, and the phase table
+states the order** (critic C1-9). The rule already held the phase manifest apart that way, because
+a line chunk builds inside a skeleton the manifest creates. A repair chunk needs the same order for
+a second reason: **it changes behaviour that a line chunk of the same phase CONSUMES**, and the
+write scopes are disjoint, so PG31 and `check-plan-graph` are blind to that edge. Chunk M91 changes
+the value that `unit_to_i24` and `unit_to_i32` return; chunks D1 and T2 consume `duet-time` in
+phase 1. A D1 branch that built against the pre-repair conversion would be green on its own and
+wrong after the merge.
+
+**A section 13.4 link was REFUSED for this, and the reason is SM8 itself.** Section 13.4 holds a
+cross-line order, SM8 makes every link forward, and PG31 refuses a link whose predecessor shares a
+phase with its successor. A link `M91 before D1` would therefore push D1 and T2 into phase 2 and
+cascade the whole phase table, for an edge SM1 already orders. The cheaper mechanism is the one
+that exists.
+
+**The order inside one phase is the order the section 13.3 row prints, left to right.** For phase 1
+that is **M1, then M91, then M90, then every line chunk of the phase**. M91 precedes M90 because
+M90 adds rule CG9, which compares the Appendix B.1 reason cells with the `reason =` strings of
+`crates/duet-time/src/convert.rs`, and M91 is the chunk that repairs those strings. A run of M90
+before M91 would be red on its own gate.
+
 **SM2: the module seam.** `clippy::mod_module_files` is denied, so a module directory needs a
 sibling file.
 
@@ -11044,8 +11399,11 @@ here. A twenty-fifth pair is a red run until somebody states why its edge does n
 
 **`T1` to `T4` are four lines and not one**, so two of them may share a phase when no link binds
 them, and SM6 is satisfied by construction. **A manifest chunk is in no line**: SM1 runs it alone
-before every line chunk of its phase, and exactly one exists per phase, so two can never share one.
-Those are the two exemptions, and this paragraph is the site that states them.
+before every line chunk of its phase, and exactly one PHASE MANIFEST exists per phase, so two of
+those can never share one. A repair chunk of SM9 is in no line either, and two `M` chunks of one
+phase are held apart by the write-scope rule that PG31 and `check-plan-graph` already apply to
+every pair of one phase. Those are the two exemptions, and this paragraph is the site that states
+them.
 
 **SM8: every link is forward, and a crate edge inside one phase is a defect.** Section 13.4 holds
 one row for every cross-line order, section 13.3 holds the phase of every chunk, and **PG31 reads
@@ -11090,6 +11448,65 @@ Revision 6 broke the rule at four sites. Two rung-two commands and both `soak.ym
 `soak`, `proptest_large`, and `crates/duet-engine/tests/alignment.rs`, and no Writes column carried
 any of the three (critic N3). `--no-tests=fail` made each one a red job rather than a vacuous green,
 which is louder and no better.
+
+**SM9: the Architect owns every path under `roadmap/`, and a chunk that finds its own brief wrong
+STOPS.** Chunk M0 found that no chunk of this plan names a path under `roadmap/` in its
+`write_scope`, and it widened its own scope to land a repair (M0X-W4, R3-N3). A chunk that widens
+its own `write_scope` makes `check-plan-graph` circular: the guard reads the front matter, so a
+chunk that edits the front matter proves only what the chunk decided. The rule has five parts.
+
+1. **The Architect is the one writer under `roadmap/`.** `roadmap/duet-v1/architecture.md`, every
+   `roadmap/duet-v1/*.md` chunk file, `roadmap/duet-v1/design-contract.md`,
+   `roadmap/duet-v1/product-requirements.md`, `roadmap/duet-v1/adr/`, and
+   `roadmap/duet-v1/tools/` are the Architect's. `roadmap/duet-v1/reviews/` is append-only and the
+   Critic is its writer; rule CL1c of section 1.5 depends on that, and the Architect never rewrites
+   a stored review.
+2. **`roadmap/duet-v1/plan-graph.md` is GENERATED, and it is the one exception.**
+   `cargo xtask check-plan-graph roadmap/duet-v1 --write-manifest` writes it from the chunk front
+   matter. A chunk that changes the generator regenerates the file in the same commit and names the
+   path in its own `write_scope`. That is a refresh of a build artifact and never an edit to a
+   brief, so it does not make the guard circular: the front matter the guard reads is unchanged.
+   **Chunk M90 owns the `MANIFEST_NOTE` repair**, because the generated text still credits
+   `tools/plan_graph_check.py`, which is the Python prototype and no longer the generator (R3-N3).
+3. **An engineer that finds its own brief wrong STOPS and reports.** It never widens its
+   `write_scope`, it never edits its own chunk file, and it never edits `architecture.md`. It
+   writes one plan-store row and it returns the key upward. The row is the FIXED key
+   `escalation:<chunk id>-<n>`, written with
+   `.claude/plan-coordination/db.sh put roadmap/duet-v1 escalation:<chunk id>-<n> '<json>'`, and
+   the JSON carries `kind` (`architect_decision` or `gate_policy`), `source` (the chunk id and the
+   report or section that found it), `title` (one line), `detail` (what the brief states, what the
+   code states, and what the chunk cannot do), `tier` (`CRITICAL`, `HIGH`, `MEDIUM` or `LOW`),
+   `acknowledged_ts` (`null`), `verdict` (`null`), and `opened_ts` (an ISO 8601 time in UTC). The
+   nine rows of 2026-09-22 are the worked examples. **A chunk that stops on an escalation is a
+   completed chunk when every other step of its brief passed**; the escalation is the deliverable
+   for the step it could not take.
+4. **A repair chunk carries a document edit only when a `tools/xtask` register change makes the two
+   atomic.** The `DATA_BLOCKS` register of `tools/xtask/src/check_placement.rs` states the floor of
+   every `<!-- GUARD BLOCK ... -->` block, PG27 refuses a marker that differs from the register,
+   and PG27b refuses a block that holds more rows than its floor. A row added to a registered block
+   therefore needs the document and the register in ONE commit, which the Architect alone cannot
+   make. In that one case the Architect writes the exact replacement text into the repair chunk's
+   body and the chunk applies it; the Architect still authors every word, and the chunk is the
+   carrier. A repair chunk that carries no register change names no path under `roadmap/`.
+5. **An escalation row has a CLOSE state, and an open row BLOCKS a dependent chunk** (critic C1-7).
+   The `acknowledged_ts` and `verdict` fields of part 3 had no writer and no time, so the channel
+   carried a message that nobody ever answered. **The Architect writes both fields on the same row,
+   in the act that resolves the escalation**, with
+   `.claude/plan-coordination/db.sh put roadmap/duet-v1 escalation:<chunk id>-<n> '<json>'` over the
+   whole row: `acknowledged_ts` takes the time the Architect read the row, and `verdict` takes one
+   of `RESOLVED`, `DEFERRED` or `REFUSED` plus one sentence that names the section, the ADR, or the
+   repair chunk that carries the answer. **A row whose `verdict` is `null` is OPEN, and a chunk that
+   depends on an open row does not dispatch.** The Orchestrator reads
+   `.claude/plan-coordination/db.sh scan roadmap/duet-v1 escalation:` before it dispatches a phase,
+   and a `DEFERRED` verdict names the plan-store item that holds the deferral. A completed chunk
+   beside an open row is the state this rule refuses: it lets a fresh Orchestrator read the plan as
+   finished while its principal deliverable is undone.
+
+**Why the rule is written this way.** The alternative is a chunk that owns its own brief, and that
+is the shape M0 reported: the document a guard reads and the party the guard judges become one
+hand. The escalation row sits in the plan store, which is outside every engineer's write scope and
+outside the repository, so a stopped chunk leaves evidence the Architect cannot quietly retype.
+That is the same property rule CL1c already relies on.
 
 ### 13.1 The manifest chunks and the trunk
 
@@ -11161,6 +11578,37 @@ a gate is the defect CLAUDE.md names.
    M7, in phase 7, which is two phases after the first commit that needs it; the reconciliation of
    the chunk set found it beside the `arrayvec` case. **`futures` stays with M7**, because the
    oneshot reply of that crate reaches chunk I1 in phase 7 and no earlier chunk names it.
+
+#### The repair chunks
+
+SM9 rule 4 and the `M` class paragraph of SM1 govern this table. A repair chunk lands a repair the
+Architect mandates after a line chunk has closed. It is in no line, it creates no crate skeleton,
+and it pins no dependency. Both rows below answer the nine escalations that chunks M0 and T1 opened
+on 2026-09-22. **They run in the order the section 13.3 phase-1 row prints: M91, then M90, then
+every line chunk of the phase.**
+
+| Chunk | Phase | Creates the skeleton for | Also writes | Completion |
+|---|---|---|---|---|
+| M91 | 1 | none | `crates/duet-time/src/convert.rs`; `crates/duet-time/src/units.rs`; `crates/duet-time/tests/kernel.rs` | `cargo nextest run -p duet-time --no-tests=fail` |
+| M90 | 1 | none | `tools/xtask/src/main.rs`; `tools/xtask/src/check_plan_graph.rs`; `tools/xtask/src/check_placement.rs`; `tools/xtask/src/check_roster.rs`; `tools/xtask/src/check_conversions.rs`; `tools/xtask/src/check_closure.rs`; `tools/xtask/tests/probes.rs`; `scripts/dod.sh`, which gains the path-conditional plan-guard step of section 14 rung one and loses the `typos` fallback; `typos.toml`; `.github/workflows/ci.yml`, the `plan-lint` job; `roadmap/duet-v1/tools/conversion_check.py`, the `CG9` token PG29 reads; `roadmap/duet-v1/architecture.md`, the sub-items b, c and d of M90 step 21, which SM9 rule 4 makes atomic with the register; `roadmap/duet-v1/plan-graph.md`, regenerated under SM9 rule 2 | `cargo nextest run -p xtask --test probes --no-tests=fail` |
+
+**M90 is dispatched to the Orchestrator and M91 to an engineer.** `scripts/dod.sh`, `typos.toml`,
+and `.github/workflows/ci.yml` are policy files under SM4, so CLAUDE.md makes M90 an adjudication.
+M91 writes crate source alone, so it is ordinary engineering work.
+
+**M91 runs FIRST, and rule CG9 is the reason.** M90 adds the rule that compares each Appendix B.1
+reason cell with the `reason =` string of `crates/duet-time/src/convert.rs`. That file still holds
+the revision-23 strings until M91 repairs them, so an M90 commit ahead of M91 would be red on its
+own gate. The two write scopes stay disjoint, which is what lets both sit in one phase (SM1).
+
+**M90 writes THREE paths under `roadmap/`, and SM9 rules 2 and 4 are the authority** (critic C2-6).
+The three are `roadmap/duet-v1/plan-graph.md`, `roadmap/duet-v1/architecture.md`, and
+`roadmap/duet-v1/tools/conversion_check.py`, and three is the size this document and the M90 header
+both state. `roadmap/duet-v1/plan-graph.md` is a generated artifact under rule 2. The other two are
+under rule 4: the `probe-table` row for CG9, its `rows>=` marker, the two section 1.7 index cells,
+and the `CG9` token of the prototype are each refused on their own by PG27, PG27b, PG29 or PG39, and
+they pass only in the commit that also bumps the `DATA_BLOCKS` register. **The Architect wrote every
+one of those texts into the body of M90**, and the chunk may change no other word of either file.
 
 #### The trunk
 
@@ -11515,10 +11963,10 @@ work no verb could perform.
 #### The phase table
 
 <!-- GUARD BLOCK id=phase-table rows>=16 -->
-| Phase | Manifest owner | Also written by the manifest chunk | Line chunks that run together | Width |
+| Phase | Manifest and repair chunks, in run order | Also written by the manifest chunk | Line chunks that run together | Width |
 |---|---|---|---|---|
 | 0 | M0 | The `check_*.rs` xtask guards M0's own 13.1 cell names, the `dod.sh` lines, **the WHOLE `ci.yml`** as that cell states, the policy files of SM4 | T1 | 1 |
-| 1 | M1 | none | T2, D1 | 2 |
+| 1 | M1, M91, M90, in that order | none | T2, D1 | 2 |
 | 2 | M2 | none | T3, A1, D2, E1 | 4 |
 | 3 | M3 | none | T4, A2, D3, E2, N1 | 5 |
 | 4 | M4 | none | A3, C1, E3, F1, G1, N2, X1 | 7 |
@@ -11684,10 +12132,65 @@ yet is written in the FUTURE tense and names the chunk that builds it** (critic 
 - `cargo clippy --workspace --all-targets --locked -- -D warnings` is clean.
 - `cargo doc` is clean at `-D warnings`.
 - `cargo nextest run --workspace --locked` and `cargo test --doc` are green.
-- `typos` is clean. **It cannot fail the gate today**: `scripts/dod.sh:93-96` runs
-  `typos || printf ...`, so a finding prints and the script continues. **Chunk M0 will remove that
-  fallback**, and until it does this line is a developer signal and not a pass condition (critic
-  C20-W6).
+- `typos` is clean. **It cannot fail the gate today**: `scripts/dod.sh` runs
+  `typos --exclude 'crates/duet/assets/fonts/*' || printf ...`, so a finding prints and the script
+  continues. **Chunk M90 removes the fallback and the flag, and writes the configuration that makes
+  the plain call green**, and until it does this line is a developer signal and not a pass
+  condition (critic C20-W6, escalation M0-1). **The repair is a configuration file and no prose
+  edit at all.** Revision 24 stated a total that a run refuted, and revision 25 stated a second
+  total that a second run refuted (critic C1-3). **The cause is structural, so this bullet states
+  NO total.** A plain `typos` total stated inside a checked file cannot be stable, because the
+  sentence that states the partition writes the very tokens it counts into this file and into two
+  more. Each written token is one more finding, so a third re-measurement gives a fourth wrong
+  number. The bullet states instead the CLASSES, the RULE that answers each class, and the one
+  number a reader can reproduce.
+
+  **FIVE classes COVER every finding, and the class set is EXHAUSTIVE.** The decision rests on
+  that property alone. The classes are NOT disjoint, and they do not need to be: a finding inside an
+  excluded path can also match a word class, and either rule answers it. No rule reads disjointness.
+  Each class carries its own rule.
+
+  1. **Third-party SMuFL data.** Every finding inside
+     `crates/duet/assets/fonts/bravura_metadata.json`. This repository copies that file and never
+     authors it. **Rule: a path exclusion.**
+  2. **Append-only records.** Every finding under `roadmap/duet-v1/reviews/` and
+     `roadmap/duet-v1/research/`. Rule CL1c of section 1.5 rests on a review file that nobody
+     rewrites. **Rule: a second path exclusion.**
+  3. **The generated protocol word.** The word `Criticals` in each of its three cases.
+     `tools/xtask/src/check_closure.rs` GENERATES the count sentence that holds it, and rule CL1b
+     of section 1.5 makes that sentence a protocol string. No identifier holds the word.
+     **Rule: three word entries, one per case.**
+  4. **The SMuFL glyph-name identifiers.** The three whole glyph names `ArticAccent`,
+     `ArticStaccato` and `note32ndUp`. Design contract section 4.3 states the third one.
+     **Rule: three identifier entries** (critic C1-12). `[default.extend-identifiers]` is the
+     narrow tool: it allows each whole name and allows nothing else. A word entry for the bare
+     prefix of the first two would hide a real misspelling of the word "arctic" anywhere in this
+     repository for ever, and the class-one exclusion already answers every hit of that prefix
+     inside the font file.
+  5. **The domain term.** The word `tuplets`, which section 2.4 states. **Rule: one word entry.**
+
+  **A sixth named set is a SUBSET of class two and not a class of its own.** Five findings under
+  the two excluded directories are genuine prose typos, and this plan KNOWINGLY accepts them. Two
+  are a plural spelling of the word `data`, at
+  `roadmap/duet-v1/research/linux-macos-platform.md` line 19 and
+  `roadmap/duet-v1/reviews/critic-spec-r15.md` line 729. Three are truncations inside
+  `roadmap/duet-v1/reviews/critic-spec-r21.md`, at lines 168, 216 and 240, which should read
+  `other`, a two-letter word, and `close`. **This text names each one by its CORRECTION and by its
+  file and line, and never by its misspelling**, because `typos` reads this file and a misspelling
+  quoted here becomes a finding of its own. **A repair at the site is a defect and not a repair**:
+  the closure guard compares each review file against a copy in the plan store that the Critic
+  appended, so a spell fix inside the file breaks that compare and puts the second source back
+  inside the Architect's own hand. The five stay.
+
+  **The one number a reader can reproduce**: the configuration that chunk M90 step 13 mandates
+  EXITS 0 AND PRINTS NOTHING over the whole tree. That measurement counts nothing, so it cannot
+  change under its own statement. Run it and compare. The magnitude of a PLAIN run is about 500 at
+  the time of this revision; **that figure is an order of magnitude, no rule reads it, and no later
+  author may restate it as a measured fact.**
+
+  **The rule's own limit, stated here**: the two path exclusions hide every future finding under
+  them as well, which is correct while both directories are append-only and which stops being
+  correct the day a chunk edits one.
 - `cargo deny check` and `cargo machete` are green.
 - `cargo xtask sync-agents --check` and `cargo xtask check-conversions` are green.
 - `bash -n` passes on every shell hook.
@@ -11707,32 +12210,143 @@ the gate**, because cpal links both libraries at build time (section 11.5); `ci.
 the last two and not the first. Neither job starts a PipeWire daemon, and neither needs one (critic
 C20-W6).
 
-**One of those lines is not in `scripts/dod.sh` today.** The file runs `fmt`, `clippy`, `doc`,
-`nextest`, `doctest`, `deny`, `machete`, `sync-agents`, `bash -n`, `shellcheck`, and `typos`. Chunk M0 adds the
-`check-conversions` line, and M0 is dispatched to the Orchestrator under SM4. **Until that line
-lands inside M0, the conversion guard is a command a developer runs, not a gate.**
+**Every line above is in `scripts/dod.sh` today.** The file runs `fmt`, `clippy`, `doc`,
+`nextest`, `doctest`, `deny`, `machete`, `sync-agents`, `check-conversions`, `check-manifests`,
+`bash -n`, `shellcheck`, and `typos`. Chunk M0 added the `check-conversions` line and the
+`check-manifests` line, and M0 was dispatched to the Orchestrator under SM4.
 
-**`cargo xtask check-placement` is not in the gate, and the reason is its subject.** It reads
-`roadmap/duet-v1/architecture.md`. A gate line would make every commit in this repository depend on
-one roadmap markdown file. Three consequences follow. An edit that adds a type without a section 1.5
-row would block every engineer. A moved or archived document would fail every commit for a reason
-unrelated to it. The guard's value falls to zero once the crates exist, while its cost stays on
-every commit forever (critic S11).
+**What a GATE is, stated once.** A gate is a surface that refuses a COMMIT. `scripts/dod.sh` is the
+only one, which is CLAUDE.md's own rule, and the versioned hooks `.githooks/pre-commit` and
+`.githooks/pre-push` exec it. A workflow job refuses no commit; it reports a red check that a
+reviewer acts on. The distinction matters because chunk T1 read it the other way: nine commits
+passed the local hook and the `plan-lint` job then refused on `check-placement` rule VR1, which cost
+a full push and a continuous-integration round trip (escalation T1-5, critic 3-N7).
 
-**The guard runs as the `plan-lint` job of `.github/workflows/ci.yml`**, which chunk M0 writes.
-**`cargo xtask check-roster` runs in the same job and for the same reason.** It reads the same
-document, it builds a scratch workspace outside the repository, and it needs a toolchain, so it is
-the one guard rule that costs a compile; a gate line would put that compile on every commit.
+**The three CHEAP plan guards run inside `scripts/dod.sh`, and the step is PATH CONDITIONAL.** Chunk
+M90 adds it. The step runs `cargo xtask check-placement roadmap/duet-v1/architecture.md`, then
+`cargo xtask check-plan-graph roadmap/duet-v1`, then
+`cargo xtask check-plan-graph roadmap/duet-v1 --check-manifest`. **It runs only when the change
+under test names a path that opens `roadmap/`.** When no clause of the denominator below names one,
+the step PRINTS `plan guards: skipped (no change under roadmap/)` and the gate continues; a skip
+that prints is not a silent skip.
+
+**The denominator has THREE clauses, and the third one is why the step is reachable at all** (critic
+C1-2). Revision 24 defined it as the staged diff plus the working-tree diff against `HEAD`, and both
+of those are EMPTY on the two surfaces that matter most. `.githooks/pre-push` runs
+`scripts/dod.sh` over a clean tree, so a two-clause step always skipped at every push. `git commit
+--amend` has the same shape: the amended commit carries a `roadmap/` change while the diff against
+`HEAD` names none, because `HEAD` is the commit being replaced. A step that can never do anything
+but skip is a step that reports success it did not earn. The three clauses are:
+
+1. the staged diff, `git diff --cached --name-only`;
+2. the working-tree diff against `HEAD`, `git diff --name-only HEAD`;
+3. **the commits this branch holds and its upstream does not**, `git diff --name-only @{upstream}..HEAD`, and `git diff --name-only $(git merge-base origin/main HEAD)..HEAD` when the branch has no upstream.
+
+Clause 3 covers the push, because `HEAD` at a push is the tip the push carries. It covers the amend,
+because `HEAD` at a pre-commit run for an amend is the commit the amend replaces and clause 3
+includes it. **When neither `@{upstream}` nor `origin/main` resolves, the step RUNS.** A step that
+cannot compute its denominator does not skip; that is the fail-closed answer the guard family
+applies everywhere else, and the three commands cost about one second between them.
+
+**Two residual limits, stated rather than hidden.** A force update that moves the remote ref
+BACKWARD leaves clause 3 empty while the push still rewrites history; the `plan-lint` job of
+`.github/workflows/ci.yml` reads the whole document on every pull request that touches `roadmap/` or
+`tools/xtask/`, and that job is the cover for it. A long-lived branch that has already pushed a
+`roadmap/` change carries that change outside clause 3 on the next push; the earlier run covered it,
+and the job covers the merge. **So a skipped local step hides nothing from the merge, and it no
+longer hides everything from the push.**
+
+**The SAME denominator turns rule CG9 on, and `scripts/dod.sh` computes it ONCE and reads it twice**
+(critic C2-1). The `converts` step of the gate runs `cargo xtask check-conversions` on every
+commit with no path condition, and rule CG9 of section 2.3 reads `architecture.md`. An unconditional
+CG9 would therefore create the exact coupling the paragraph below refuses. **The step passes
+`--appendix roadmap/duet-v1/architecture.md` only when the union of the three clauses names a path
+that opens `roadmap/` OR names `crates/duet-time/src/convert.rs`**, and it passes no argument
+otherwise; the guard then prints `REASON TEXTS:    skipped (no --appendix)` and rules CG1 to CG8 run
+unchanged. **Both halves of the binding sit in the condition on purpose**: a `roadmap/`-only
+condition would skip CG9 on a commit that edits `convert.rs`, and that commit is exactly a commit
+that can break the binding. The `plan-lint` job passes the argument always. Section 2.3 part 6
+states the rule, what it covers, what it does not, and the party that clears a red CG9.
+
+**Chunk M90 lands the step, and the Orchestrator dispatches phase 1 in the order section 13.3
+prints**: M1, then M91, then M90, then every line chunk of the phase. `scripts/dod.sh` is a policy
+file under SM4, so CLAUDE.md makes the edit an adjudication and no engineer may make it. Every chunk
+that edits a plan document meets the late signal until M90 lands, and every line chunk of phase 1
+gets the early one. **M91 runs before M90** because M90 adds rule CG9, which compares the Appendix
+B.1 reason cells with the `reason =` strings of `crates/duet-time/src/convert.rs`, and M91 is the
+chunk that repairs those strings. **Both repair chunks run before every line chunk of the phase**,
+because M91 changes the value that `unit_to_i24` and `unit_to_i32` RETURN and chunks D1 and T2
+consume `duet-time` in the same phase. The write scopes are disjoint, so PG31 and `check-plan-graph`
+are blind to that edge; rule SM1 of section 13.0 is the mechanism, and it now covers a repair chunk
+(critic C1-9). ADR 0010 records the decision and the repairs beside it.
+
+**The condition exists because the coupling it removes is real** (critic S11). An unconditional gate
+line would make every commit in this repository depend on one roadmap markdown file. An edit that
+adds a type without a section 1.5 row would block every engineer. A moved or archived document would
+fail every commit for a reason unrelated to it. The path condition keeps the cost on the party that
+creates it: an engineer who edits no plan document pays nothing, and an author who edits one gets
+the finding in one second instead of one round trip.
+
+**`cargo xtask check-roster` stays out of the gate, and the reason is its cost.** It reads the same
+document, it builds a scratch workspace outside the repository, and it needs a toolchain: one
+measured run reached 4.0 GB of build output and several minutes. It runs in the `plan-lint` job of
+`.github/workflows/ci.yml`, which chunk M0 wrote and chunk M90 amends.
+
+**`cargo xtask check-closure` is a REVIEW-TIME command and it runs in no job.** Rule CL1c of section
+1.5 takes its second source from the plan store under `~/.claude/plan-dbs/`, which is outside the
+repository and outside every write scope by design. A hosted runner carries no such store. Chunk M0
+measured both states: against an empty store the guard prints
+`STORE: unreachable   STORE COPIES: 0   CLOSURE BAD: 1` and exits 1, and against the operator store
+it prints `STORE: matches   STORE COPIES: 1` and exits 0. **Three repairs were considered and two
+were refused.** A restore step would need a secret and an artifact, and no chunk can own either. A
+copy of the store inside the repository would put the second source back inside the Architect's
+write scope, which is the one property CL1c exists to deny, so the guard would prove nothing. A rule
+that passes when the store is absent is the vacuous green that CL1b and rule C22I-W4 already
+condemn in this document's own words. **The guard therefore runs where the store lives**: the
+Architect runs it before a plan revision, and the Engineering Critic re-runs it over the same store
+when it verifies the closure. Section 1.5 rule CL1c states the same fact, and chunk M0 removed the
+nine job lines that promised the other one (escalation M0-2).
+
+**Every run of it is RECORDED in the plan store, and rule CL1d of section 1.5 binds a closure
+section to its run** (critic C1-10). Revision 24 moved the guard out of every job and left its
+verdict as a claim in prose, which is the state CL1b condemns two paragraphs above. The party that
+runs the guard appends one row per run:
+
+```
+.claude/plan-coordination/db.sh append roadmap/duet-v1 closure-run "<body>"
+```
+
+The command mints the key `<simpleflake>-closure-run` and prints it. **The body opens with three
+fixed lines and then holds the whole stdout of the run**: `COMMAND: ` and the full command line,
+`EXIT: ` and the exit code, `TREE: ` and the output of `git rev-parse HEAD`.
+
+**A PREFIX scan cannot enumerate this family, and the command that CAN is named here** (critic
+C2-2). `append` mints `<simpleflake>-closure-run`, so the flake is the prefix and the suffix sits at
+the END of the key; `scan` matches a key prefix, so `db.sh scan roadmap/duet-v1 closure-run` prints
+nothing however many rows exist. The working enumeration reads the key list and filters on the
+suffix:
+
+```
+.claude/plan-coordination/db.sh keys roadmap/duet-v1 | grep -- '-closure-run"'
+```
+
+`keys` prints one JSON record per key with the byte size and no value, so the call costs the key
+list alone. **An auditor uses that command and never the prefix scan.** A reader who already holds
+the key from a closure section reads the row with `db.sh get`, which is what the guard itself does.
+
+**The store is append-only and it sits outside the repository**, so the row is a second source
+for the VERDICT in the same way that the stored review is a second source for the review text, which
+is the one property CL1c exists to hold.
 
 | Property | Answer |
 |---|---|
-| Trigger | A pull request whose diff touches `roadmap/**` |
+| Trigger | A pull request whose diff touches `roadmap/**` or `tools/xtask/**`. `.github/workflows/ci.yml` holds `grep -qE '^roadmap/\|^tools/xtask/'`, and revision 24 amended the workflow row below and left this row stale (critic C1-15) |
 | Runner | `ubuntu-26.04` |
-| Command | `cargo xtask check-placement roadmap/duet-v1/architecture.md`, then `cargo xtask check-roster roadmap/duet-v1/architecture.md "$RUNNER_TEMP/roster" .` (PG25) |
+| Command | `cargo xtask check-placement roadmap/duet-v1/architecture.md`, then `cargo xtask check-plan-graph roadmap/duet-v1`, then `cargo xtask check-plan-graph roadmap/duet-v1 --check-manifest`, then `cargo xtask check-roster roadmap/duet-v1/architecture.md "$RUNNER_TEMP/roster" .` (PG25), then `cargo xtask check-conversions --appendix roadmap/duet-v1/architecture.md` (CG9), then `cargo nextest run -p xtask --test probes --no-tests=fail`. **The roster command carries no `--generate-only` flag here**, because this job is the one reading that compiles (escalation M0-5). **The conversion command carries the `--appendix` argument ALWAYS here**, because the job is the merge cover and it runs under no further condition (critic C2-1) |
 | A missing document | **Fail closed.** The guard exits non-zero and names the path (PG2). A plan that moves the document moves the job's argument in the same change. |
 | Lifecycle | **The job stays. This plan does not delete it.** It runs for as long as `roadmap/duet-v1/architecture.md` exists, and after the last chunk it costs one path filter on a change under `roadmap/`. Revision 6 gave the deletion to "the chunk that completes the plan", and the phase-13 row names no chunk, carries no write scope, and carries no Completion command; `.github/workflows/ci.yml` is a policy file under SM4, so a deletion would need a real Orchestrator chunk that nothing commissioned (critic N17). Removing the job later is an ordinary policy change outside this plan. |
 | What a failure does | **The job reports a red check on the pull request.** CLAUDE.md makes `scripts/dod.sh` the only gate surface, so the merge is blocked by review and not by a hook. That is the one statement of the job's power in this document (critic N18). |
-| Who may edit the document after M0 | The Architect only, through a plan revision. An engineer who needs a change raises it rather than editing, because the job goes red on a placement defect and the reviewer refuses the merge. |
+| Who may edit the document after M0 | The Architect only, through a plan revision, which rule SM9 of section 13.0 now states as a rule of the plan and not as a property of one job. An engineer who needs a change STOPS and writes an `escalation:<chunk id>-<n>` row to the plan store, because the job goes red on a placement defect and the reviewer refuses the merge. |
 
 **`cargo-nextest` is pinned.** `scripts/bootstrap.sh` today runs `install_tool cargo-nextest
 cargo-nextest`, which takes the newest release. The gate depends on `--no-tests=fail`, which an
@@ -11755,7 +12369,7 @@ and left four workflow commands without the flag, so each one reported success i
 
 | Workflow | Runner and trigger | What it runs | Written by |
 |---|---|---|---|
-| `ci.yml`, job `plan-lint` | `ubuntu-26.04`, on a `roadmap/**` change | `cargo xtask check-placement roadmap/duet-v1/architecture.md`, then `cargo xtask check-roster roadmap/duet-v1/architecture.md "$RUNNER_TEMP/roster" .`, then one `cargo xtask check-closure roadmap/duet-v1/architecture.md roadmap/duet-v1/reviews/critic-spec-r<n>.md closure-r<n>` line per closure block of Appendix C (critic C19-4), then `cargo nextest run -p xtask --test probes --no-tests=fail`, which is the ported probe set of section 1.9 | M0 |
+| `ci.yml`, job `plan-lint` | `ubuntu-26.04`, on a `roadmap/**` or `tools/xtask/**` change | `cargo xtask check-placement roadmap/duet-v1/architecture.md`, then `cargo xtask check-plan-graph roadmap/duet-v1`, then `cargo xtask check-plan-graph roadmap/duet-v1 --check-manifest`, then `cargo xtask check-roster roadmap/duet-v1/architecture.md "$RUNNER_TEMP/roster" .`, then `cargo nextest run -p xtask --test probes --no-tests=fail`, which is the ported probe set of section 1.9. **It runs no `check-closure` line**, which the paragraph above explains (escalation M0-2) | M0; M90 amends it |
 | `soak.yml` | `ubuntu-26.04` and `macos-26`, nightly | `cargo nextest run -p duet-engine --run-ignored ignored-only -E 'test(soak)' --no-tests=fail`, then the same shape for `-p duet-time -E 'test(proptest_large)'` | M7 |
 | `audio-smoke.yml` | `ubuntu-26.04`, every run | Installs PipeWire, starts a user daemon, **waits for the socket under B85 and fails the job on expiry**, then `cargo nextest run -p duet-engine --run-ignored ignored-only -E 'test(pipewire_smoke)' --no-tests=fail` | M8 |
 
@@ -14858,32 +15472,65 @@ Revision 20 stated a lint for none of the twenty rows and never addressed the mu
 <!-- GUARD BLOCK id=b1-convert rows>=7 -->
 | Site | Lints the attribute names | Reason text that the code must carry |
 |---|---|---|
-| `i24_to_f32` | `as_conversions`, `cast_precision_loss` | "a 24-bit integer fits the f32 mantissa exactly, so the conversion is lossless and the result is in the unit range" |
-| `i32_to_f32` | `as_conversions`, `cast_precision_loss` | "the loss is below the 24th bit, and the divisor makes the result fall in the unit range; the round-trip proptest states the bound" |
-| `unit_to_i24` | `as_conversions`, `cast_possible_truncation` | "the `Unit` type carries the range -1.0 to 1.0 and the scale factor is 2^23 - 1, which is `I24::MAX`, so the product lies in -8_388_607.0 to 8_388_607.0 and fits `I24` with no clamp" |
-| `unit_to_i32` | `as_conversions`, `cast_possible_truncation` | "the `Unit` type carries the range -1.0 to 1.0 and the scale factor is 2^31 - 1, which is `i32::MAX`, so the product lies in -2_147_483_647.0 to 2_147_483_647.0 and fits `i32` with no clamp" |
+| `i24_to_f32` | `as_conversions`, `cast_precision_loss` | "a 24-bit integer fits the f32 mantissa exactly and the divisor is 2^23, which is a power of two, so the conversion is lossless and the result is in the unit range" |
+| `i32_to_f32` | `as_conversions`, `cast_precision_loss` | "a 32-bit integer rounds to the nearest f32, so the loss is below the 24th bit, and the divisor 2^31 is a power of two, which puts the result in the unit range and adds no further loss" |
+| `unit_to_i24` | `as_conversions`, `cast_possible_truncation` | "the `Unit` type carries the range -1.0 to 1.0 and the scale factor is 2^23, so the rounded product lies in -8_388_608.0 to 8_388_608.0, and `I24::new` refuses the one product above `I24::MAX`, which the match clamps" |
+| `unit_to_i32` | `as_conversions`, `cast_possible_truncation` | "the `Unit` type carries the range -1.0 to 1.0 and the scale factor is 2^31, so the rounded product lies in -2_147_483_648.0 to 2_147_483_648.0 and the `as i64` cast is exact, and `i32::try_from` refuses the one product above `i32::MAX`, which the match clamps" |
 | `f64_to_f32` | `as_conversions`, `cast_possible_truncation` | "the function returns an error for a non-finite value and for a magnitude outside the f32 range before it reaches this line" |
 | `ticks_to_f64` | `as_conversions`, `cast_precision_loss` | "the function returns an error at or above 2^53 ticks before it reaches this line, so every integer below that bound converts to an f64 exactly" |
-| `finite_to_f32_saturating` | `as_conversions`, `cast_possible_truncation` | "the input is a `Finite`, so it is never a NaN and never an infinity; the narrowing saturates to an f32 infinity only above the f32 range, and `LogicalPx` carries a window length in logical pixels, which is far below it" |
+| `finite_to_f32_saturating` | `as_conversions`, `cast_possible_truncation` | "every constructor of `Finite` refuses a NaN and an infinity, so the input is finite; the narrowing drops mantissa bits, and it saturates to an f32 infinity only above the f32 range, which the documentation of this function states" |
 
-**Chunk T1 proved two rows of this table wrong, and the Architect owns each repair.** The engineer
-copied both texts correctly; only an edit here may change one.
+**Five rows above are the repair of the two defects chunk T1 found, and chunk M91 lands the code.**
+The engineer copied every revision-23 text correctly; only an edit here may change one. ADR 0007
+records the decision and states which round trip is exact and which is bounded.
 
-1. **The `finite_to_f32_saturating` row names a bound that its own body does not carry.** No crate
-   in this workspace declares `LogicalPx`, and the function takes every `Finite` from every crate
-   rather than a `LogicalPx`. This appendix opens with the rule that a reason names an invariant a
-   reader CHECKS in the function body, and a reader of that body sees a `Finite` and no bound.
-   Either declare `LogicalPx` and narrow the parameter, or name an invariant the body carries. Plan
-   store `fluid:next_steps_from_T1`, item FU-2.
-2. **The `i24_to_f32` and `unit_to_i24` rows make an exact 24-bit round trip unreachable.** The
-   first text requires the result to be "in the unit range" and the conversion to be "lossless",
-   which forces a decode divisor of exactly 2^23. The second text fixes the encode factor at
-   2^23 - 1. The composition is therefore `x * (1 - 2^-23)`, which is not the identity for any
-   sample of magnitude 2^22 or above: measured, 8_388_607 answers 8_388_606 and -8_388_608 answers
-   -8_388_607. At unity gain a decode and re-encode moves every sample above half scale by one
-   least significant bit, in the trunk crate of a product whose value is lossless editing. An
-   encode factor of 2^23 with a clamp at a unit value of exactly +1.0 gives an EXACT round trip for
-   all 16,777,216 values. Plan store `fluid:next_steps_from_T1`, item FU-1 (chunk T1, 2026-09-22).
+**No guard compared a cell of this block with the `reason =` string in the code, and chunk M90 adds
+one** (critic C1-4). That gap is the mechanism that let the T1-1 defect survive a whole revision:
+this appendix stated one scale factor, `crates/duet-time/src/convert.rs` carried another, and every
+gate was green. Rule CG9 of section 2.3 states the contract, and section 1.9 states how the row and
+the register land together.
+
+1. **`unit_to_i24` takes the scale factor 2^23, and the 24-bit round trip is now EXACT.** Revision
+   23 fixed the encode factor at 2^23 - 1 while the decode divisor is 2^23, so the composition was
+   `x * (1 - 2^-23)`, which is the identity for no sample of magnitude 2^22 or above: measured,
+   8_388_607 answered 8_388_606 and -8_388_608 answered -8_388_607. At unity gain a decode and a
+   re-encode moved every sample above half scale by one least significant bit, in the trunk crate
+   of a product whose value is lossless editing. **The two scale factors are now one number**, both
+   2^23, and `i24_to_f32` then `unit_to_i24` is the identity for all 16,777,216 values. The encode
+   body already matched `I24::new` and answered `None => I24::MAX`, so the one product a unit value
+   of exactly +1.0 produces, 8_388_608.0, clamps to `I24::MAX` through the arm that is already
+   there. Plan store `fluid:next_steps_from_T1`, item FU-1 (chunk T1, 2026-09-22).
+2. **`unit_to_i32` takes the scale factor 2^31 and an explicit clamp, so the pair is symmetric.**
+   Revision 23 fixed the encode factor at 2^31 - 1 against a decode divisor of 2^31, which is the
+   same defect at 32 bits, and it relied on the saturating behaviour of an `as` cast for the one
+   product above `i32::MAX`. **A reader cannot CHECK a language rule in a body that does not state
+   it**, which is the rule this appendix opens with, so the body now rounds into an `i64`, which is
+   exact, and narrows with `i32::try_from` in a match that mirrors the `I24::new` match exactly.
+   **The 32-bit round trip is EXACT at a magnitude of 2^24 or below and BOUNDED above it**, because
+   an `i32` sample of a larger magnitude does not fit the 24-bit f32 mantissa. **The bound is one
+   half of the f32 spacing at the top of the 32-bit range.** The widest binade an `i32` magnitude
+   reaches is 2^30 up to 2^31, where one unit in the last place is 2^7, which is 128; round to
+   nearest moves a value by at most half of that, which is 64. Both divisors are powers of two, so
+   neither scaling adds a further loss. An exhaustive scan of all 4,294,967,296 values confirms the
+   bound. **Many samples attain it and no sample is the singular worst case**: 1_073_741_888,
+   1_195_673_408 and 1_946_040_768 each drift by exactly 64, and the first the ascending scan finds
+   is -2_147_483_584. Section 2.3 gives the derivation in full.
+
+   **Both negative arms of the two matches are unreachable at these factors and stay for totality.**
+   A scale factor of 2^23 sends a unit value of -1.0 to exactly -8_388_608.0, which `I24::new`
+   accepts, and 2^31 sends it to exactly -2_147_483_648.0, which `i32::try_from` accepts. Each
+   binding is named for that state rather than for the clamp, so a reader of a lossless kernel does
+   not read the negative arm as the arm the clamp uses (critic C1-18).
+3. **The `finite_to_f32_saturating` row names an invariant the body carries, and it names no
+   `LogicalPx`.** `LogicalPx` is a `duet-command` type (sections 1.5 and 10.2), and section 1.3
+   puts `duet-command` above `duet-time`, so a narrowed parameter would invert the crate graph. The
+   function also takes every `Finite` from every crate, so a bound that names one caller's type is
+   a promise the body cannot keep. **The invariant a reader checks is the parameter type**: every
+   constructor of `Finite` refuses a NaN and an infinity, so the one loss left is the mantissa and
+   the one unreachable case is a magnitude above the f32 range. **This function is not on the
+   sample path**, so the lossless standard of ADR 0007 does not reach it; an f64 to f32 narrowing
+   drops mantissa bits by construction, and section 2.3 rule 2 keeps `f64_to_f32` as the fallible
+   form for every caller that can report. Plan store `fluid:next_steps_from_T1`, item FU-2.
 
 Six complexity suppressions. **Each reason names a COUNT a reader checks in the body**, and not an
 opinion about a split (critic C20-N4). Revision 20 wrote "a split would hide the order between the

@@ -573,16 +573,17 @@ Proptest strategies: `any::<f64>()` for the `Finite` properties, `any::<i64>()` 
 `muldiv`, `any::<i32>()` narrowed to the `I24` range with `prop_map` for the 24-bit round trip, and
 `1_i64..=7_680` with `2_u8..=13` for the tuplet sum.
 
-**The 24-bit round trip drifts by one step, and Appendix B.1 is the reason.** The two reason texts
-of that appendix are mandatory character for character, and they fix both scale factors. The
-`i24_to_f32` text says the result "is in the unit range", which holds only for a divisor of 2^23,
-because a divisor of 2^23 - 1 sends `I24::MIN` outside the range and forces a clamp. The
-`unit_to_i24` text names the scale factor 2^23 - 1 and says the product "fits `I24` with no clamp",
-which holds only for that factor, because 2^23 sends a unit sample of 1.0 one step above `I24::MAX`.
-The two factors therefore differ by one part in 8,388,608, and no rounding mode makes the round trip
-exact above a half-scale sample. The chunk row above states the property that holds. A change to
-either factor needs a change to Appendix B.1 first, which is an Architect decision and not an
-implementation decision (T1, 2026-09-22).
+**SUPERSEDED by escalation T1-1, which this chunk opened and the Architect resolved on
+2026-09-22.** This paragraph read "The 24-bit round trip drifts by one step, and Appendix B.1 is the
+reason", and it named 2^23 - 1 as the mandated encode factor. The observation was correct and the
+conclusion was wrong: a one-step drift at unity gain is a defect of the product and not a property
+to record, because Duet is a lossless editing system. **Both 24-bit scale factors are 2^23 now**, so
+`i24_to_f32` then `unit_to_i24` is the identity for all 16,777,216 values, and the `None => I24::MAX`
+arm the body already carries clamps the one product that a unit value of exactly +1.0 makes. Both
+32-bit factors are 2^31, and the 32-bit pair is exact below a magnitude of 2^24 and bounded by 64
+above it. Architecture Appendix B.1 items 1 and 2, section 2.3, and ADR 0007 state the repair.
+**Chunk M91 lands the code**; the engineer of this chunk copied every revision-23 text correctly,
+and the texts themselves were wrong.
 
 ## Verification
 

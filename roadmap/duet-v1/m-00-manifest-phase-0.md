@@ -346,28 +346,29 @@ in the same commit as the code that uses them.
        cargo xtask check-placement roadmap/duet-v1/architecture.md
        cargo xtask check-roster roadmap/duet-v1/architecture.md "$RUNNER_TEMP/roster" .
        cargo xtask check-plan-graph roadmap/duet-v1
-       cargo xtask check-closure roadmap/duet-v1/architecture.md roadmap/duet-v1/reviews/critic-spec-r16.md closure-r16
-       cargo xtask check-closure roadmap/duet-v1/architecture.md roadmap/duet-v1/reviews/critic-spec-r17.md closure-r17
-       cargo xtask check-closure roadmap/duet-v1/architecture.md roadmap/duet-v1/reviews/critic-spec-r18.md closure-r18
-       cargo xtask check-closure roadmap/duet-v1/architecture.md roadmap/duet-v1/reviews/critic-spec-r19.md closure-r19
-       cargo xtask check-closure roadmap/duet-v1/architecture.md roadmap/duet-v1/reviews/critic-spec-r20.md closure-r20
-       cargo xtask check-closure roadmap/duet-v1/architecture.md roadmap/duet-v1/reviews/critic-spec-r21.md closure-r21
-       cargo xtask check-closure roadmap/duet-v1/architecture.md roadmap/duet-v1/reviews/critic-spec-r21-inner.md closure-r21-inner
-       cargo xtask check-closure roadmap/duet-v1/architecture.md roadmap/duet-v1/reviews/critic-spec-r22-inner.md closure-r22-inner
-       cargo xtask check-closure roadmap/duet-v1/architecture.md roadmap/duet-v1/reviews/critic-spec-r23-inner.md closure-r23-inner
        cargo nextest run -p xtask --test probes --no-tests=fail
        ```
 
-       **Nine closure lines, one per registered block.** Appendix C registers `closure-r16`,
-       `closure-r17`, `closure-r18`, `closure-r19`, `closure-r20`, `closure-r21`,
-       `closure-r21-inner`, `closure-r22-inner`, and `closure-r23-inner`, and each block name is
-       `closure-<stem>` of its own review file. The other sixteen review files carry an Appendix C
-       section and no registered block by design, so they take no line. **A new review file takes a
-       new line in the same changeset that registers its block**, which is the rule
-       `run_all_gates.py` derives rather than types (section 1.9, critic C21-W3).
+       **SUPERSEDED IN PART by escalation M0-2, which chunk M0 opened and the Architect resolved on
+       2026-09-22.** This step first ordered nine `cargo xtask check-closure` lines into the job,
+       one per registered Appendix C block. A hosted runner carries no plan store under
+       `~/.claude/plan-dbs/`, so every one of the nine would have failed. Chunk M0 measured that
+       state and removed the nine lines, and architecture section 1.5 rule CL1c and section 14 now
+       state that `check-closure` is a review-time command that runs in no job. **The job runs no
+       `check-closure` line.** Chunk M90 amends the job again: it adds the two `check-plan-graph`
+       manifest lines and it leaves the roster line with no `--generate-only` flag.
     6. Add no `check-placement` line, no `check-roster` line, no `check-plan-graph` line, and no
-       `check-closure` line to `scripts/dod.sh`. Section 14 states the reason: a gate line would make
-       every commit depend on one roadmap markdown file.
+       `check-closure` line to `scripts/dod.sh`.
+
+       **SUPERSEDED IN PART by escalation T1-5, which chunk T1 opened and the Architect resolved on
+       2026-09-22.** The reason this step gave is still the reason `check-roster` and
+       `check-closure` stay out of the gate: a roster run costs a multi-gigabyte compile, and a
+       closure run reads a store no runner holds. It was wrong for the three CHEAP plan guards.
+       Nine T1 commits passed the local hook and the `plan-lint` job then refused on rule VR1, which
+       cost one push and one round trip. **Chunk M90 adds a PATH-CONDITIONAL plan step to
+       `scripts/dod.sh`** that runs `check-placement` and the two `check-plan-graph` forms, and only
+       when the change under test names a path that opens `roadmap/`. Architecture section 14 rung
+       one states the condition and the denominator.
 16. Edit `clippy.toml`. Add the ten proper nouns of section 13.1 to `doc-valid-idents`:
     `PipeWire`, `CoreAudio`, `CoreMIDI`, `MusicXML`, `SMuFL`, `Bravura`, `Wayland`, `XWayland`,
     `APFS`, and `RF64`. Keep the `".."` entry, which keeps clippy's own default list.
