@@ -1169,21 +1169,43 @@ impl Score {
 
     /// Refuse a run of measures that holds a note or a rest.
     ///
+    /// **A measure holds content when the half-open span of a note or a rest
+    /// intersects the half-open span of the measure.** That is the D15 rule
+    /// that `check_free` and `Taken::meets` read. An onset test answers another
+    /// question, the measure that a note BEGINS in, and it reads a measure that
+    /// a longer note sounds over as empty: `remove_measures` would then accept
+    /// the run, move the later content earlier, and leave two elements of one
+    /// staff and one voice over one tick range.
+    ///
+    /// A duration of zero ticks covers an empty span, which intersects nothing,
+    /// so such an element fills no measure. `Duration::ticks` states the one
+    /// input that answers zero ticks.
+    ///
     /// # Errors
     /// Returns `ScoreError::MeasureNotEmpty` for the first filled measure.
     fn check_measures_empty(&self, run: &[MeasureId]) -> Result<(), ScoreError> {
+        let notes = self.notes().values().map(|note| {
+            (
+                note.onset(),
+                note.onset().saturating_add(note.duration().ticks()),
+            )
+        });
+        let rests = self.rests().values().map(|rest| {
+            (
+                rest.onset(),
+                rest.onset().saturating_add(rest.duration().ticks()),
+            )
+        });
+        let spans: Vec<(Ticks, Ticks)> = notes.chain(rests).collect();
         for id in run {
             let Some(measure) = self.measures().get(id) else {
                 continue;
             };
             let start = measure.start();
             let end = start.saturating_add(bar_ticks(measure.meter()));
-            let filled = self
-                .notes()
-                .values()
-                .map(Note::onset)
-                .chain(self.rests().values().map(Rest::onset))
-                .any(|onset| start <= onset && onset < end);
+            let filled = spans
+                .iter()
+                .any(|(onset, sounds_to)| *onset < end && start < *sounds_to);
             if filled {
                 return Err(ScoreError::MeasureNotEmpty(*id));
             }
@@ -2116,6 +2138,39 @@ impl Score {
         self.paste_clipboard(clipboard, at, Some((staff, voice)))
     }
 
+    /// Refuse a clipboard spanner that names a note the paste leaves dangling.
+    ///
+    /// `add_spanner` refuses a spanner that names a note the score does not
+    /// hold, and this is that one rule at the other entry point into the
+    /// spanner map. An endpoint is legal when the clipboard carries the note,
+    /// because the paste inserts that note and remaps the endpoint onto it, or
+    /// when the score already holds the note, because the endpoint then names
+    /// it unchanged.
+    ///
+    /// `Score::copy` carries every spanner that touches a selected note,
+    /// whatever staff the other endpoint stands in, so a clipboard holds
+    /// spanners whose second endpoint it does not carry. Where the score has
+    /// lost that note too, the paste would write a spanner that names nothing,
+    /// and `canonical::write` and `canonical::read` would make the state
+    /// durable. The refusal never fires on a well-ordered undo, because
+    /// `restore_pastes` puts the spanners in the last `Paste` of the list, after
+    /// every note that they can name is back.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingElement` for the first endpoint that neither
+    /// the clipboard nor the score holds.
+    fn check_paste_spanners(&self, clipboard: &Clipboard) -> Result<(), ScoreError> {
+        let carried: BTreeSet<NoteId> = clipboard.notes().iter().map(Note::id).collect();
+        let dangling = clipboard
+            .spanners()
+            .iter()
+            .flat_map(|spanner| [spanner.from(), spanner.to()])
+            .find(|endpoint| !carried.contains(endpoint) && !self.notes().contains_key(endpoint));
+        dangling.map_or(Ok(()), |endpoint| {
+            Err(ScoreError::MissingElement(ElementRef::Note(endpoint)))
+        })
+    }
+
     /// The identifier that `wanted` keeps, or a new one where it is taken.
     ///
     /// A kept identifier is reserved, so the counter stands above it and no
@@ -2143,16 +2198,19 @@ impl Score {
     /// clipboard changes nothing and answers an empty inverse.
     ///
     /// # Errors
-    /// Returns `ScoreError::OverlappingNote` for a target that a note or a rest
-    /// already fills, and for two clipboard elements that would cover one tick
-    /// range of the target: a paste that names one staff and one voice sends
-    /// every element of the clipboard there, whatever staff each came from.
+    /// Returns `ScoreError::MissingElement` for a clipboard spanner that names
+    /// a note the paste leaves dangling, `ScoreError::OverlappingNote` for a
+    /// target that a note or a rest already fills, and `OverlappingNote` for two
+    /// clipboard elements that would cover one tick range of the target: a paste
+    /// that names one staff and one voice sends every element of the clipboard
+    /// there, whatever staff each came from.
     fn paste_clipboard(
         &mut self,
         clipboard: &Clipboard,
         at: Ticks,
         to: Option<(StaffId, VoiceId)>,
     ) -> Result<Outcome, ScoreError> {
+        self.check_paste_spanners(clipboard)?;
         let shift = at.saturating_sub(clipboard.origin());
         let free = BTreeSet::new();
         let mut taken: Vec<Taken> = Vec::new();
@@ -4038,6 +4096,96 @@ mod tests {
         assert_eq!(
             score, before,
             "the refused RemoveMeasures leaves the measure grid as it stood"
+        );
+    }
+
+    #[test]
+    fn a_paste_refuses_a_spanner_whose_other_endpoint_the_score_lost() {
+        let mut stage = stage();
+        let held = insert_note(&mut stage, 0, Step::C);
+        let other = insert_note(&mut stage, QUARTER_TICKS, Step::D);
+        stage
+            .score
+            .apply(ScoreCommand::AddSpanner {
+                kind: SpannerKind::Slur,
+                from: held,
+                to: other,
+            })
+            .expect("an AddSpanner over two notes the score holds is accepted");
+        let clipboard = stage
+            .score
+            .copy(&Selection::Notes(vec![held]))
+            .expect("a copy of one note the score holds is accepted");
+        assert_eq!(
+            clipboard.spanners().len(),
+            1,
+            "a copy of one endpoint carries the slur, and the other endpoint stays outside the clipboard"
+        );
+        for gone in [held, other] {
+            stage
+                .score
+                .apply(ScoreCommand::Remove {
+                    selection: Selection::Notes(vec![gone]),
+                })
+                .expect("a Remove of a note the score holds is accepted");
+        }
+        let before = stage.score.clone();
+
+        let refusal = stage.score.apply(ScoreCommand::Paste {
+            clipboard: Box::new(clipboard),
+            at: Ticks::new(0),
+            staff: stage.staff,
+            voice: stage.voice,
+        });
+
+        assert_eq!(
+            refusal,
+            Err(ScoreError::MissingElement(ElementRef::Note(other))),
+            "a paste whose spanner names a note that neither the clipboard nor the score holds is refused, because the paste would leave a spanner that names nothing"
+        );
+        assert_eq!(
+            stage.score, before,
+            "the refused Paste leaves the score as it stood"
+        );
+    }
+
+    #[test]
+    fn remove_measures_refuses_a_measure_that_a_longer_note_sounds_over() {
+        let mut stage = stage();
+        let first = first_measure(&stage.score);
+        stage
+            .score
+            .apply(ScoreCommand::InsertMeasures {
+                after: first,
+                count: TWO_MEASURES,
+            })
+            .expect("an InsertMeasures after the first measure of a new score is accepted");
+        stage
+            .score
+            .apply(ScoreCommand::InsertNote {
+                staff: stage.staff,
+                voice: stage.voice,
+                onset: Ticks::new(QUARTER_TICKS * 3),
+                pitch: natural(Step::C),
+                duration: half(),
+            })
+            .expect("an InsertNote at a free onset is accepted");
+        let second = second_measure_of(&stage.score);
+        let before = stage.score.clone();
+
+        let refusal = stage.score.apply(ScoreCommand::RemoveMeasures {
+            from: second,
+            count: ONE_MEASURE,
+        });
+
+        assert_eq!(
+            refusal,
+            Err(ScoreError::MeasureNotEmpty(second)),
+            "a note that starts in one measure and sounds into the next fills the next one, because the emptiness check reads the half-open span that check_free reads and not the onset"
+        );
+        assert_eq!(
+            stage.score, before,
+            "the refused RemoveMeasures leaves the measure grid and the note as they stood"
         );
     }
 }
