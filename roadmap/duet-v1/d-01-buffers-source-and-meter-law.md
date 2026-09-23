@@ -509,7 +509,17 @@ pub fn measure(state: &mut MeterState, block: &[f32], law: MeterLaw);
 22. Run `cargo nextest run -p duet-dsp --no-tests=fail` and confirm that every test passes.
 23. Run `cargo clippy -p duet-dsp --all-targets --locked -- -D warnings` once and repair every
     finding.
-24. Commit on the branch `chunk/d1-buffers-source-and-meter-law`.
+24. Record the feature resolution of `rustfft` and `realfft`. Run `cargo tree -e features -i rustfft`
+    and `cargo tree -e features -i realfft`, and paste both outputs into the commit body.
+    **This chunk owns the record, and chunk M1 does not.** Appendix B.5 of
+    `roadmap/duet-v1/architecture.md` states the rule: a `[workspace.dependencies]` entry that no
+    member declares reaches neither the resolved graph nor `Cargo.lock`, so `cargo tree -i` exits 101
+    at the manifest chunk. Step 5 of this chunk adds both `{ workspace = true }` entries to
+    `crates/duet-dsp/Cargo.toml`, so this commit is the first one that puts either crate in the
+    graph. Chunk M1 confirmed each feature name with `cargo info`, and both pins take the default
+    feature set. **Confirm that each tree shows the default set**; report a discrepancy to the
+    Architect and stop if either one shows a feature the root pin does not state.
+25. Commit on the branch `chunk/d1-buffers-source-and-meter-law`.
 
 ## Tests
 
@@ -598,12 +608,16 @@ cargo nextest run -p duet-dsp -E 'test(align) + test(meter_law) + test(fader_tap
 cargo nextest run -p duet-dsp --no-tests=fail
 cargo clippy -p duet-dsp --all-targets --locked -- -D warnings
 cargo machete
+cargo tree -e features -i rustfft
+cargo tree -e features -i realfft
 ```
 
 The first command fails before this chunk, because the crate holds none of the three test terms. It
 passes after this chunk and it reports fifteen tests. The second command reports every test of the
 crate as passed. The third command prints no warning, and this chunk carries no `#[expect]` site.
-The fourth command reports no unused dependency.
+The fourth command reports no unused dependency. The last two commands each print the default
+feature set of their crate, and the commit body carries both; each one exits 101 before step 5, and
+step 24 states why that record belongs to this chunk and not to chunk M1.
 
 The work lands as one commit on the branch `chunk/d1-buffers-source-and-meter-law`, with a
 conventional subject such as `feat(dsp): add the block helpers, the transforms, and the meter law`.

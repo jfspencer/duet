@@ -156,9 +156,15 @@ rule.
    gains one `[[package]]` entry for each new crate. The `hound` pin adds no edge yet, because no
    member declares it.
 5. Run `cargo xtask check-manifests`. Expected result: exit 0 over every member.
-6. Record the feature resolution of both pins. Run `cargo tree -e features -i hound` and
-   `cargo tree -e features -i arrayvec` and paste the output of each into the commit body
-   (Appendix B.5). The `arrayvec` tree must show the default feature set and no `serde` feature.
+6. Confirm the feature set of both pins. Run `cargo info hound@3.5.1` and
+   `cargo info arrayvec@0.7.8`, and paste each output into the commit body (Appendix B.5). Confirm
+   that `arrayvec` publishes a `serde` feature and that this pin enables none of it, so the pin
+   takes the default set. **Do NOT run `cargo tree -e features -i hound` or
+   `cargo tree -e features -i arrayvec` in this chunk.** Step 4 states the reason for `hound`, and
+   `arrayvec` is in the same state: no member declares either one at this commit, so `cargo tree`
+   exits 101 and prints `error: package ID specification` with the crate name. **Chunk N1 records
+   the `hound` tree and chunk D3 records the `arrayvec` tree**, because each one adds the
+   `{ workspace = true }` entry (Appendix B.3, Appendix B.5).
 7. Run the Completion command: `cargo check -p duet-command -p duet-media --locked`. Expected
    result: exit 0. The command fails before this chunk, because `cargo` reports two unknown
    packages.
@@ -176,14 +182,15 @@ over both new manifests, and the native hook runs it on the commit.
 ```
 cargo check -p duet-command -p duet-media --locked
 cargo xtask check-manifests
-cargo tree -e features -i hound
-cargo tree -e features -i arrayvec
+cargo info hound@3.5.1
+cargo info arrayvec@0.7.8
 cargo deny check
 ```
 
 Expected output: the first command exits 0 and prints two `Checking` lines. The second command exits
-0. The third command prints the `hound` feature set and the fourth prints the `arrayvec` feature
-set, and the commit body carries both. The fifth command reports no licence failure and no new
+0. The third command prints the published `hound` feature list and the fourth prints the published
+`arrayvec` feature list, and the commit body carries both. **No `cargo tree` command belongs in this
+chunk**, for the reason step 6 states. The fifth command reports no licence failure and no new
 advisory; `hound` carries the Apache-2.0 licence and `arrayvec` carries MIT or Apache-2.0, and
 `deny.toml` already allows all three.
 

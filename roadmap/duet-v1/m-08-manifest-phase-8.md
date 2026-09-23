@@ -62,7 +62,7 @@ Three pins carry more than a version.
 | Pin | Version | Feature requirement (Appendix B.5) | State |
 |---|---|---|---|
 | `rmcp` | 3.4.0 | The server role and a transport over any `AsyncRead` and `AsyncWrite` pair. `default-features = false` plus the server feature and the stream transport feature | **This chunk resolves the exact names against 3.4.0 and records them** |
-| `tokio` | **not in the survey** | A multi-thread runtime (section 9.5 rule 3), a Unix stream socket (section 9.2), a signal handler (section 9.5 rule 7), and a deadline for B15, B16, B17, and B23. `default-features = false, features = ["rt-multi-thread", "net", "time", "signal", "io-util", "sync", "macros"]` | **This chunk resolves the version from the `rmcp` 3.4.0 requirement, pins that exact version, confirms each feature name against it, and records `cargo tree -i tokio`** |
+| `tokio` | **not in the survey** | A multi-thread runtime (section 9.5 rule 3), a Unix stream socket (section 9.2), a signal handler (section 9.5 rule 7), and a deadline for B15, B16, B17, and B23. `default-features = false, features = ["rt-multi-thread", "net", "time", "signal", "io-util", "sync", "macros"]` | **This chunk resolves the version from the `rmcp` 3.4.0 requirement, pins that exact version, confirms each feature name against it with `cargo info tokio@<the resolved version>`, and leaves the `cargo tree -i tokio` record to chunk J1** |
 | `clap` | 4.6.7 | The derive macro, `features = ["derive"]` | **Already in the root manifest.** This chunk CONFIRMS the pin and the feature rather than adding the entry (section 13.1 decision 4) |
 
 `tokio-util` supplies `CancellationToken` for the shutdown order, and chunk J1 uses it (Appendix
@@ -70,9 +70,11 @@ B.3). Appendix B.5 holds no `tokio-util` feature row, so the pin takes its defau
 this chunk records that choice.
 
 **`tokio` has no survey row and no Version cell.** Appendix B.3 gives the rule for that shape: the
-owning chunk reads the pinned dependent's own manifest, writes the resolved value, and records
-`cargo tree -i tokio`. **A chunk that cannot obtain the seven capabilities with the resolved version
-reports the discrepancy instead of proceeding** (SM0).
+owning chunk reads the pinned dependent's own manifest, writes the resolved value, and confirms
+each feature name with `cargo info tokio@<the resolved version>`. **Chunk J1 records
+`cargo tree -i tokio`**, because J1 adds the `{ workspace = true }` entry and its commit is the
+first one that puts `tokio` in the graph (Appendix B.5). **A chunk that cannot obtain the seven
+capabilities with the resolved version reports the discrepancy instead of proceeding** (SM0).
 
 ### The internal path entry (SM1 rule 4)
 
@@ -162,9 +164,14 @@ failure here blocks a merge by review and never by a hook (section 11.6, section
 9. Run `cargo deny check`. Expected result: it reports no licence failure. `rmcp` carries
    Apache-2.0, `tokio` carries MIT, and `tokio-util` carries MIT, and `deny.toml` already allows all
    three.
-10. Record every feature resolution. Run `cargo tree -e features -i rmcp`, `cargo tree -i tokio`,
-    and `cargo tree -e features -i tokio-util`, and paste each output into the commit body
-    (Appendix B.5).
+10. Confirm every feature name against the published manifest. Run `cargo info rmcp@3.4.0`,
+    `cargo info tokio@<the version step 3 resolved>`, and `cargo info tokio-util@0.7.19`, and paste
+    each output into the commit body (Appendix B.5). Confirm that every feature name each pin states
+    appears in that list. **Do NOT run `cargo tree -e features -i rmcp`, `cargo tree -i tokio`, or
+    `cargo tree -e features -i tokio-util` in this chunk.** No member declares any of the three at
+    this commit, so `cargo tree` exits 101 and prints `error: package ID specification` with the
+    crate name. **Chunk J1 records the resolved tree of all three**, because J1 adds the three
+    `{ workspace = true }` entries to `crates/duet-agent/Cargo.toml` (Appendix B.3, Appendix B.5).
 11. Run the Completion command: `cargo check -p duet-agent --locked`. Expected result: exit 0. The
     command fails before this chunk, because `cargo` reports an unknown package.
 12. `git add` the write scope and `git commit`. The native hook runs `scripts/dod.sh`.
@@ -187,16 +194,17 @@ cargo check -p duet-agent --locked
 cargo xtask check-manifests
 cargo nextest run -p duet-engine --run-ignored ignored-only -E 'test(pipewire_smoke)' --no-tests=fail
 cargo deny check
-cargo tree -e features -i rmcp
-cargo tree -i tokio
-cargo tree -e features -i tokio-util
+cargo info rmcp@3.4.0
+cargo info tokio-util@0.7.19
 ```
 
 Expected output: the first command exits 0 and prints one `Checking` line. The second command exits
 0. The third command reports one test as passed on a machine with a PipeWire daemon, and reports no
 filter miss; on a machine with no daemon the test reports its own refusal, and the CI job is the one
-place that proves the path. The fourth command reports no licence failure. Each `cargo tree` command
-prints its resolved set, and the commit body carries every one.
+place that proves the path. The fourth command reports no licence failure. Each `cargo info` command
+prints the published feature list of its pin, and the commit body carries every one, together with
+the `cargo info` run over the `tokio` version step 3 resolved. **No `cargo tree` command belongs in
+this chunk**, for the reason step 10 states.
 
 Then commit on a branch named `chunk/m8-manifest-phase-8`. The native git hook runs
 `scripts/dod.sh`, and the commit lands only when every gate passes.
