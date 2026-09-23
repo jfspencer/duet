@@ -6,6 +6,7 @@
 //! edit by a terminal agent. Section 3.2 of `roadmap/duet-v1/architecture.md`
 //! states the rule.
 
+use core::fmt;
 use core::num::NonZeroU8;
 
 use serde::{Deserialize, Serialize};
@@ -315,11 +316,28 @@ pub enum ElementRef {
     Mark(MarkId),
 }
 
+/// The kind and the number of the element, for example `note 42`.
+///
+/// `ScoreError::MissingElement` carries an `ElementRef` and its message reads
+/// this text, so a refusal names the element that the command asked for.
+impl fmt::Display for ElementRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Self::Note(note) => write!(f, "note {}", note.get()),
+            Self::Spanner(spanner) => write!(f, "spanner {}", spanner.get()),
+            Self::Mark(mark) => write!(f, "mark {}", mark.get()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use core::num::NonZeroU8;
 
-    use super::{LyricText, PartName, RehearsalText, Revision, VerseNumber};
+    use super::{
+        ElementRef, LyricText, MarkId, NoteId, PartName, RehearsalText, Revision, SpannerId,
+        VerseNumber,
+    };
 
     #[test]
     fn a_text_value_refuses_an_empty_string() {
@@ -372,6 +390,25 @@ mod tests {
     fn a_revision_holds_at_the_bound() {
         let last = Revision::new(u64::MAX);
         assert_eq!(last.next(), last, "the counter holds at the 64-bit bound");
+    }
+
+    #[test]
+    fn an_element_reference_prints_its_kind_and_its_number() {
+        assert_eq!(
+            ElementRef::Note(NoteId::new(42)).to_string(),
+            "note 42",
+            "a note reference names the kind and the number"
+        );
+        assert_eq!(
+            ElementRef::Spanner(SpannerId::new(7)).to_string(),
+            "spanner 7",
+            "a spanner reference names the kind and the number"
+        );
+        assert_eq!(
+            ElementRef::Mark(MarkId::new(3)).to_string(),
+            "mark 3",
+            "a mark reference names the kind and the number"
+        );
     }
 
     #[test]

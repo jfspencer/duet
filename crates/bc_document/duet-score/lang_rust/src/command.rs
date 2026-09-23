@@ -16,8 +16,8 @@ use crate::ids::{
     VoiceId,
 };
 use crate::model::{
-    Accidental, Articulation, Clef, Duration, Dynamic, KeySignature, MarkKind, Note, Pitch,
-    Spanner, SpannerKind, TieState, VoiceType,
+    Accidental, Articulation, Clef, Duration, Dynamic, KeySignature, MarkKind, Note, Pitch, Rest,
+    ScoreMark, Spanner, SpannerKind, TieState, VoiceType,
 };
 
 /// What a command acts on. One selection type serves every edit verb.
@@ -283,26 +283,44 @@ pub enum PitchEdit {
 
 /// A detached copy of a selection. A copy and a cut each produce one.
 ///
+/// It carries all four content kinds, because `ScoreCommand::Paste` is the one
+/// arm that restores an element under the identifier it had. `Remove` inverts
+/// to a `Paste` of the clipboard that `Score::copy` produced before the
+/// removal, so a cut of a rest, of a spanner, or of a mark is undone as
+/// exactly as a cut of a note.
+///
 /// It derives `Eq`, because every field supplies it. It derives no `Copy`,
-/// because it holds two vectors.
+/// because it holds four vectors.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Clipboard {
     /// The tick that every onset in this copy is measured from.
     origin: Ticks,
     /// The notes of this copy.
     notes: Vec<Note>,
+    /// The rests of this copy.
+    rests: Vec<Rest>,
     /// The spanners of this copy.
     spanners: Vec<Spanner>,
+    /// The score marks of this copy.
+    marks: Vec<ScoreMark>,
 }
 
 impl Clipboard {
-    /// A detached copy of the given notes and spanners.
+    /// A detached copy of the given notes, rests, spanners, and marks.
     #[must_use]
-    pub const fn new(origin: Ticks, notes: Vec<Note>, spanners: Vec<Spanner>) -> Self {
+    pub const fn new(
+        origin: Ticks,
+        notes: Vec<Note>,
+        rests: Vec<Rest>,
+        spanners: Vec<Spanner>,
+        marks: Vec<ScoreMark>,
+    ) -> Self {
         Self {
             origin,
             notes,
+            rests,
             spanners,
+            marks,
         }
     }
 
@@ -318,10 +336,31 @@ impl Clipboard {
         &self.notes
     }
 
+    /// The rests of this copy.
+    #[must_use]
+    pub fn rests(&self) -> &[Rest] {
+        &self.rests
+    }
+
     /// The spanners of this copy.
     #[must_use]
     pub fn spanners(&self) -> &[Spanner] {
         &self.spanners
+    }
+
+    /// The score marks of this copy.
+    #[must_use]
+    pub fn marks(&self) -> &[ScoreMark] {
+        &self.marks
+    }
+
+    /// Whether this copy holds no element at all.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.notes.is_empty()
+            && self.rests.is_empty()
+            && self.spanners.is_empty()
+            && self.marks.is_empty()
     }
 }
 
@@ -373,11 +412,13 @@ mod tests {
         )
     }
 
-    /// A clipboard that holds two notes and no spanner.
+    /// A clipboard that holds two notes and nothing else.
     fn sut() -> Clipboard {
         Clipboard::new(
             Ticks::new(480),
             vec![note_at(1, 480), note_at(2, 960)],
+            Vec::new(),
+            Vec::new(),
             Vec::new(),
         )
     }
@@ -391,9 +432,15 @@ mod tests {
             "the clipboard answers the origin the caller gave"
         );
         assert_eq!(clipboard.notes().len(), 2, "the clipboard holds both notes");
+        assert!(clipboard.rests().is_empty(), "the clipboard holds no rest");
         assert!(
             clipboard.spanners().is_empty(),
             "the clipboard holds no spanner"
+        );
+        assert!(clipboard.marks().is_empty(), "the clipboard holds no mark");
+        assert!(
+            !clipboard.is_empty(),
+            "a clipboard that holds a note is not empty"
         );
     }
 

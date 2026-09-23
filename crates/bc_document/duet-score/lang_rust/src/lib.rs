@@ -6,12 +6,14 @@
 
 #![forbid(unsafe_code)]
 
+mod apply;
 mod command;
 mod error;
 mod event;
 mod ids;
 mod model;
 
+pub use apply::Applied;
 pub use command::{Clipboard, PitchEdit, ScoreCommand, ScoreSelector, Selection};
 pub use duet_time::{Meter, NoteValue, Tempo};
 pub use error::ScoreError;

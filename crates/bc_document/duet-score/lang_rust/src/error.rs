@@ -14,7 +14,7 @@ use crate::ids::{ElementRef, MeasureId, NoteId, PartId, StaffId, VoiceId};
 #[derive(Debug, Clone, PartialEq, Eq, Error, Serialize, Deserialize)]
 pub enum ScoreError {
     /// A command names an element that the score does not hold.
-    #[error("the score holds no element with that reference")]
+    #[error("the score holds no {0}")]
     MissingElement(ElementRef),
     /// A command names a part that the score does not hold.
     #[error("the score holds no part with identifier {}", .0.get())]
@@ -83,7 +83,17 @@ mod tests {
     use duet_time::{SchemaVersion, TimeError};
 
     use super::ScoreError;
-    use crate::ids::{MeasureId, PartId};
+    use crate::ids::{ElementRef, MeasureId, NoteId, PartId};
+
+    #[test]
+    fn missing_element_names_the_element() {
+        let refusal = ScoreError::MissingElement(ElementRef::Note(NoteId::new(42)));
+        assert_eq!(
+            refusal.to_string(),
+            "the score holds no note 42",
+            "the message names the element the command asked for"
+        );
+    }
 
     #[test]
     fn missing_part_names_the_identifier() {

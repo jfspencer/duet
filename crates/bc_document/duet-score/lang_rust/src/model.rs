@@ -8,7 +8,10 @@
 use core::num::{NonZeroU8, NonZeroU16};
 use std::collections::BTreeMap;
 
-use duet_time::{Meter, NoteValue, SchemaVersion, TempoMap, Ticks, Tuplet, split_tuplet};
+use duet_time::{
+    Bbt, Meter, MeterPoint, NoteValue, SchemaVersion, TempoMap, TempoMapEdit, Ticks, Tuplet,
+    split_tuplet,
+};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
@@ -122,6 +125,16 @@ impl Part {
     pub const fn extra(&self) -> &BTreeMap<String, serde_json::Value> {
         &self.extra
     }
+
+    /// Add `staff` at the foot of the staves of this part.
+    pub(crate) fn push_staff(&mut self, staff: StaffId) {
+        self.staves.push(staff);
+    }
+
+    /// Take `staff` out of the staves of this part.
+    pub(crate) fn drop_staff(&mut self, staff: StaffId) {
+        self.staves.retain(|held| *held != staff);
+    }
 }
 
 /// One staff with a clef and a written transposition.
@@ -181,6 +194,16 @@ impl Staff {
     #[must_use]
     pub const fn extra(&self) -> &BTreeMap<String, serde_json::Value> {
         &self.extra
+    }
+
+    /// Add `voice` at the foot of the voices of this staff.
+    pub(crate) fn push_voice(&mut self, voice: VoiceId) {
+        self.voices.push(voice);
+    }
+
+    /// Take the clef that this staff opens with.
+    pub(crate) const fn set_clef(&mut self, clef: Clef) {
+        self.clef = clef;
     }
 }
 
@@ -295,6 +318,21 @@ impl Measure {
     #[must_use]
     pub const fn extra(&self) -> &BTreeMap<String, serde_json::Value> {
         &self.extra
+    }
+
+    /// Take a new onset in ticks from score zero.
+    pub(crate) const fn set_start(&mut self, start: Ticks) {
+        self.start = start;
+    }
+
+    /// Take a new time signature.
+    pub(crate) const fn set_meter(&mut self, meter: Meter) {
+        self.meter = meter;
+    }
+
+    /// Take a new key signature.
+    pub(crate) const fn set_key(&mut self, key: KeySignature) {
+        self.key = key;
     }
 }
 
@@ -633,6 +671,61 @@ impl Note {
     pub const fn extra(&self) -> &BTreeMap<String, serde_json::Value> {
         &self.extra
     }
+
+    /// This note under the identifier `id`.
+    ///
+    /// `Duplicate` mints a copy, and `Paste` mints one where the score already
+    /// holds the identifier that the clipboard carries.
+    #[must_use]
+    pub(crate) const fn with_id(mut self, id: NoteId) -> Self {
+        self.id = id;
+        self
+    }
+
+    /// Take a new staff and a new voice.
+    pub(crate) const fn set_place(&mut self, staff: StaffId, voice: VoiceId) {
+        self.staff = staff;
+        self.voice = voice;
+    }
+
+    /// Take a new onset in ticks from score zero.
+    pub(crate) const fn set_onset(&mut self, onset: Ticks) {
+        self.onset = onset;
+    }
+
+    /// Take a new written duration.
+    pub(crate) const fn set_duration(&mut self, duration: Duration) {
+        self.duration = duration;
+    }
+
+    /// Take a new written pitch.
+    pub(crate) const fn set_pitch(&mut self, pitch: Pitch) {
+        self.pitch = pitch;
+    }
+
+    /// Take a new tie state.
+    pub(crate) const fn set_tie(&mut self, tie: TieState) {
+        self.tie = tie;
+    }
+
+    /// Take a new list of articulation marks.
+    pub(crate) fn set_articulations(&mut self, articulations: SmallVec<[Articulation; 2]>) {
+        self.articulations = articulations;
+    }
+
+    /// Put `text` in `verse`, over the syllable that the verse already holds.
+    ///
+    /// The list stays ordered by verse, because the engraver stacks verse one
+    /// above verse two.
+    pub(crate) fn set_lyric(&mut self, verse: VerseNumber, text: LyricText) {
+        let syllable = Lyric::new(verse, text, false);
+        if let Some(held) = self.lyrics.iter_mut().find(|held| held.verse() == verse) {
+            *held = syllable;
+            return;
+        }
+        self.lyrics.push(syllable);
+        self.lyrics.sort_by_key(Lyric::verse);
+    }
 }
 
 /// One rest.
@@ -708,6 +801,24 @@ impl Rest {
     pub const fn extra(&self) -> &BTreeMap<String, serde_json::Value> {
         &self.extra
     }
+
+    /// This rest under the identifier `id`.
+    #[must_use]
+    pub(crate) const fn with_id(mut self, id: NoteId) -> Self {
+        self.id = id;
+        self
+    }
+
+    /// Take a new staff and a new voice.
+    pub(crate) const fn set_place(&mut self, staff: StaffId, voice: VoiceId) {
+        self.staff = staff;
+        self.voice = voice;
+    }
+
+    /// Take a new onset in ticks from score zero.
+    pub(crate) const fn set_onset(&mut self, onset: Ticks) {
+        self.onset = onset;
+    }
 }
 
 /// A mark that spans more than one note.
@@ -767,6 +878,18 @@ impl Spanner {
     #[must_use]
     pub const fn extra(&self) -> &BTreeMap<String, serde_json::Value> {
         &self.extra
+    }
+
+    /// This spanner under the identifier `id`, between `from` and `to`.
+    ///
+    /// A duplicate and a paste both remap the two endpoints, so the three
+    /// values change together.
+    #[must_use]
+    pub(crate) const fn with_ids(mut self, id: SpannerId, from: NoteId, to: NoteId) -> Self {
+        self.id = id;
+        self.from = from;
+        self.to = to;
+        self
     }
 }
 
@@ -831,6 +954,18 @@ impl ScoreMark {
     #[must_use]
     pub const fn extra(&self) -> &BTreeMap<String, serde_json::Value> {
         &self.extra
+    }
+
+    /// This mark under the identifier `id`.
+    #[must_use]
+    pub(crate) const fn with_id(mut self, id: MarkId) -> Self {
+        self.id = id;
+        self
+    }
+
+    /// Take a new onset in ticks from score zero.
+    pub(crate) const fn set_at(&mut self, at: Ticks) {
+        self.at = at;
     }
 }
 
@@ -1009,7 +1144,7 @@ impl InverseCost {
 ///
 /// **The aggregate owns the tempo map**, because `score/meta.json` stores it
 /// and `write` takes the score alone (section 3.6).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct Score {
     /// The parts of the score, by identifier.
     parts: BTreeMap<PartId, Part>,
@@ -1039,11 +1174,82 @@ pub struct Score {
     next_id: u64,
 }
 
+/// Two scores are equal when their content is equal.
+///
+/// The comparison reads the eight entity maps, the tempo map, the schema, and
+/// the bag of unknown fields. It skips `revision` and `next_id`, which count
+/// what the score has done and never state what the score holds. An undo
+/// restores the content and lowers neither counter, so a derived equality would
+/// report every undone score as a different score and `Score::apply` could
+/// carry no inverse that a test can check.
+impl PartialEq for Score {
+    fn eq(&self, other: &Self) -> bool {
+        self.parts == other.parts
+            && self.staves == other.staves
+            && self.voices == other.voices
+            && self.measures == other.measures
+            && self.notes == other.notes
+            && self.rests == other.rests
+            && self.spanners == other.spanners
+            && self.marks == other.marks
+            && self.tempo_map == other.tempo_map
+            && self.schema == other.schema
+            && self.extra == other.extra
+    }
+}
+
+/// Content equality is reflexive, symmetric, and transitive, because every
+/// field that `PartialEq` reads supplies `Eq`.
+impl Eq for Score {}
+
+/// The tempo map of a new score: one meter entry of four four at tick zero.
+///
+/// Section 3.1 gives the first measure a meter, and `TempoMap::meter_at` is the
+/// second statement of the same fact. A new score makes both statements, so no
+/// query falls back to an empty map. One entry at tick zero and at
+/// `Bbt::ORIGIN` meets the first-point rule of `TempoMapEdit::finish`, and
+/// `the_tempo_map_of_a_new_score_states_four_four` proves that the fallback
+/// path stays unused.
+fn four_four_at_origin() -> TempoMap {
+    TempoMapEdit::new()
+        .push_meter(MeterPoint::new(Ticks::ZERO, Bbt::ORIGIN, FOUR_FOUR))
+        .finish()
+        .unwrap_or_default()
+}
+
+/// The canonical sort key of one note: the key of section 3.6.
+///
+/// `score/notes.jsonl` sorts by `(staff, voice, onset, pitch, id)`, and
+/// `Clipboard::notes` takes the same order, so one rule serves the writer and
+/// the clipboard and the two can never disagree.
+pub(crate) const fn note_order_key(note: &Note) -> (StaffId, VoiceId, Ticks, Pitch, NoteId) {
+    (
+        note.staff(),
+        note.voice(),
+        note.onset(),
+        note.pitch(),
+        note.id(),
+    )
+}
+
+/// The canonical sort key of one rest: the note key without the pitch.
+pub(crate) const fn rest_order_key(rest: &Rest) -> (StaffId, VoiceId, Ticks, NoteId) {
+    (rest.staff(), rest.voice(), rest.onset(), rest.id())
+}
+
+/// The canonical sort key of one spanner: the key of section 3.6.
+///
+/// `score/spanners.jsonl` sorts by `(from, kind, id)`, and a clipboard takes
+/// the same order.
+pub(crate) const fn spanner_order_key(spanner: &Spanner) -> (NoteId, SpannerKind, SpannerId) {
+    (spanner.from(), spanner.kind(), spanner.id())
+}
+
 impl Score {
     /// An empty score with one measure of four-four in C major.
     ///
-    /// The measure starts at tick zero, the tempo map is empty, the revision
-    /// is zero, and the schema is `SCHEMA`.
+    /// The measure starts at tick zero, the tempo map states four four at tick
+    /// zero, the revision is zero, and the schema is `SCHEMA`.
     #[must_use]
     pub fn new() -> Self {
         let mut score = Self {
@@ -1055,7 +1261,7 @@ impl Score {
             rests: BTreeMap::new(),
             spanners: BTreeMap::new(),
             marks: BTreeMap::new(),
-            tempo_map: TempoMap::default(),
+            tempo_map: four_four_at_origin(),
             revision: Revision::ZERO,
             schema: SCHEMA,
             extra: BTreeMap::new(),
@@ -1079,6 +1285,18 @@ impl Score {
         let minted = self.next_id;
         self.next_id = self.next_id.saturating_add(1);
         minted
+    }
+
+    /// The counter that the next mint reads.
+    ///
+    /// `score/meta.json` stores it beside the revision, because a reload that
+    /// restarts the counter would let a later mint alias a live identifier. It
+    /// is public for the reason `revision` is: both are read out of the
+    /// aggregate and neither is a way into it. The transaction test reads it to
+    /// prove that a refused command mints nothing.
+    #[must_use]
+    pub const fn next_id(&self) -> u64 {
+        self.next_id
     }
 
     /// The parts of the score, by identifier.
@@ -1151,6 +1369,65 @@ impl Score {
     #[must_use]
     pub const fn extra(&self) -> &BTreeMap<String, serde_json::Value> {
         &self.extra
+    }
+
+    /// The parts of the score, for a change.
+    ///
+    /// Every mutator below is `pub(crate)`, because section 3.4 makes
+    /// `Score::apply` the one way into the aggregate. `apply` lives in the
+    /// sibling module `apply`, so it reaches no private field of this one.
+    pub(crate) const fn parts_mut(&mut self) -> &mut BTreeMap<PartId, Part> {
+        &mut self.parts
+    }
+
+    /// The staves of the score, for a change.
+    pub(crate) const fn staves_mut(&mut self) -> &mut BTreeMap<StaffId, Staff> {
+        &mut self.staves
+    }
+
+    /// The voices of the score, for a change.
+    pub(crate) const fn voices_mut(&mut self) -> &mut BTreeMap<VoiceId, Voice> {
+        &mut self.voices
+    }
+
+    /// The measures of the score, for a change.
+    pub(crate) const fn measures_mut(&mut self) -> &mut BTreeMap<MeasureId, Measure> {
+        &mut self.measures
+    }
+
+    /// The notes of the score, for a change.
+    pub(crate) const fn notes_mut(&mut self) -> &mut BTreeMap<NoteId, Note> {
+        &mut self.notes
+    }
+
+    /// The rests of the score, for a change.
+    pub(crate) const fn rests_mut(&mut self) -> &mut BTreeMap<NoteId, Rest> {
+        &mut self.rests
+    }
+
+    /// The spanners of the score, for a change.
+    pub(crate) const fn spanners_mut(&mut self) -> &mut BTreeMap<SpannerId, Spanner> {
+        &mut self.spanners
+    }
+
+    /// The marks of the score, for a change.
+    pub(crate) const fn marks_mut(&mut self) -> &mut BTreeMap<MarkId, ScoreMark> {
+        &mut self.marks
+    }
+
+    /// Replace the tempo and meter map.
+    ///
+    /// The caller builds the new map through `TempoMapEdit` and its `finish`
+    /// gate, so no unchecked map reaches the aggregate.
+    pub(crate) fn set_tempo_map(&mut self, map: TempoMap) {
+        self.tempo_map = map;
+    }
+
+    /// Step the revision counter by one.
+    ///
+    /// `Score::apply` calls it once, after a command is accepted and applied.
+    pub(crate) const fn bump_revision(&mut self) {
+        self.revision = self.revision.next();
     }
 }
 
@@ -1277,6 +1554,25 @@ mod tests {
             "an empty score opens in four-four"
         );
         assert_eq!(first.key(), C_MAJOR, "an empty score opens in C major");
+    }
+
+    #[test]
+    fn the_tempo_map_of_a_new_score_states_four_four() {
+        let score = Score::new();
+        let point = score
+            .tempo_map()
+            .meter_at(Ticks::ZERO)
+            .expect("a new score seeds one meter entry at tick zero");
+        assert_eq!(
+            point.meter(),
+            FOUR_FOUR,
+            "the tempo map and the first measure state one meter"
+        );
+        assert_eq!(
+            point.ticks(),
+            Ticks::ZERO,
+            "the meter entry sits at score zero"
+        );
     }
 
     #[test]

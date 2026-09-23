@@ -1,0 +1,2889 @@
+//! The transactional command path of the score aggregate.
+//!
+//! `Score::apply` takes one `ScoreCommand`, validates it in full, and mutates
+//! only after every check passes, so a refused command leaves no partial
+//! change. `Score::copy` reads a selection and changes nothing, and a cut is
+//! a copy and then `ScoreCommand::Remove` in one undo transaction. Section
+//! 3.4 of `roadmap/duet-v1/architecture.md` states the design.
+
+use core::num::{NonZeroU8, NonZeroU16};
+use std::collections::{BTreeMap, BTreeSet};
+
+use duet_time::{Bbt, Meter, MeterPoint, TempoMap, TempoMapEdit, Ticks};
+use smallvec::SmallVec;
+
+use crate::command::{Clipboard, PitchEdit, ScoreCommand, Selection};
+use crate::error::ScoreError;
+use crate::event::ScoreEvent;
+use crate::ids::{
+    ElementRef, LyricText, MarkId, MeasureId, NoteId, PartId, PartName, SpannerId, StaffId,
+    VerseNumber, VoiceId,
+};
+use crate::model::{
+    Accidental, Articulation, Clef, Duration, Dynamic, InverseCost, KeySignature, MarkKind,
+    Measure, Note, Part, Pitch, Rest, Score, ScoreMark, Spanner, SpannerKind, Staff, Step,
+    TieState, Voice, VoiceType, note_order_key, rest_order_key, spanner_order_key,
+};
+
+/// What one command produced.
+///
+/// Its three fields are public. Section 3.5 names `Applied` as one of the three
+/// stated `VR7` exemptions, and no other type of this crate takes that shape.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Applied {
+    /// The facts a view needs.
+    pub events: Vec<ScoreEvent>,
+    /// The commands that undo this one, in application order.
+    pub inverse: Vec<ScoreCommand>,
+    /// How many commands and how many bytes the inverse holds.
+    pub inverse_cost: InverseCost,
+}
+
+/// The events and the inverse of one accepted command.
+struct Outcome {
+    /// The facts the command produced.
+    events: Vec<ScoreEvent>,
+    /// The commands that undo it, in application order.
+    inverse: Vec<ScoreCommand>,
+    /// The measured cost of the inverse.
+    cost: InverseCost,
+}
+
+impl Outcome {
+    /// The outcome of `events` and `inverse`, with the cost of the inverse.
+    ///
+    /// Every arm calls this after its last validation and before its first
+    /// change to the content, so a refused command leaves the content, the
+    /// revision, and the identifier counter as they were.
+    ///
+    /// The cost counts the commands of the list and the bytes of its JSON
+    /// form, which is the measure that the undo stack of section 4.9 holds its
+    /// memory bound against. Both counts hold at `u32::MAX`.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::Serialize` when the inverse has no JSON form.
+    fn new(events: Vec<ScoreEvent>, inverse: Vec<ScoreCommand>) -> Result<Self, ScoreError> {
+        let bytes = serde_json::to_vec(&inverse)
+            .map_err(|error| ScoreError::Serialize(error.to_string().into_boxed_str()))?;
+        let cost = InverseCost::new(
+            u32::try_from(inverse.len()).unwrap_or(u32::MAX),
+            u32::try_from(bytes.len()).unwrap_or(u32::MAX),
+        );
+        Ok(Self {
+            events,
+            inverse,
+            cost,
+        })
+    }
+}
+
+/// The elements that one selection names, after every reference is checked.
+#[derive(Debug, Default)]
+struct Resolved {
+    /// The notes of the selection, in canonical order.
+    notes: Vec<NoteId>,
+    /// The rests of the selection, in canonical order.
+    rests: Vec<NoteId>,
+    /// The spanners of the selection, and every spanner that names a selected
+    /// note or rest.
+    spanners: Vec<SpannerId>,
+    /// The marks of the selection, in canonical order.
+    marks: Vec<MarkId>,
+}
+
+impl Resolved {
+    /// Every note and every rest of this selection, the notes first.
+    fn elements(&self) -> Vec<NoteId> {
+        let mut all = self.notes.clone();
+        all.extend(self.rests.iter().copied());
+        all
+    }
+
+    /// Every note and every rest of this selection, as a set.
+    fn element_set(&self) -> BTreeSet<NoteId> {
+        self.elements().into_iter().collect()
+    }
+}
+
+/// Where one note or rest moves, and where it came from.
+struct Placement {
+    /// The note or the rest that moves.
+    id: NoteId,
+    /// The staff that takes it.
+    staff: StaffId,
+    /// The voice that takes it.
+    voice: VoiceId,
+    /// The onset that it takes.
+    onset: Ticks,
+    /// The staff that it came from.
+    earlier_staff: StaffId,
+    /// The voice that it came from.
+    earlier_voice: VoiceId,
+}
+
+/// The elements that one paste mints, with its events and its inverse.
+struct Pasted {
+    /// The notes that the paste inserts.
+    notes: Vec<Note>,
+    /// The rests that the paste inserts.
+    rests: Vec<Rest>,
+    /// The spanners that the paste inserts.
+    spanners: Vec<Spanner>,
+    /// The marks that the paste inserts.
+    marks: Vec<ScoreMark>,
+    /// The facts that the paste reports.
+    events: Vec<ScoreEvent>,
+    /// The commands that undo the paste.
+    inverse: Vec<ScoreCommand>,
+}
+
+/// The tick span of one bar of `meter`.
+fn bar_ticks(meter: Meter) -> Ticks {
+    let beat = meter.beat_unit().ticks().get();
+    Ticks::new(beat.saturating_mul(i64::from(meter.beats_per_bar().get())))
+}
+
+/// The ordinal that follows `count` parts of one voice type.
+fn next_ordinal(count: usize) -> NonZeroU16 {
+    let raw = u16::try_from(count.saturating_add(1)).unwrap_or(u16::MAX);
+    NonZeroU16::new(raw).unwrap_or(NonZeroU16::MIN)
+}
+
+/// The paste that puts `clipboard` back at `at`.
+///
+/// A paste names the staff and the voice that take every note and rest of the
+/// clipboard. This helper names the staff and the voice of the first note, or
+/// of the first rest. A clipboard that holds neither reads neither, so this
+/// helper then names identifier zero.
+///
+/// A removal that spanned two staves therefore comes back into one staff. No
+/// arm of the declared command set names a staff for each element of a paste,
+/// and `escalation:T2-9` records the gap.
+fn paste_of(clipboard: Clipboard, at: Ticks) -> ScoreCommand {
+    let from_rest = clipboard
+        .rests()
+        .first()
+        .map_or((StaffId::new(0), VoiceId::new(0)), |rest| {
+            (rest.staff(), rest.voice())
+        });
+    let (staff, voice) = clipboard
+        .notes()
+        .first()
+        .map_or(from_rest, |note| (note.staff(), note.voice()));
+    ScoreCommand::Paste {
+        clipboard: Box::new(clipboard),
+        at,
+        staff,
+        voice,
+    }
+}
+
+/// The semitones of one step above the C of its own octave.
+const fn step_semitones(step: Step) -> i32 {
+    match step {
+        Step::C => 0,
+        Step::D => 2,
+        Step::E => 4,
+        Step::F => 5,
+        Step::G => 7,
+        Step::A => 9,
+        Step::B => 11,
+    }
+}
+
+/// The step that sits `semitones` above C, or `None` where no step does.
+const fn step_at(semitones: i32) -> Option<Step> {
+    match semitones {
+        0 => Some(Step::C),
+        2 => Some(Step::D),
+        4 => Some(Step::E),
+        5 => Some(Step::F),
+        7 => Some(Step::G),
+        9 => Some(Step::A),
+        11 => Some(Step::B),
+        _ => None,
+    }
+}
+
+/// The alteration that `accidental` writes.
+const fn accidental_alter(accidental: Accidental) -> i8 {
+    match accidental {
+        Accidental::Natural => 0,
+        Accidental::Sharp => 1,
+        Accidental::Flat => -1,
+        Accidental::DoubleSharp => 2,
+        Accidental::DoubleFlat => -2,
+    }
+}
+
+/// `pitch` written with `accidental`, at the same sounding pitch.
+///
+/// A sounding pitch that has no spelling with that accidental is left
+/// unchanged, so a respell never refuses.
+fn respelled(pitch: Pitch, accidental: Accidental) -> Pitch {
+    let alter = accidental_alter(accidental);
+    let sounding = i32::from(pitch.octave())
+        .saturating_mul(12)
+        .saturating_add(step_semitones(pitch.step()))
+        .saturating_add(i32::from(pitch.alter()));
+    let natural = sounding.saturating_sub(i32::from(alter));
+    let Some(step) = step_at(natural.rem_euclid(12)) else {
+        return pitch;
+    };
+    let Ok(octave) = i8::try_from(natural.div_euclid(12)) else {
+        return pitch;
+    };
+    Pitch::new(octave, step, alter)
+}
+
+/// The pitch that `edit` makes of `pitch`.
+///
+/// `Absolute` takes the written pitch whole. `BySemitones` moves the
+/// alteration and `ByOctaves` moves the octave: both keep the step, so both
+/// are exact and reversible and neither respells the note. A rule that chooses
+/// a new step for a moved pitch is not yet stated, and `escalation:T2-11`
+/// records the gap. `Respell` keeps the sounding pitch and writes it with the
+/// named accidental.
+fn edited_pitch(pitch: Pitch, edit: PitchEdit) -> Pitch {
+    match edit {
+        PitchEdit::Absolute(taken) => taken,
+        PitchEdit::BySemitones(step) => Pitch::new(
+            pitch.octave(),
+            pitch.step(),
+            pitch.alter().saturating_add(step),
+        ),
+        PitchEdit::ByOctaves(step) => Pitch::new(
+            pitch.octave().saturating_add(step),
+            pitch.step(),
+            pitch.alter(),
+        ),
+        PitchEdit::Respell(accidental) => respelled(pitch, accidental),
+    }
+}
+
+/// The commands that move a selection back to where it came from.
+fn move_inverse(
+    selection: &Selection,
+    by: Ticks,
+    to_staff: Option<StaffId>,
+    places: &[Placement],
+) -> Vec<ScoreCommand> {
+    let home = places.first().map(|place| place.earlier_staff);
+    let mut inverse = vec![ScoreCommand::Move {
+        selection: selection.clone(),
+        by: Ticks::new(by.get().saturating_neg()),
+        to_staff: to_staff.and(home),
+    }];
+    if to_staff.is_none() {
+        return inverse;
+    }
+    let mut by_voice: BTreeMap<u64, Vec<NoteId>> = BTreeMap::new();
+    for place in places {
+        by_voice
+            .entry(place.earlier_voice.get())
+            .or_default()
+            .push(place.id);
+    }
+    for (voice, notes) in by_voice {
+        inverse.push(ScoreCommand::SetVoice {
+            notes,
+            voice: VoiceId::new(voice),
+        });
+    }
+    inverse
+}
+
+/// The commands that put a removed run of measures back.
+///
+/// `InsertMeasures` names the measure that the new ones follow, so the inverse
+/// can only name a measure that stays. A run that starts at the first measure
+/// therefore comes back AFTER the measure that follows it, and a run that
+/// covers every measure comes back not at all, because no command inserts a
+/// measure into a score that holds none. The rebuilt measures also take new
+/// identifiers. `escalation:T2-9` records the gap.
+fn remove_measures_inverse(
+    ordered: &[MeasureId],
+    start: usize,
+    len: usize,
+    count: NonZeroU16,
+) -> Vec<ScoreCommand> {
+    let before = start.checked_sub(1).and_then(|index| ordered.get(index));
+    let after = ordered.get(start.saturating_add(len));
+    before.or(after).map_or_else(Vec::new, |anchor| {
+        vec![ScoreCommand::InsertMeasures {
+            after: *anchor,
+            count,
+        }]
+    })
+}
+
+/// The commands that take one paste back out of the score.
+///
+/// A `Remove` of the pasted notes and rests also takes out every spanner that
+/// names one of them, so the spanner list of the inverse names only the
+/// spanners that name none.
+fn paste_inverse(
+    notes: &[Note],
+    rests: &[Rest],
+    spanners: &[Spanner],
+    marks: &[ScoreMark],
+) -> Vec<ScoreCommand> {
+    let elements: Vec<NoteId> = notes
+        .iter()
+        .map(Note::id)
+        .chain(rests.iter().map(Rest::id))
+        .collect();
+    let held: BTreeSet<NoteId> = elements.iter().copied().collect();
+    let orphans: Vec<SpannerId> = spanners
+        .iter()
+        .filter(|spanner| !held.contains(&spanner.from()) && !held.contains(&spanner.to()))
+        .map(Spanner::id)
+        .collect();
+    let mut inverse = Vec::new();
+    if !orphans.is_empty() {
+        inverse.push(ScoreCommand::Remove {
+            selection: Selection::Spanners(orphans),
+        });
+    }
+    if !elements.is_empty() {
+        inverse.push(ScoreCommand::Remove {
+            selection: Selection::Notes(elements),
+        });
+    }
+    if !marks.is_empty() {
+        inverse.push(ScoreCommand::Remove {
+            selection: Selection::Marks(marks.iter().map(ScoreMark::id).collect()),
+        });
+    }
+    inverse
+}
+
+impl Score {
+    /// Apply one command. The score is unchanged when the result is an error.
+    ///
+    /// # Errors
+    /// Returns `ScoreError` when the command names a missing element or breaks
+    /// a notation invariant.
+    pub fn apply(&mut self, command: ScoreCommand) -> Result<Applied, ScoreError> {
+        let outcome = self.dispatch(command)?;
+        self.bump_revision();
+        Ok(Applied {
+            events: outcome.events,
+            inverse: outcome.inverse,
+            inverse_cost: outcome.cost,
+        })
+    }
+
+    /// Copy a selection without a change. A cut is this and then `Remove`.
+    ///
+    /// The clipboard carries every element of the selection under the
+    /// identifier that it holds now, so a paste of that clipboard restores
+    /// what a remove took. An empty selection answers an empty clipboard.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingElement` when the selection names an
+    /// element the score does not hold, and `ScoreError::MissingStaff` when a
+    /// range names a staff the score does not hold.
+    pub fn copy(&self, selection: &Selection) -> Result<Clipboard, ScoreError> {
+        let resolved = self.resolve(selection)?;
+        let origin = self.origin_of(selection, &resolved);
+        Ok(self.clipboard_of(&resolved, origin))
+    }
+
+    /// Run the arm that `command` names.
+    ///
+    /// Every arm validates in full before it mints an identifier and before it
+    /// changes the content, so a refusal leaves the score equal to its own
+    /// clone and leaves the identifier counter where it was.
+    ///
+    /// # Errors
+    /// Returns the refusal of the arm.
+    fn dispatch(&mut self, command: ScoreCommand) -> Result<Outcome, ScoreError> {
+        match command {
+            ScoreCommand::AddPart { voice_type, name } => self.add_part(voice_type, name),
+            ScoreCommand::RemovePart { part } => self.remove_part(part),
+            ScoreCommand::AddStaff { part, clef } => self.add_staff(part, clef),
+            ScoreCommand::RemoveStaff { staff } => self.remove_staff(staff),
+            ScoreCommand::SetClef { staff, at, clef } => self.set_clef(staff, at, clef),
+            ScoreCommand::InsertMeasures { after, count } => self.insert_measures(after, count),
+            ScoreCommand::RemoveMeasures { from, count } => self.remove_measures(from, count),
+            ScoreCommand::SetKeySignature { measure, key } => self.set_key_signature(measure, key),
+            ScoreCommand::SetTimeSignature { measure, meter } => {
+                self.set_time_signature(measure, meter)
+            },
+            ScoreCommand::AddMark { at, kind } => self.add_mark(at, kind),
+            ScoreCommand::RemoveMark { mark } => self.remove_mark(mark),
+            ScoreCommand::InsertNote {
+                staff,
+                voice,
+                onset,
+                pitch,
+                duration,
+            } => self.insert_note(staff, voice, onset, pitch, duration),
+            ScoreCommand::InsertRest {
+                staff,
+                voice,
+                onset,
+                duration,
+            } => self.insert_rest(staff, voice, onset, duration),
+            ScoreCommand::SetPitch { notes, pitch } => self.set_pitch(&notes, pitch),
+            ScoreCommand::SetDuration { notes, duration } => self.set_duration(&notes, duration),
+            ScoreCommand::SetTie { note, tie } => self.set_tie(note, tie),
+            ScoreCommand::SetArticulations {
+                notes,
+                articulations,
+            } => self.set_articulations(&notes, &articulations),
+            ScoreCommand::SetLyric { note, verse, text } => self.set_lyric(note, verse, text),
+            ScoreCommand::SetDynamic {
+                staff,
+                onset,
+                dynamic,
+            } => self.set_dynamic(staff, onset, dynamic),
+            ScoreCommand::AddSpanner { kind, from, to } => self.add_spanner(kind, from, to),
+            ScoreCommand::RemoveSpanner { spanner } => self.remove_spanner(spanner),
+            ScoreCommand::SetVoice { notes, voice } => self.set_voice(&notes, voice),
+            ScoreCommand::SetPart { notes, part, staff } => self.set_part(&notes, part, staff),
+            ScoreCommand::Move {
+                selection,
+                by,
+                to_staff,
+            } => self.move_selection(&selection, by, to_staff),
+            ScoreCommand::Duplicate { selection, at } => self.duplicate(&selection, at),
+            ScoreCommand::Remove { selection } => self.remove(&selection),
+            ScoreCommand::Paste {
+                clipboard,
+                at,
+                staff,
+                voice,
+            } => self.paste(&clipboard, at, staff, voice),
+        }
+    }
+}
+
+impl Score {
+    /// The staff that `staff` names.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingStaff` when the score holds no such staff.
+    fn staff_of(&self, staff: StaffId) -> Result<&Staff, ScoreError> {
+        self.staves()
+            .get(&staff)
+            .ok_or(ScoreError::MissingStaff(staff))
+    }
+
+    /// Check that `staff` holds `voice`.
+    ///
+    /// `ScoreError` declares no missing-voice variant, so a voice that the
+    /// named staff does not hold answers `MissingStaff` of that staff. The
+    /// refusal roster cannot say more, and `escalation:T2-7` records the gap.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingStaff` for an absent staff and for a voice
+    /// that the staff does not hold.
+    fn voice_in(&self, staff: StaffId, voice: VoiceId) -> Result<(), ScoreError> {
+        if self.staff_of(staff)?.voices().contains(&voice) {
+            return Ok(());
+        }
+        Err(ScoreError::MissingStaff(staff))
+    }
+
+    /// The first voice of `staff`.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingStaff` for an absent staff and for a staff
+    /// that holds no voice.
+    fn first_voice(&self, staff: StaffId) -> Result<VoiceId, ScoreError> {
+        self.staff_of(staff)?
+            .voices()
+            .first()
+            .copied()
+            .ok_or(ScoreError::MissingStaff(staff))
+    }
+
+    /// The note that `note` names.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingElement` when the score holds no such note.
+    fn note_of(&self, note: NoteId) -> Result<&Note, ScoreError> {
+        self.notes()
+            .get(&note)
+            .ok_or(ScoreError::MissingElement(ElementRef::Note(note)))
+    }
+
+    /// The measure that `measure` names.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingMeasure` when the score holds no such
+    /// measure.
+    fn measure_of(&self, measure: MeasureId) -> Result<&Measure, ScoreError> {
+        self.measures()
+            .get(&measure)
+            .ok_or(ScoreError::MissingMeasure(measure))
+    }
+
+    /// Check that the score holds every note of `notes`.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingElement` for the first absent note.
+    fn check_notes(&self, notes: &[NoteId]) -> Result<(), ScoreError> {
+        for note in notes {
+            self.note_of(*note)?;
+        }
+        Ok(())
+    }
+
+    /// The part that holds `staff`.
+    fn part_of_staff(&self, staff: StaffId) -> Option<PartId> {
+        self.parts()
+            .values()
+            .find(|part| part.staves().contains(&staff))
+            .map(Part::id)
+    }
+
+    /// The staff, the voice, the onset, and the duration of one note or rest.
+    fn place_of(&self, id: NoteId) -> Option<(StaffId, VoiceId, Ticks, Duration)> {
+        if let Some(note) = self.notes().get(&id) {
+            return Some((note.staff(), note.voice(), note.onset(), note.duration()));
+        }
+        let rest = self.rests().get(&id)?;
+        Some((rest.staff(), rest.voice(), rest.onset(), rest.duration()))
+    }
+
+    /// Every note span and rest span of `staff` and `voice`.
+    fn held_spans(&self, staff: StaffId, voice: VoiceId) -> Vec<(NoteId, Ticks, Ticks)> {
+        let notes = self
+            .notes()
+            .values()
+            .filter(|note| note.staff() == staff && note.voice() == voice)
+            .map(|note| {
+                (
+                    note.id(),
+                    note.onset(),
+                    note.onset().saturating_add(note.duration().ticks()),
+                )
+            });
+        let rests = self
+            .rests()
+            .values()
+            .filter(|rest| rest.staff() == staff && rest.voice() == voice)
+            .map(|rest| {
+                (
+                    rest.id(),
+                    rest.onset(),
+                    rest.onset().saturating_add(rest.duration().ticks()),
+                )
+            });
+        notes.chain(rests).collect()
+    }
+
+    /// Refuse a span of `staff` and `voice` that a note or a rest already fills.
+    ///
+    /// Two elements of one staff and one voice overlap when their half open
+    /// tick intervals intersect. `skip` names the elements that the command
+    /// itself moves or resizes, which never collide with their own earlier
+    /// place.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::OverlappingNote` with the staff, the voice, and
+    /// the onset that the command asked for.
+    fn check_free(
+        &self,
+        staff: StaffId,
+        voice: VoiceId,
+        onset: Ticks,
+        duration: Duration,
+        skip: &BTreeSet<NoteId>,
+    ) -> Result<(), ScoreError> {
+        let end = onset.saturating_add(duration.ticks());
+        for (id, held_onset, held_end) in self.held_spans(staff, voice) {
+            if !skip.contains(&id) && held_onset < end && onset < held_end {
+                return Err(ScoreError::OverlappingNote {
+                    staff,
+                    voice,
+                    onset,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// The next note of the staff and the voice of `note`, by onset and then
+    /// by identifier.
+    fn partner_of(&self, note: &Note) -> Option<NoteId> {
+        let anchor = (note.onset(), note.id());
+        self.notes()
+            .values()
+            .filter(|other| other.staff() == note.staff() && other.voice() == note.voice())
+            .filter(|other| (other.onset(), other.id()) > anchor)
+            .min_by_key(|other| (other.onset(), other.id()))
+            .map(Note::id)
+    }
+
+    /// Every spanner that names an element of `elements`, in canonical order.
+    fn spanners_touching(&self, elements: &BTreeSet<NoteId>) -> Vec<Spanner> {
+        let mut held: Vec<Spanner> = self
+            .spanners()
+            .values()
+            .filter(|spanner| {
+                elements.contains(&spanner.from()) || elements.contains(&spanner.to())
+            })
+            .cloned()
+            .collect();
+        held.sort_by_key(spanner_order_key);
+        held
+    }
+}
+
+impl Score {
+    /// The elements that `selection` names.
+    ///
+    /// It adds every spanner that names a selected note or rest, so a cut
+    /// carries the spanners that the removal takes with it. A range is HALF
+    /// OPEN: it holds every element whose onset is at or after `from` and
+    /// below `to`, so two ranges that touch select each element once.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingElement` for an element the score does not
+    /// hold, and `ScoreError::MissingStaff` for a range over an absent staff.
+    fn resolve(&self, selection: &Selection) -> Result<Resolved, ScoreError> {
+        let mut resolved = Resolved::default();
+        match *selection {
+            Selection::Notes(ref ids) => self.resolve_notes(ids, &mut resolved)?,
+            Selection::Spanners(ref ids) => self.resolve_spanners(ids, &mut resolved)?,
+            Selection::Marks(ref ids) => self.resolve_marks(ids, &mut resolved)?,
+            Selection::Range { staff, from, to } => {
+                self.resolve_range(staff, from, to, &mut resolved)?;
+            },
+        }
+        self.add_held_spanners(&mut resolved);
+        self.sort_resolved(&mut resolved);
+        Ok(resolved)
+    }
+
+    /// Put `ids` in the spanners of `resolved`.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingElement` for the first absent spanner.
+    fn resolve_spanners(
+        &self,
+        ids: &[SpannerId],
+        resolved: &mut Resolved,
+    ) -> Result<(), ScoreError> {
+        for id in ids {
+            if !self.spanners().contains_key(id) {
+                return Err(ScoreError::MissingElement(ElementRef::Spanner(*id)));
+            }
+            resolved.spanners.push(*id);
+        }
+        Ok(())
+    }
+
+    /// Put `ids` in the marks of `resolved`.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingElement` for the first absent mark.
+    fn resolve_marks(&self, ids: &[MarkId], resolved: &mut Resolved) -> Result<(), ScoreError> {
+        for id in ids {
+            if !self.marks().contains_key(id) {
+                return Err(ScoreError::MissingElement(ElementRef::Mark(*id)));
+            }
+            resolved.marks.push(*id);
+        }
+        Ok(())
+    }
+
+    /// Put every note and rest of `staff` between `from` and `to` in `resolved`.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingStaff` for an absent staff.
+    fn resolve_range(
+        &self,
+        staff: StaffId,
+        from: Ticks,
+        to: Ticks,
+        resolved: &mut Resolved,
+    ) -> Result<(), ScoreError> {
+        self.staff_of(staff)?;
+        resolved.notes = self
+            .notes()
+            .values()
+            .filter(|note| note.staff() == staff && from <= note.onset() && note.onset() < to)
+            .map(Note::id)
+            .collect();
+        resolved.rests = self
+            .rests()
+            .values()
+            .filter(|rest| rest.staff() == staff && from <= rest.onset() && rest.onset() < to)
+            .map(Rest::id)
+            .collect();
+        Ok(())
+    }
+
+    /// Sort `ids` into the notes and the rests of `resolved`.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingElement` for the first identifier that
+    /// names neither a note nor a rest.
+    fn resolve_notes(&self, ids: &[NoteId], resolved: &mut Resolved) -> Result<(), ScoreError> {
+        for id in ids {
+            if self.notes().contains_key(id) {
+                resolved.notes.push(*id);
+            } else if self.rests().contains_key(id) {
+                resolved.rests.push(*id);
+            } else {
+                return Err(ScoreError::MissingElement(ElementRef::Note(*id)));
+            }
+        }
+        Ok(())
+    }
+
+    /// Add every spanner that names a selected note or rest.
+    fn add_held_spanners(&self, resolved: &mut Resolved) {
+        let elements = resolved.element_set();
+        if elements.is_empty() {
+            return;
+        }
+        let mut held: BTreeSet<SpannerId> = resolved.spanners.iter().copied().collect();
+        for spanner in self.spanners_touching(&elements) {
+            held.insert(spanner.id());
+        }
+        resolved.spanners = held.into_iter().collect();
+    }
+
+    /// Order the four lists of `resolved` by the canonical keys of section 3.6.
+    fn sort_resolved(&self, resolved: &mut Resolved) {
+        resolved
+            .notes
+            .sort_by_key(|id| self.notes().get(id).map(note_order_key));
+        resolved
+            .rests
+            .sort_by_key(|id| self.rests().get(id).map(rest_order_key));
+        resolved
+            .spanners
+            .sort_by_key(|id| self.spanners().get(id).map(spanner_order_key));
+        resolved
+            .marks
+            .sort_by_key(|id| self.marks().get(id).map(|mark| (mark.at(), mark.id())));
+    }
+
+    /// The tick that every onset of a copy is measured from.
+    ///
+    /// A range takes its own `from`, which keeps a leading gap. Every other
+    /// selection takes the least onset that it holds, and an empty selection
+    /// takes tick zero.
+    fn origin_of(&self, selection: &Selection, resolved: &Resolved) -> Ticks {
+        if let Selection::Range { from, .. } = *selection {
+            return from;
+        }
+        let notes = resolved
+            .notes
+            .iter()
+            .filter_map(|id| self.notes().get(id))
+            .map(Note::onset);
+        let rests = resolved
+            .rests
+            .iter()
+            .filter_map(|id| self.rests().get(id))
+            .map(Rest::onset);
+        notes.chain(rests).min().unwrap_or(Ticks::ZERO)
+    }
+
+    /// The detached copy of everything that `resolved` names.
+    fn clipboard_of(&self, resolved: &Resolved, origin: Ticks) -> Clipboard {
+        let notes = resolved
+            .notes
+            .iter()
+            .filter_map(|id| self.notes().get(id).cloned())
+            .collect();
+        let rests = resolved
+            .rests
+            .iter()
+            .filter_map(|id| self.rests().get(id).cloned())
+            .collect();
+        let spanners = resolved
+            .spanners
+            .iter()
+            .filter_map(|id| self.spanners().get(id).cloned())
+            .collect();
+        let marks = resolved
+            .marks
+            .iter()
+            .filter_map(|id| self.marks().get(id).cloned())
+            .collect();
+        Clipboard::new(origin, notes, rests, spanners, marks)
+    }
+
+    /// The commands that put `notes` back as they stand now.
+    ///
+    /// It is the inverse of last resort: a `Remove` of the notes and a `Paste`
+    /// of the copy that this call takes first. A paste restores every
+    /// identifier, so the pair undoes any change to a note that no `Set`
+    /// command can express. Use it only where none can.
+    fn restore_of(&self, notes: &[NoteId]) -> Vec<ScoreCommand> {
+        let kept: Vec<Note> = notes
+            .iter()
+            .filter_map(|id| self.notes().get(id).cloned())
+            .collect();
+        let elements: BTreeSet<NoteId> = notes.iter().copied().collect();
+        let spanners = self.spanners_touching(&elements);
+        let origin = kept.iter().map(Note::onset).min().unwrap_or(Ticks::ZERO);
+        let clipboard = Clipboard::new(origin, kept, Vec::new(), spanners, Vec::new());
+        vec![
+            ScoreCommand::Remove {
+                selection: Selection::Notes(notes.to_vec()),
+            },
+            paste_of(clipboard, origin),
+        ]
+    }
+}
+
+impl Score {
+    /// Add one part, with the ordinal that its voice type gives it.
+    ///
+    /// The ordinal is the count of parts that already carry the same voice
+    /// type, plus one: "Soprano 1" and then "Soprano 2".
+    ///
+    /// # Errors
+    /// Returns `ScoreError::Serialize` when the inverse has no JSON form.
+    fn add_part(&mut self, voice_type: VoiceType, name: PartName) -> Result<Outcome, ScoreError> {
+        let ordinal = next_ordinal(
+            self.parts()
+                .values()
+                .filter(|part| part.voice_type() == voice_type)
+                .count(),
+        );
+        let part = PartId::new(self.mint_id());
+        let outcome = Outcome::new(
+            vec![ScoreEvent::PartAdded(part)],
+            vec![ScoreCommand::RemovePart { part }],
+        )?;
+        self.parts_mut()
+            .insert(part, Part::new(part, voice_type, ordinal, name));
+        Ok(outcome)
+    }
+
+    /// Remove one part, its staves, its voices, and their content.
+    ///
+    /// The inverse rebuilds the part alone, under a NEW identifier, and
+    /// restores no staff and no note. No command of the declared set names an
+    /// identifier for a new part, a new staff, or a new voice, so a structure
+    /// removal has no true undo. `escalation:T2-9` records the gap.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingPart` for an absent part.
+    fn remove_part(&mut self, part: PartId) -> Result<Outcome, ScoreError> {
+        let held = self
+            .parts()
+            .get(&part)
+            .ok_or(ScoreError::MissingPart(part))?;
+        let voice_type = held.voice_type();
+        let name = held.name().clone();
+        let staves: Vec<StaffId> = held.staves().to_vec();
+        let outcome = Outcome::new(
+            vec![ScoreEvent::PartRemoved(part)],
+            vec![ScoreCommand::AddPart { voice_type, name }],
+        )?;
+        for staff in staves {
+            self.strip_staff(staff);
+        }
+        self.parts_mut().remove(&part);
+        Ok(outcome)
+    }
+
+    /// Take `staff`, its voices, and their content out of the score.
+    fn strip_staff(&mut self, staff: StaffId) {
+        let voices: Vec<VoiceId> = self
+            .staves()
+            .get(&staff)
+            .map(|held| held.voices().to_vec())
+            .unwrap_or_default();
+        let gone: BTreeSet<NoteId> = self
+            .notes()
+            .values()
+            .filter(|note| note.staff() == staff)
+            .map(Note::id)
+            .chain(
+                self.rests()
+                    .values()
+                    .filter(|rest| rest.staff() == staff)
+                    .map(Rest::id),
+            )
+            .collect();
+        self.spanners_mut()
+            .retain(|_, spanner| !gone.contains(&spanner.from()) && !gone.contains(&spanner.to()));
+        for id in &gone {
+            self.notes_mut().remove(id);
+            self.rests_mut().remove(id);
+        }
+        for voice in voices {
+            self.voices_mut().remove(&voice);
+        }
+        self.staves_mut().remove(&staff);
+    }
+
+    /// Add one staff to one part, with its first voice.
+    ///
+    /// No command of the declared set mints a voice, and `InsertNote` names
+    /// one, so the staff opens with one voice of ordinal one and stems up.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingPart` for an absent part.
+    fn add_staff(&mut self, part: PartId, clef: Clef) -> Result<Outcome, ScoreError> {
+        if !self.parts().contains_key(&part) {
+            return Err(ScoreError::MissingPart(part));
+        }
+        let staff = StaffId::new(self.mint_id());
+        let voice = VoiceId::new(self.mint_id());
+        let outcome = Outcome::new(
+            vec![ScoreEvent::StaffAdded(staff)],
+            vec![ScoreCommand::RemoveStaff { staff }],
+        )?;
+        let mut record = Staff::new(staff, clef, 0);
+        record.push_voice(voice);
+        self.staves_mut().insert(staff, record);
+        self.voices_mut()
+            .insert(voice, Voice::new(voice, NonZeroU8::MIN, true));
+        if let Some(owner) = self.parts_mut().get_mut(&part) {
+            owner.push_staff(staff);
+        }
+        Ok(outcome)
+    }
+
+    /// Remove one staff, its voices, and their content.
+    ///
+    /// The inverse rebuilds the staff under a NEW identifier and restores no
+    /// note, for the reason `remove_part` states.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingStaff` for an absent staff.
+    fn remove_staff(&mut self, staff: StaffId) -> Result<Outcome, ScoreError> {
+        let clef = self.staff_of(staff)?.clef();
+        let owner = self.part_of_staff(staff);
+        let inverse =
+            owner.map_or_else(Vec::new, |part| vec![ScoreCommand::AddStaff { part, clef }]);
+        let outcome = Outcome::new(vec![ScoreEvent::StaffRemoved(staff)], inverse)?;
+        self.strip_staff(staff);
+        if let Some(record) = owner.and_then(|part| self.parts_mut().get_mut(&part)) {
+            record.drop_staff(staff);
+        }
+        Ok(outcome)
+    }
+
+    /// Replace the clef that one staff opens with.
+    ///
+    /// `Staff` holds one clef and no list of clef changes, so the `at` tick has
+    /// nowhere to live and this command cannot write a clef change in the
+    /// middle of a staff. `escalation:T2-10` records the gap.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingStaff` for an absent staff.
+    fn set_clef(&mut self, staff: StaffId, at: Ticks, clef: Clef) -> Result<Outcome, ScoreError> {
+        let earlier = self.staff_of(staff)?.clef();
+        let outcome = Outcome::new(
+            vec![ScoreEvent::ClefChanged(staff)],
+            vec![ScoreCommand::SetClef {
+                staff,
+                at,
+                clef: earlier,
+            }],
+        )?;
+        if let Some(record) = self.staves_mut().get_mut(&staff) {
+            record.set_clef(clef);
+        }
+        Ok(outcome)
+    }
+}
+
+impl Score {
+    /// The measures of the score, ordered by start tick.
+    fn measures_in_order(&self) -> Vec<MeasureId> {
+        let mut ordered: Vec<(Ticks, MeasureId)> = self
+            .measures()
+            .values()
+            .map(|measure| (measure.start(), measure.id()))
+            .collect();
+        ordered.sort_unstable();
+        ordered.into_iter().map(|(_, id)| id).collect()
+    }
+
+    /// The first tick of `run` and the tick span that it covers.
+    fn run_span(&self, run: &[MeasureId]) -> (Ticks, Ticks) {
+        let start = run
+            .first()
+            .and_then(|id| self.measures().get(id))
+            .map_or(Ticks::ZERO, Measure::start);
+        let span = run
+            .iter()
+            .filter_map(|id| self.measures().get(id))
+            .fold(Ticks::ZERO, |total, measure| {
+                total.saturating_add(bar_ticks(measure.meter()))
+            });
+        (start, span)
+    }
+
+    /// Refuse a run of measures that holds a note or a rest.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MeasureNotEmpty` for the first filled measure.
+    fn check_measures_empty(&self, run: &[MeasureId]) -> Result<(), ScoreError> {
+        for id in run {
+            let Some(measure) = self.measures().get(id) else {
+                continue;
+            };
+            let start = measure.start();
+            let end = start.saturating_add(bar_ticks(measure.meter()));
+            let filled = self
+                .notes()
+                .values()
+                .map(Note::onset)
+                .chain(self.rests().values().map(Rest::onset))
+                .any(|onset| start <= onset && onset < end);
+            if filled {
+                return Err(ScoreError::MeasureNotEmpty(*id));
+            }
+        }
+        Ok(())
+    }
+
+    /// The tempo map with every meter entry at or after `from` moved by `by`.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::Time` when the moved list breaks a rule of
+    /// `TempoMapEdit::finish`.
+    fn meters_shifted(&self, from: Ticks, by: Ticks) -> Result<TempoMap, ScoreError> {
+        let mut edit = TempoMapEdit::new();
+        for tempo in self.tempo_map().tempos() {
+            edit = edit.push_tempo(*tempo);
+        }
+        for point in self.tempo_map().meters() {
+            let tick = if point.ticks() >= from {
+                point.ticks().saturating_add(by)
+            } else {
+                point.ticks()
+            };
+            edit = edit.push_meter(MeterPoint::new(tick, point.bbt(), point.meter()));
+        }
+        edit.recompute_cached_views()
+            .finish()
+            .map_err(ScoreError::from)
+    }
+
+    /// The tempo map with the meter entries between `from` and `to` dropped
+    /// and every entry at or after `to` moved earlier by the span of the two.
+    ///
+    /// An entry that sits exactly at `from` stays, because the meter that
+    /// governs the removed run also governs what follows it. An entry that
+    /// lands on a tick another entry holds replaces it, because the later
+    /// entry is the one that governs from that tick on.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::Time` when the new list breaks a rule of
+    /// `TempoMapEdit::finish`.
+    fn meters_without(&self, from: Ticks, to: Ticks) -> Result<TempoMap, ScoreError> {
+        let by = to.saturating_sub(from);
+        let mut kept: BTreeMap<i64, MeterPoint> = BTreeMap::new();
+        for point in self.tempo_map().meters() {
+            if point.ticks() > from && point.ticks() < to {
+                continue;
+            }
+            let tick = if point.ticks() >= to {
+                point.ticks().saturating_sub(by)
+            } else {
+                point.ticks()
+            };
+            kept.insert(
+                tick.get(),
+                MeterPoint::new(tick, point.bbt(), point.meter()),
+            );
+        }
+        let mut edit = TempoMapEdit::new();
+        for tempo in self.tempo_map().tempos() {
+            edit = edit.push_tempo(*tempo);
+        }
+        for point in kept.into_values() {
+            edit = edit.push_meter(point);
+        }
+        edit.recompute_cached_views()
+            .finish()
+            .map_err(ScoreError::from)
+    }
+
+    /// Move every measure, mark, note, and rest at or after `from` by `by`,
+    /// and take `meters` as the new tempo map.
+    fn shift_from(&mut self, from: Ticks, by: Ticks, meters: TempoMap) {
+        for measure in self.measures_mut().values_mut() {
+            let start = measure.start();
+            if start >= from {
+                measure.set_start(start.saturating_add(by));
+            }
+        }
+        for mark in self.marks_mut().values_mut() {
+            let at = mark.at();
+            if at >= from {
+                mark.set_at(at.saturating_add(by));
+            }
+        }
+        for note in self.notes_mut().values_mut() {
+            let onset = note.onset();
+            if onset >= from {
+                note.set_onset(onset.saturating_add(by));
+            }
+        }
+        for rest in self.rests_mut().values_mut() {
+            let onset = rest.onset();
+            if onset >= from {
+                rest.set_onset(onset.saturating_add(by));
+            }
+        }
+        self.set_tempo_map(meters);
+    }
+
+    /// Insert empty measures after one measure, and move later content later.
+    ///
+    /// The new measures copy the meter and the key of the measure they follow.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingMeasure` for an absent measure, and
+    /// `ScoreError::Time` when the moved meter list breaks a map rule.
+    fn insert_measures(
+        &mut self,
+        after: MeasureId,
+        count: NonZeroU16,
+    ) -> Result<Outcome, ScoreError> {
+        let anchor = self.measure_of(after)?;
+        let meter = anchor.meter();
+        let key = anchor.key();
+        let bar = bar_ticks(meter);
+        let start = anchor.start().saturating_add(bar);
+        let span = Ticks::new(bar.get().saturating_mul(i64::from(count.get())));
+        let meters = self.meters_shifted(start, span)?;
+        let minted: Vec<MeasureId> = (0..count.get())
+            .map(|_| MeasureId::new(self.mint_id()))
+            .collect();
+        let first = minted.first().copied().unwrap_or(after);
+        let outcome = Outcome::new(
+            vec![ScoreEvent::MeasuresChanged {
+                from: first,
+                count: count.get(),
+            }],
+            vec![ScoreCommand::RemoveMeasures { from: first, count }],
+        )?;
+        self.shift_from(start, span, meters);
+        for (index, id) in minted.into_iter().enumerate() {
+            let step = i64::try_from(index).unwrap_or(i64::MAX);
+            let offset = Ticks::new(bar.get().saturating_mul(step));
+            self.measures_mut().insert(
+                id,
+                Measure::new(id, start.saturating_add(offset), meter, key),
+            );
+        }
+        Ok(outcome)
+    }
+
+    /// Remove a run of empty measures and move later content earlier.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingMeasure` for an absent measure,
+    /// `ScoreError::MeasureNotEmpty` for a measure of the run that holds a note
+    /// or a rest, and `ScoreError::Time` when the new meter list breaks a map
+    /// rule.
+    fn remove_measures(
+        &mut self,
+        from: MeasureId,
+        count: NonZeroU16,
+    ) -> Result<Outcome, ScoreError> {
+        self.measure_of(from)?;
+        let ordered = self.measures_in_order();
+        let start_index = ordered.iter().position(|id| *id == from).unwrap_or(0);
+        let run: Vec<MeasureId> = ordered
+            .iter()
+            .skip(start_index)
+            .take(usize::from(count.get()))
+            .copied()
+            .collect();
+        self.check_measures_empty(&run)?;
+        let (start, span) = self.run_span(&run);
+        let end = start.saturating_add(span);
+        let meters = self.meters_without(start, end)?;
+        let next = ordered
+            .get(start_index.saturating_add(run.len()))
+            .copied()
+            .unwrap_or(from);
+        let inverse = remove_measures_inverse(&ordered, start_index, run.len(), count);
+        let outcome = Outcome::new(
+            vec![ScoreEvent::MeasuresChanged {
+                from: next,
+                count: count.get(),
+            }],
+            inverse,
+        )?;
+        for id in &run {
+            self.measures_mut().remove(id);
+        }
+        self.shift_from(end, Ticks::new(span.get().saturating_neg()), meters);
+        Ok(outcome)
+    }
+
+    /// Change the key signature of one measure.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingMeasure` for an absent measure.
+    fn set_key_signature(
+        &mut self,
+        measure: MeasureId,
+        key: KeySignature,
+    ) -> Result<Outcome, ScoreError> {
+        let earlier = self.measure_of(measure)?.key();
+        let outcome = Outcome::new(
+            vec![ScoreEvent::SignatureChanged(measure)],
+            vec![ScoreCommand::SetKeySignature {
+                measure,
+                key: earlier,
+            }],
+        )?;
+        if let Some(record) = self.measures_mut().get_mut(&measure) {
+            record.set_key(key);
+        }
+        Ok(outcome)
+    }
+
+    /// Change the meter of one measure, in the measure and in the tempo map.
+    ///
+    /// The two statements of the meter move together, so a query of the map and
+    /// a read of the measure can never disagree.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingMeasure` for an absent measure, and
+    /// `ScoreError::Time` when the new meter list breaks a map rule.
+    fn set_time_signature(
+        &mut self,
+        measure: MeasureId,
+        meter: Meter,
+    ) -> Result<Outcome, ScoreError> {
+        let record = self.measure_of(measure)?;
+        let earlier = record.meter();
+        let start = record.start();
+        let map = self
+            .tempo_map()
+            .edit()
+            .insert_meter(MeterPoint::new(start, Bbt::ORIGIN, meter))
+            .recompute_cached_views()
+            .finish()
+            .map_err(ScoreError::from)?;
+        let outcome = Outcome::new(
+            vec![ScoreEvent::SignatureChanged(measure)],
+            vec![ScoreCommand::SetTimeSignature {
+                measure,
+                meter: earlier,
+            }],
+        )?;
+        if let Some(held) = self.measures_mut().get_mut(&measure) {
+            held.set_meter(meter);
+        }
+        self.set_tempo_map(map);
+        Ok(outcome)
+    }
+
+    /// Add one score mark at one tick.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::Serialize` when the inverse has no JSON form.
+    fn add_mark(&mut self, at: Ticks, kind: MarkKind) -> Result<Outcome, ScoreError> {
+        let mark = MarkId::new(self.mint_id());
+        let outcome = Outcome::new(
+            vec![ScoreEvent::MarkAdded(mark)],
+            vec![ScoreCommand::RemoveMark { mark }],
+        )?;
+        self.marks_mut()
+            .insert(mark, ScoreMark::new(mark, at, kind));
+        Ok(outcome)
+    }
+
+    /// Remove one score mark.
+    ///
+    /// The inverse is a paste of the mark, which brings it back under its own
+    /// identifier.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingElement` for an absent mark.
+    fn remove_mark(&mut self, mark: MarkId) -> Result<Outcome, ScoreError> {
+        let held = self
+            .marks()
+            .get(&mark)
+            .ok_or(ScoreError::MissingElement(ElementRef::Mark(mark)))?
+            .clone();
+        let at = held.at();
+        let clipboard = Clipboard::new(at, Vec::new(), Vec::new(), Vec::new(), vec![held]);
+        let outcome = Outcome::new(
+            vec![ScoreEvent::MarkRemoved(mark)],
+            vec![paste_of(clipboard, at)],
+        )?;
+        self.marks_mut().remove(&mark);
+        Ok(outcome)
+    }
+}
+
+impl Score {
+    /// Insert one note.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingStaff` for an absent staff and for a voice
+    /// the staff does not hold, and `ScoreError::OverlappingNote` for an onset
+    /// that a note or a rest of that staff and voice already fills.
+    fn insert_note(
+        &mut self,
+        staff: StaffId,
+        voice: VoiceId,
+        onset: Ticks,
+        pitch: Pitch,
+        duration: Duration,
+    ) -> Result<Outcome, ScoreError> {
+        self.voice_in(staff, voice)?;
+        self.check_free(staff, voice, onset, duration, &BTreeSet::new())?;
+        let note = NoteId::new(self.mint_id());
+        let outcome = Outcome::new(
+            vec![ScoreEvent::NoteInserted(note)],
+            vec![ScoreCommand::Remove {
+                selection: Selection::Notes(vec![note]),
+            }],
+        )?;
+        self.notes_mut()
+            .insert(note, Note::new(note, staff, voice, onset, duration, pitch));
+        Ok(outcome)
+    }
+
+    /// Insert one rest.
+    ///
+    /// # Errors
+    /// Returns what `insert_note` returns.
+    fn insert_rest(
+        &mut self,
+        staff: StaffId,
+        voice: VoiceId,
+        onset: Ticks,
+        duration: Duration,
+    ) -> Result<Outcome, ScoreError> {
+        self.voice_in(staff, voice)?;
+        self.check_free(staff, voice, onset, duration, &BTreeSet::new())?;
+        let rest = NoteId::new(self.mint_id());
+        let outcome = Outcome::new(
+            vec![ScoreEvent::NoteInserted(rest)],
+            vec![ScoreCommand::Remove {
+                selection: Selection::Notes(vec![rest]),
+            }],
+        )?;
+        self.rests_mut()
+            .insert(rest, Rest::new(rest, staff, voice, onset, duration));
+        Ok(outcome)
+    }
+
+    /// Change the pitch of every named note.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingElement` for an absent note.
+    fn set_pitch(&mut self, notes: &[NoteId], pitch: PitchEdit) -> Result<Outcome, ScoreError> {
+        self.check_notes(notes)?;
+        let mut events = Vec::with_capacity(notes.len());
+        let mut inverse = Vec::with_capacity(notes.len());
+        let mut changes = Vec::with_capacity(notes.len());
+        for id in notes {
+            let earlier = self.note_of(*id)?.pitch();
+            events.push(ScoreEvent::NoteChanged(*id));
+            inverse.push(ScoreCommand::SetPitch {
+                notes: vec![*id],
+                pitch: PitchEdit::Absolute(earlier),
+            });
+            changes.push((*id, edited_pitch(earlier, pitch)));
+        }
+        let outcome = Outcome::new(events, inverse)?;
+        for (id, next) in changes {
+            if let Some(note) = self.notes_mut().get_mut(&id) {
+                note.set_pitch(next);
+            }
+        }
+        Ok(outcome)
+    }
+
+    /// Change the duration of every named note.
+    ///
+    /// A duration that makes a note reach the next note or rest of the same
+    /// staff and voice is refused.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingElement` for an absent note, and
+    /// `ScoreError::OverlappingNote` for a duration that reaches another
+    /// element.
+    fn set_duration(
+        &mut self,
+        notes: &[NoteId],
+        duration: Duration,
+    ) -> Result<Outcome, ScoreError> {
+        self.check_notes(notes)?;
+        let mut events = Vec::with_capacity(notes.len());
+        let mut inverse = Vec::with_capacity(notes.len());
+        for id in notes {
+            let note = self.note_of(*id)?;
+            let staff = note.staff();
+            let voice = note.voice();
+            let onset = note.onset();
+            let earlier = note.duration();
+            let mut skip = BTreeSet::new();
+            skip.insert(*id);
+            self.check_free(staff, voice, onset, duration, &skip)?;
+            events.push(ScoreEvent::NoteChanged(*id));
+            inverse.push(ScoreCommand::SetDuration {
+                notes: vec![*id],
+                duration: earlier,
+            });
+        }
+        let outcome = Outcome::new(events, inverse)?;
+        for id in notes {
+            if let Some(note) = self.notes_mut().get_mut(id) {
+                note.set_duration(duration);
+            }
+        }
+        Ok(outcome)
+    }
+
+    /// Change the tie of one note.
+    ///
+    /// A tie holds one pitch, so a tie that starts at a note whose partner
+    /// carries another pitch is refused. The partner is the next note of the
+    /// same staff and the same voice, by onset and then by identifier. A tie
+    /// that starts at the last note of its staff and voice is ACCEPTED, because
+    /// a tie crosses a system and the refusal roster names no dangling start.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingElement` for an absent note, and
+    /// `ScoreError::TieAcrossPitch` for a partner of another pitch.
+    fn set_tie(&mut self, note: NoteId, tie: TieState) -> Result<Outcome, ScoreError> {
+        let held = self.note_of(note)?;
+        let earlier = held.tie();
+        if tie.starts() {
+            self.check_tie_partner(held)?;
+        }
+        let outcome = Outcome::new(
+            vec![ScoreEvent::NoteChanged(note)],
+            vec![ScoreCommand::SetTie { note, tie: earlier }],
+        )?;
+        if let Some(record) = self.notes_mut().get_mut(&note) {
+            record.set_tie(tie);
+        }
+        Ok(outcome)
+    }
+
+    /// Refuse a tie that starts at `note` and reaches a note of another pitch.
+    ///
+    /// A note with no partner accepts the tie, because a tie crosses a system.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::TieAcrossPitch` for a partner of another pitch.
+    fn check_tie_partner(&self, note: &Note) -> Result<(), ScoreError> {
+        let Some(partner) = self.partner_of(note) else {
+            return Ok(());
+        };
+        if self.note_of(partner)?.pitch() == note.pitch() {
+            return Ok(());
+        }
+        Err(ScoreError::TieAcrossPitch {
+            from: note.id(),
+            to: partner,
+        })
+    }
+
+    /// Replace the articulations of every named note.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingElement` for an absent note.
+    fn set_articulations(
+        &mut self,
+        notes: &[NoteId],
+        articulations: &SmallVec<[Articulation; 2]>,
+    ) -> Result<Outcome, ScoreError> {
+        self.check_notes(notes)?;
+        let mut events = Vec::with_capacity(notes.len());
+        let mut inverse = Vec::with_capacity(notes.len());
+        for id in notes {
+            let earlier: SmallVec<[Articulation; 2]> =
+                self.note_of(*id)?.articulations().iter().copied().collect();
+            events.push(ScoreEvent::NoteChanged(*id));
+            inverse.push(ScoreCommand::SetArticulations {
+                notes: vec![*id],
+                articulations: earlier,
+            });
+        }
+        let outcome = Outcome::new(events, inverse)?;
+        for id in notes {
+            if let Some(note) = self.notes_mut().get_mut(id) {
+                note.set_articulations(articulations.clone());
+            }
+        }
+        Ok(outcome)
+    }
+
+    /// Put one lyric syllable on one note, in one verse.
+    ///
+    /// A verse that already holds a syllable takes the new one, and the inverse
+    /// writes the earlier text back. A verse that held none inverts to a
+    /// `Remove` and a `Paste` of the earlier note, because no command of the
+    /// declared set takes a syllable off a note and `LyricText` refuses an
+    /// empty string. `escalation:T2-10` records the gap.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingElement` for an absent note.
+    fn set_lyric(
+        &mut self,
+        note: NoteId,
+        verse: VerseNumber,
+        text: LyricText,
+    ) -> Result<Outcome, ScoreError> {
+        let earlier = self
+            .note_of(note)?
+            .lyrics()
+            .iter()
+            .find(|lyric| lyric.verse() == verse)
+            .map(|lyric| lyric.text().clone());
+        let inverse = earlier.map_or_else(
+            || self.restore_of(&[note]),
+            |kept| {
+                vec![ScoreCommand::SetLyric {
+                    note,
+                    verse,
+                    text: kept,
+                }]
+            },
+        );
+        let outcome = Outcome::new(vec![ScoreEvent::NoteChanged(note)], inverse)?;
+        if let Some(record) = self.notes_mut().get_mut(&note) {
+            record.set_lyric(verse, text);
+        }
+        Ok(outcome)
+    }
+
+    /// Put a dynamic mark on one staff at one tick.
+    ///
+    /// The declared model holds no dynamic: `Score` carries no dynamics map and
+    /// `Note` carries no dynamic field. This command therefore checks the
+    /// staff, changes nothing, reports no event, and inverts to itself. A
+    /// dynamic mark is not representable in version one, and `escalation:T2-10`
+    /// records the gap.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingStaff` for an absent staff.
+    fn set_dynamic(
+        &self,
+        staff: StaffId,
+        onset: Ticks,
+        dynamic: Dynamic,
+    ) -> Result<Outcome, ScoreError> {
+        self.staff_of(staff)?;
+        Outcome::new(
+            Vec::new(),
+            vec![ScoreCommand::SetDynamic {
+                staff,
+                onset,
+                dynamic,
+            }],
+        )
+    }
+
+    /// Add one spanner between two notes.
+    ///
+    /// A spanner between two staves is legal, because section 3.1 states that a
+    /// slur crosses a staff.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingElement` for an absent endpoint, and names
+    /// the start before the end.
+    fn add_spanner(
+        &mut self,
+        kind: SpannerKind,
+        from: NoteId,
+        to: NoteId,
+    ) -> Result<Outcome, ScoreError> {
+        self.note_of(from)?;
+        self.note_of(to)?;
+        let spanner = SpannerId::new(self.mint_id());
+        let outcome = Outcome::new(
+            vec![ScoreEvent::SpannerAdded(spanner)],
+            vec![ScoreCommand::RemoveSpanner { spanner }],
+        )?;
+        self.spanners_mut()
+            .insert(spanner, Spanner::new(spanner, kind, from, to));
+        Ok(outcome)
+    }
+
+    /// Remove one spanner.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingElement` for an absent spanner.
+    fn remove_spanner(&mut self, spanner: SpannerId) -> Result<Outcome, ScoreError> {
+        let held = self
+            .spanners()
+            .get(&spanner)
+            .ok_or(ScoreError::MissingElement(ElementRef::Spanner(spanner)))?
+            .clone();
+        let clipboard = Clipboard::new(Ticks::ZERO, Vec::new(), Vec::new(), vec![held], Vec::new());
+        let outcome = Outcome::new(
+            vec![ScoreEvent::SpannerRemoved(spanner)],
+            vec![paste_of(clipboard, Ticks::ZERO)],
+        )?;
+        self.spanners_mut().remove(&spanner);
+        Ok(outcome)
+    }
+}
+
+impl Score {
+    /// Move every named note into one voice.
+    ///
+    /// An empty note list changes nothing and answers an empty inverse.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingElement` for an absent note,
+    /// `ScoreError::MissingStaff` for a voice that the staff of the first named
+    /// note does not hold, and `ScoreError::OverlappingNote` for a note that
+    /// the target voice already sounds over.
+    fn set_voice(&mut self, notes: &[NoteId], voice: VoiceId) -> Result<Outcome, ScoreError> {
+        self.check_notes(notes)?;
+        let Some(first) = notes.first() else {
+            return Outcome::new(Vec::new(), Vec::new());
+        };
+        let staff = self.note_of(*first)?.staff();
+        self.voice_in(staff, voice)?;
+        let skip: BTreeSet<NoteId> = notes.iter().copied().collect();
+        let mut events = Vec::with_capacity(notes.len());
+        let mut inverse = Vec::with_capacity(notes.len());
+        for id in notes {
+            let note = self.note_of(*id)?;
+            let earlier = note.voice();
+            self.check_free(note.staff(), voice, note.onset(), note.duration(), &skip)?;
+            events.push(ScoreEvent::NoteChanged(*id));
+            inverse.push(ScoreCommand::SetVoice {
+                notes: vec![*id],
+                voice: earlier,
+            });
+        }
+        let outcome = Outcome::new(events, inverse)?;
+        for id in notes {
+            if let Some(note) = self.notes_mut().get_mut(id) {
+                let held = note.staff();
+                note.set_place(held, voice);
+            }
+        }
+        Ok(outcome)
+    }
+
+    /// Move every named note into one staff of one part.
+    ///
+    /// The notes take the first voice of the target staff, so the inverse names
+    /// the earlier staff AND the earlier voice of every note.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingPart` for an absent part,
+    /// `ScoreError::MissingStaff` for a staff the part does not hold,
+    /// `ScoreError::MissingElement` for an absent note, and
+    /// `ScoreError::OverlappingNote` for a note the target already sounds over.
+    fn set_part(
+        &mut self,
+        notes: &[NoteId],
+        part: PartId,
+        staff: StaffId,
+    ) -> Result<Outcome, ScoreError> {
+        let Some(owner) = self.parts().get(&part) else {
+            return Err(ScoreError::MissingPart(part));
+        };
+        if !owner.staves().contains(&staff) {
+            return Err(ScoreError::MissingStaff(staff));
+        }
+        let voice = self.first_voice(staff)?;
+        self.check_notes(notes)?;
+        let skip: BTreeSet<NoteId> = notes.iter().copied().collect();
+        let mut events = Vec::with_capacity(notes.len());
+        let mut inverse = Vec::with_capacity(notes.len());
+        for id in notes {
+            let note = self.note_of(*id)?;
+            let earlier_staff = note.staff();
+            let earlier_voice = note.voice();
+            let Some(earlier_part) = self.part_of_staff(earlier_staff) else {
+                return Err(ScoreError::MissingStaff(earlier_staff));
+            };
+            self.check_free(staff, voice, note.onset(), note.duration(), &skip)?;
+            events.push(ScoreEvent::NoteChanged(*id));
+            inverse.push(ScoreCommand::SetPart {
+                notes: vec![*id],
+                part: earlier_part,
+                staff: earlier_staff,
+            });
+            inverse.push(ScoreCommand::SetVoice {
+                notes: vec![*id],
+                voice: earlier_voice,
+            });
+        }
+        let outcome = Outcome::new(events, inverse)?;
+        for id in notes {
+            if let Some(note) = self.notes_mut().get_mut(id) {
+                note.set_place(staff, voice);
+            }
+        }
+        Ok(outcome)
+    }
+}
+
+impl Score {
+    /// Move a selection along the timeline, and to another staff.
+    ///
+    /// A spanner carries no onset, so a move leaves it where it is. A mark
+    /// moves by the same tick count as a note.
+    ///
+    /// # Errors
+    /// Returns what `resolve` returns, `ScoreError::MissingStaff` for a target
+    /// staff the score does not hold, and `ScoreError::OverlappingNote` for a
+    /// target that a note or a rest already fills.
+    fn move_selection(
+        &mut self,
+        selection: &Selection,
+        by: Ticks,
+        to_staff: Option<StaffId>,
+    ) -> Result<Outcome, ScoreError> {
+        let resolved = self.resolve(selection)?;
+        let skip = resolved.element_set();
+        let mut places = Vec::new();
+        for id in resolved.elements() {
+            let Some((staff, voice, onset, duration)) = self.place_of(id) else {
+                continue;
+            };
+            let target_staff = to_staff.unwrap_or(staff);
+            let target_voice = match to_staff {
+                Some(_) => self.first_voice(target_staff)?,
+                None => voice,
+            };
+            let moved = onset.saturating_add(by);
+            self.check_free(target_staff, target_voice, moved, duration, &skip)?;
+            places.push(Placement {
+                id,
+                staff: target_staff,
+                voice: target_voice,
+                onset: moved,
+                earlier_staff: staff,
+                earlier_voice: voice,
+            });
+        }
+        let inverse = move_inverse(selection, by, to_staff, &places);
+        let outcome = Outcome::new(vec![ScoreEvent::ElementsMoved(selection.clone())], inverse)?;
+        for place in places {
+            self.place_element(place.id, place.staff, place.voice, place.onset);
+        }
+        for mark in &resolved.marks {
+            if let Some(record) = self.marks_mut().get_mut(mark) {
+                let at = record.at();
+                record.set_at(at.saturating_add(by));
+            }
+        }
+        Ok(outcome)
+    }
+
+    /// Put one note or rest at a new staff, a new voice, and a new onset.
+    fn place_element(&mut self, id: NoteId, staff: StaffId, voice: VoiceId, onset: Ticks) {
+        if let Some(note) = self.notes_mut().get_mut(&id) {
+            note.set_place(staff, voice);
+            note.set_onset(onset);
+            return;
+        }
+        if let Some(rest) = self.rests_mut().get_mut(&id) {
+            rest.set_place(staff, voice);
+            rest.set_onset(onset);
+        }
+    }
+
+    /// Copy a selection to another tick and keep the original.
+    ///
+    /// Every copy keeps the staff and the voice of the element it came from.
+    ///
+    /// # Errors
+    /// Returns what `resolve` and `paste_clipboard` return.
+    fn duplicate(&mut self, selection: &Selection, at: Ticks) -> Result<Outcome, ScoreError> {
+        let resolved = self.resolve(selection)?;
+        let origin = self.origin_of(selection, &resolved);
+        let clipboard = self.clipboard_of(&resolved, origin);
+        self.paste_clipboard(&clipboard, at, None)
+    }
+
+    /// Remove a selection, and every spanner that names a removed element.
+    ///
+    /// The inverse is one paste of the copy that this call takes first, so
+    /// every removed element comes back under its own identifier. A paste names
+    /// one staff and one voice, so a removal that spanned two staves comes back
+    /// into one. `escalation:T2-9` records the gap.
+    ///
+    /// # Errors
+    /// Returns what `resolve` returns.
+    fn remove(&mut self, selection: &Selection) -> Result<Outcome, ScoreError> {
+        let resolved = self.resolve(selection)?;
+        let origin = self.origin_of(selection, &resolved);
+        let clipboard = self.clipboard_of(&resolved, origin);
+        let outcome = Outcome::new(
+            vec![ScoreEvent::ElementsRemoved(selection.clone())],
+            vec![paste_of(clipboard, origin)],
+        )?;
+        for id in resolved.elements() {
+            self.notes_mut().remove(&id);
+            self.rests_mut().remove(&id);
+        }
+        for spanner in &resolved.spanners {
+            self.spanners_mut().remove(spanner);
+        }
+        for mark in &resolved.marks {
+            self.marks_mut().remove(mark);
+        }
+        Ok(outcome)
+    }
+
+    /// Insert a detached copy at one tick, in one staff and voice.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::MissingStaff` for an absent staff or voice when the
+    /// clipboard holds a note or a rest, and what `paste_clipboard` returns.
+    fn paste(
+        &mut self,
+        clipboard: &Clipboard,
+        at: Ticks,
+        staff: StaffId,
+        voice: VoiceId,
+    ) -> Result<Outcome, ScoreError> {
+        if clipboard.notes().is_empty() && clipboard.rests().is_empty() {
+            return self.paste_clipboard(clipboard, at, None);
+        }
+        self.voice_in(staff, voice)?;
+        self.paste_clipboard(clipboard, at, Some((staff, voice)))
+    }
+
+    /// The identifier that `wanted` keeps, or a new one where it is taken.
+    fn free_note_id(&mut self, wanted: NoteId, taken: &BTreeSet<NoteId>) -> NoteId {
+        if self.notes().contains_key(&wanted)
+            || self.rests().contains_key(&wanted)
+            || taken.contains(&wanted)
+        {
+            return NoteId::new(self.mint_id());
+        }
+        wanted
+    }
+
+    /// Insert a detached copy at `at`.
+    ///
+    /// Every element keeps the identifier that the clipboard carries when the
+    /// score does not already hold it, and takes a new one when the score does.
+    /// A cut and a paste of one selection therefore return the score to its
+    /// earlier content, and every reference into that selection survives.
+    ///
+    /// `to` names the staff and the voice that take every note and rest. A
+    /// duplicate passes `None`, and every element then keeps its own. An empty
+    /// clipboard changes nothing and answers an empty inverse.
+    ///
+    /// # Errors
+    /// Returns `ScoreError::OverlappingNote` for a target that a note or a rest
+    /// already fills.
+    fn paste_clipboard(
+        &mut self,
+        clipboard: &Clipboard,
+        at: Ticks,
+        to: Option<(StaffId, VoiceId)>,
+    ) -> Result<Outcome, ScoreError> {
+        let shift = at.saturating_sub(clipboard.origin());
+        let free = BTreeSet::new();
+        for note in clipboard.notes() {
+            let (staff, voice) = to.unwrap_or_else(|| (note.staff(), note.voice()));
+            let onset = note.onset().saturating_add(shift);
+            self.check_free(staff, voice, onset, note.duration(), &free)?;
+        }
+        for rest in clipboard.rests() {
+            let (staff, voice) = to.unwrap_or_else(|| (rest.staff(), rest.voice()));
+            let onset = rest.onset().saturating_add(shift);
+            self.check_free(staff, voice, onset, rest.duration(), &free)?;
+        }
+        let pasted = self.mint_paste(clipboard, shift, to);
+        let outcome = Outcome::new(pasted.events.clone(), pasted.inverse.clone())?;
+        self.commit_paste(pasted);
+        Ok(outcome)
+    }
+
+    /// Mint the identifiers of one paste and build its events and its inverse.
+    fn mint_paste(
+        &mut self,
+        clipboard: &Clipboard,
+        shift: Ticks,
+        to: Option<(StaffId, VoiceId)>,
+    ) -> Pasted {
+        let mut taken: BTreeSet<NoteId> = BTreeSet::new();
+        let mut renamed: BTreeMap<NoteId, NoteId> = BTreeMap::new();
+        let mut notes = Vec::with_capacity(clipboard.notes().len());
+        let mut rests = Vec::with_capacity(clipboard.rests().len());
+        let mut events = Vec::new();
+        for note in clipboard.notes() {
+            let id = self.free_note_id(note.id(), &taken);
+            taken.insert(id);
+            renamed.insert(note.id(), id);
+            let (staff, voice) = to.unwrap_or_else(|| (note.staff(), note.voice()));
+            let mut placed = note.clone().with_id(id);
+            placed.set_place(staff, voice);
+            placed.set_onset(note.onset().saturating_add(shift));
+            events.push(ScoreEvent::NoteInserted(id));
+            notes.push(placed);
+        }
+        for rest in clipboard.rests() {
+            let id = self.free_note_id(rest.id(), &taken);
+            taken.insert(id);
+            renamed.insert(rest.id(), id);
+            let (staff, voice) = to.unwrap_or_else(|| (rest.staff(), rest.voice()));
+            let mut placed = rest.clone().with_id(id);
+            placed.set_place(staff, voice);
+            placed.set_onset(rest.onset().saturating_add(shift));
+            events.push(ScoreEvent::NoteInserted(id));
+            rests.push(placed);
+        }
+        let spanners = self.mint_spanners(clipboard, &renamed, &mut events);
+        let marks = self.mint_marks(clipboard, shift, &mut events);
+        let inverse = paste_inverse(&notes, &rests, &spanners, &marks);
+        Pasted {
+            notes,
+            rests,
+            spanners,
+            marks,
+            events,
+            inverse,
+        }
+    }
+
+    /// Mint the spanners of one paste, with their two endpoints remapped.
+    fn mint_spanners(
+        &mut self,
+        clipboard: &Clipboard,
+        renamed: &BTreeMap<NoteId, NoteId>,
+        events: &mut Vec<ScoreEvent>,
+    ) -> Vec<Spanner> {
+        let mut minted = Vec::with_capacity(clipboard.spanners().len());
+        for spanner in clipboard.spanners() {
+            let id = if self.spanners().contains_key(&spanner.id()) {
+                SpannerId::new(self.mint_id())
+            } else {
+                spanner.id()
+            };
+            let from = renamed
+                .get(&spanner.from())
+                .copied()
+                .unwrap_or_else(|| spanner.from());
+            let to = renamed
+                .get(&spanner.to())
+                .copied()
+                .unwrap_or_else(|| spanner.to());
+            events.push(ScoreEvent::SpannerAdded(id));
+            minted.push(spanner.clone().with_ids(id, from, to));
+        }
+        minted
+    }
+
+    /// Mint the marks of one paste, moved by `shift`.
+    fn mint_marks(
+        &mut self,
+        clipboard: &Clipboard,
+        shift: Ticks,
+        events: &mut Vec<ScoreEvent>,
+    ) -> Vec<ScoreMark> {
+        let mut minted = Vec::with_capacity(clipboard.marks().len());
+        for mark in clipboard.marks() {
+            let id = if self.marks().contains_key(&mark.id()) {
+                MarkId::new(self.mint_id())
+            } else {
+                mark.id()
+            };
+            let mut placed = mark.clone().with_id(id);
+            placed.set_at(mark.at().saturating_add(shift));
+            events.push(ScoreEvent::MarkAdded(id));
+            minted.push(placed);
+        }
+        minted
+    }
+
+    /// Put the elements of one paste into the score.
+    fn commit_paste(&mut self, pasted: Pasted) {
+        for note in pasted.notes {
+            self.notes_mut().insert(note.id(), note);
+        }
+        for rest in pasted.rests {
+            self.rests_mut().insert(rest.id(), rest);
+        }
+        for spanner in pasted.spanners {
+            self.spanners_mut().insert(spanner.id(), spanner);
+        }
+        for mark in pasted.marks {
+            self.marks_mut().insert(mark.id(), mark);
+        }
+    }
+}
+#[cfg(test)]
+mod tests {
+    use core::num::{NonZeroU8, NonZeroU16};
+
+    use duet_time::{Meter, NoteValue, Ticks};
+
+    use super::Applied;
+    use crate::command::{PitchEdit, ScoreCommand, Selection};
+    use crate::error::ScoreError;
+    use crate::event::ScoreEvent;
+    use crate::ids::{
+        ElementRef, LyricText, MarkId, MeasureId, NoteId, PartId, PartName, SpannerId, StaffId,
+        VerseNumber, VoiceId,
+    };
+    use crate::model::{
+        Clef, Duration, Dynamic, KeySignature, MarkKind, Note, Pitch, Score, SpannerKind, Step,
+        TieState, VoiceType,
+    };
+
+    /// A part identifier that no score of this module mints.
+    const ABSENT_PART: PartId = PartId::new(9_000);
+
+    /// A staff identifier that no score of this module mints.
+    const ABSENT_STAFF: StaffId = StaffId::new(9_001);
+
+    /// A measure identifier that no score of this module mints.
+    const ABSENT_MEASURE: MeasureId = MeasureId::new(9_002);
+
+    /// A note identifier that no score of this module mints.
+    const ABSENT_NOTE: NoteId = NoteId::new(9_003);
+
+    /// A spanner identifier that no score of this module mints.
+    const ABSENT_SPANNER: SpannerId = SpannerId::new(9_004);
+
+    /// A mark identifier that no score of this module mints.
+    const ABSENT_MARK: MarkId = MarkId::new(9_005);
+
+    /// A voice identifier that no score of this module mints.
+    const ABSENT_VOICE: VoiceId = VoiceId::new(9_006);
+
+    /// A run of one measure.
+    const ONE_MEASURE: NonZeroU16 = NonZeroU16::MIN;
+
+    /// The tick count of one quarter note.
+    const QUARTER_TICKS: i64 = 1_920;
+
+    /// A score with one part and one staff, and the identifiers of each.
+    struct Stage {
+        /// The score under test.
+        score: Score,
+        /// The part that the stage added.
+        part: PartId,
+        /// The staff that the stage added to that part.
+        staff: StaffId,
+        /// The voice that the staff holds.
+        voice: VoiceId,
+    }
+
+    /// One command that the score refuses, and the score it acts on.
+    struct RefusalCase {
+        /// The command that the case exercises.
+        name: &'static str,
+        /// The score that takes the command.
+        score: Score,
+        /// The command that the score refuses.
+        command: ScoreCommand,
+        /// The refusal that the command must answer with.
+        refusal: ScoreError,
+    }
+
+    /// One command that the score accepts, and the score it acts on.
+    struct InverseCase {
+        /// The command that the case exercises.
+        name: &'static str,
+        /// The score that takes the command.
+        score: Score,
+        /// The command that the case applies and then undoes.
+        command: ScoreCommand,
+    }
+
+    /// The part that `PartAdded` names in `applied`.
+    fn part_of(applied: &Applied) -> PartId {
+        applied
+            .events
+            .iter()
+            .find_map(|event| {
+                if let ScoreEvent::PartAdded(part) = *event {
+                    Some(part)
+                } else {
+                    None
+                }
+            })
+            .expect("an accepted AddPart reports PartAdded")
+    }
+
+    /// The staff that `StaffAdded` names in `applied`.
+    fn staff_of(applied: &Applied) -> StaffId {
+        applied
+            .events
+            .iter()
+            .find_map(|event| {
+                if let ScoreEvent::StaffAdded(staff) = *event {
+                    Some(staff)
+                } else {
+                    None
+                }
+            })
+            .expect("an accepted AddStaff reports StaffAdded")
+    }
+
+    /// The note that `NoteInserted` names in `applied`.
+    fn note_of(applied: &Applied) -> NoteId {
+        applied
+            .events
+            .iter()
+            .find_map(|event| {
+                if let ScoreEvent::NoteInserted(note) = *event {
+                    Some(note)
+                } else {
+                    None
+                }
+            })
+            .expect("an accepted InsertNote reports NoteInserted")
+    }
+
+    /// A quarter note with no dot and no tuplet.
+    fn quarter() -> Duration {
+        Duration::new(NoteValue::Quarter, 0, None)
+    }
+
+    /// A half note with no dot and no tuplet.
+    fn half() -> Duration {
+        Duration::new(NoteValue::Half, 0, None)
+    }
+
+    /// The pitch of `step` in octave four, with no alteration.
+    fn natural(step: Step) -> Pitch {
+        Pitch::new(4, step, 0)
+    }
+
+    /// A meter of three quarter beats in one bar.
+    fn three_four() -> Meter {
+        Meter::new(
+            NonZeroU8::new(3).expect("three is not zero"),
+            NoteValue::Quarter,
+        )
+    }
+
+    /// The first verse.
+    fn verse_one() -> VerseNumber {
+        VerseNumber::new(NonZeroU8::MIN)
+    }
+
+    /// The lyric syllable that `text` spells.
+    fn lyric(text: &str) -> LyricText {
+        LyricText::new(text).expect("a syllable with text")
+    }
+
+    /// An `AddPart` command for a soprano part that `name` names.
+    fn add_part(name: &str) -> ScoreCommand {
+        ScoreCommand::AddPart {
+            voice_type: VoiceType::Soprano,
+            name: PartName::new(name).expect("a name with text"),
+        }
+    }
+
+    /// A score with one part, one staff, and the voice of that staff.
+    fn stage() -> Stage {
+        let mut score = Score::new();
+        let part_result = score
+            .apply(add_part("Soprano 1"))
+            .expect("AddPart is accepted");
+        let part = part_of(&part_result);
+        let staff_result = score
+            .apply(ScoreCommand::AddStaff {
+                part,
+                clef: Clef::Treble,
+            })
+            .expect("AddStaff is accepted");
+        let staff = staff_of(&staff_result);
+        let voice = *score
+            .staves()
+            .get(&staff)
+            .expect("the score holds the staff it just added")
+            .voices()
+            .first()
+            .expect("AddStaff gives the staff one voice, because InsertNote names a voice");
+        Stage {
+            score,
+            part,
+            staff,
+            voice,
+        }
+    }
+
+    /// Insert one quarter note into `stage` and answer its identifier.
+    fn insert_note(stage: &mut Stage, onset: i64, step: Step) -> NoteId {
+        let inserted = stage
+            .score
+            .apply(ScoreCommand::InsertNote {
+                staff: stage.staff,
+                voice: stage.voice,
+                onset: Ticks::new(onset),
+                pitch: natural(step),
+                duration: quarter(),
+            })
+            .expect("an InsertNote at a free onset is accepted");
+        note_of(&inserted)
+    }
+
+    /// A stage with two notes of one pitch, one quarter note apart.
+    fn stage_with_two_notes() -> (Stage, NoteId, NoteId) {
+        let mut stage = stage();
+        let first = insert_note(&mut stage, 0, Step::C);
+        let second = insert_note(&mut stage, QUARTER_TICKS, Step::C);
+        (stage, first, second)
+    }
+
+    /// A stage with two notes one whole note apart, and the first of the two.
+    ///
+    /// `SetDuration` refuses a duration that makes a note reach the next note
+    /// of the same staff and the same voice, so the note that grows to a half
+    /// note needs a free half note after it.
+    fn stage_with_a_distant_second_note() -> (Stage, NoteId) {
+        let mut stage = stage();
+        let first = insert_note(&mut stage, 0, Step::C);
+        insert_note(&mut stage, QUARTER_TICKS * 4, Step::C);
+        (stage, first)
+    }
+
+    /// The identifier of the one measure that a new score holds.
+    fn first_measure(score: &Score) -> MeasureId {
+        *score
+            .measures()
+            .keys()
+            .next()
+            .expect("a new score holds one measure")
+    }
+
+    /// Assert that two scores hold the same content, whatever their revision.
+    fn assert_same_content(left: &Score, right: &Score, property: &str) {
+        assert_eq!(left.parts(), right.parts(), "{property}: the parts match");
+        assert_eq!(
+            left.staves(),
+            right.staves(),
+            "{property}: the staves match"
+        );
+        assert_eq!(
+            left.voices(),
+            right.voices(),
+            "{property}: the voices match"
+        );
+        assert_eq!(
+            left.measures(),
+            right.measures(),
+            "{property}: the measures match"
+        );
+        assert_eq!(left.notes(), right.notes(), "{property}: the notes match");
+        assert_eq!(left.rests(), right.rests(), "{property}: the rests match");
+        assert_eq!(
+            left.spanners(),
+            right.spanners(),
+            "{property}: the spanners match"
+        );
+        assert_eq!(left.marks(), right.marks(), "{property}: the marks match");
+        assert_eq!(
+            left.tempo_map(),
+            right.tempo_map(),
+            "{property}: the tempo map matches"
+        );
+    }
+
+    /// The refusal that an insert over a sounding note answers with.
+    fn overlap_refusal() -> RefusalCase {
+        let mut overlap = stage();
+        insert_note(&mut overlap, 0, Step::C);
+        let staff = overlap.staff;
+        let voice = overlap.voice;
+        let onset = Ticks::new(0);
+        RefusalCase {
+            name: "InsertNote over a sounding note",
+            score: overlap.score,
+            command: ScoreCommand::InsertNote {
+                staff,
+                voice,
+                onset,
+                pitch: natural(Step::E),
+                duration: quarter(),
+            },
+            refusal: ScoreError::OverlappingNote {
+                staff,
+                voice,
+                onset,
+            },
+        }
+    }
+
+    /// The refusal that a tie between two pitches answers with.
+    fn tie_refusal() -> RefusalCase {
+        let mut tied = stage();
+        let from = insert_note(&mut tied, 0, Step::C);
+        let to = insert_note(&mut tied, QUARTER_TICKS, Step::D);
+        RefusalCase {
+            name: "SetTie across two pitches",
+            score: tied.score,
+            command: ScoreCommand::SetTie {
+                note: from,
+                tie: TieState::new(true, false),
+            },
+            refusal: ScoreError::TieAcrossPitch { from, to },
+        }
+    }
+
+    /// The refusal that a remove of a filled measure answers with.
+    fn filled_measure_refusal() -> RefusalCase {
+        let mut filled = stage();
+        insert_note(&mut filled, 0, Step::C);
+        let measure = first_measure(&filled.score);
+        RefusalCase {
+            name: "RemoveMeasures over a filled measure",
+            score: filled.score,
+            command: ScoreCommand::RemoveMeasures {
+                from: measure,
+                count: ONE_MEASURE,
+            },
+            refusal: ScoreError::MeasureNotEmpty(measure),
+        }
+    }
+
+    /// Every structure command of the set that names an absent element.
+    fn absent_structure_commands() -> Vec<(&'static str, ScoreCommand, ScoreError)> {
+        vec![
+            (
+                "AddStaff",
+                ScoreCommand::AddStaff {
+                    part: ABSENT_PART,
+                    clef: Clef::Treble,
+                },
+                ScoreError::MissingPart(ABSENT_PART),
+            ),
+            (
+                "RemovePart",
+                ScoreCommand::RemovePart { part: ABSENT_PART },
+                ScoreError::MissingPart(ABSENT_PART),
+            ),
+            (
+                "RemoveStaff",
+                ScoreCommand::RemoveStaff {
+                    staff: ABSENT_STAFF,
+                },
+                ScoreError::MissingStaff(ABSENT_STAFF),
+            ),
+            (
+                "SetClef",
+                ScoreCommand::SetClef {
+                    staff: ABSENT_STAFF,
+                    at: Ticks::new(0),
+                    clef: Clef::Bass,
+                },
+                ScoreError::MissingStaff(ABSENT_STAFF),
+            ),
+            (
+                "SetKeySignature",
+                ScoreCommand::SetKeySignature {
+                    measure: ABSENT_MEASURE,
+                    key: KeySignature::new(1, true),
+                },
+                ScoreError::MissingMeasure(ABSENT_MEASURE),
+            ),
+            (
+                "SetTimeSignature",
+                ScoreCommand::SetTimeSignature {
+                    measure: ABSENT_MEASURE,
+                    meter: three_four(),
+                },
+                ScoreError::MissingMeasure(ABSENT_MEASURE),
+            ),
+            (
+                "InsertMeasures",
+                ScoreCommand::InsertMeasures {
+                    after: ABSENT_MEASURE,
+                    count: ONE_MEASURE,
+                },
+                ScoreError::MissingMeasure(ABSENT_MEASURE),
+            ),
+            (
+                "RemoveMeasures",
+                ScoreCommand::RemoveMeasures {
+                    from: ABSENT_MEASURE,
+                    count: ONE_MEASURE,
+                },
+                ScoreError::MissingMeasure(ABSENT_MEASURE),
+            ),
+            (
+                "RemoveMark",
+                ScoreCommand::RemoveMark { mark: ABSENT_MARK },
+                ScoreError::MissingElement(ElementRef::Mark(ABSENT_MARK)),
+            ),
+        ]
+    }
+
+    /// Every content command of the set that names an absent element.
+    fn absent_content_commands(present: NoteId) -> Vec<(&'static str, ScoreCommand, ScoreError)> {
+        vec![
+            (
+                "InsertNote",
+                ScoreCommand::InsertNote {
+                    staff: ABSENT_STAFF,
+                    voice: ABSENT_VOICE,
+                    onset: Ticks::new(0),
+                    pitch: natural(Step::C),
+                    duration: quarter(),
+                },
+                ScoreError::MissingStaff(ABSENT_STAFF),
+            ),
+            (
+                "InsertRest",
+                ScoreCommand::InsertRest {
+                    staff: ABSENT_STAFF,
+                    voice: ABSENT_VOICE,
+                    onset: Ticks::new(0),
+                    duration: quarter(),
+                },
+                ScoreError::MissingStaff(ABSENT_STAFF),
+            ),
+            (
+                "SetDynamic",
+                ScoreCommand::SetDynamic {
+                    staff: ABSENT_STAFF,
+                    onset: Ticks::new(0),
+                    dynamic: Dynamic::Mf,
+                },
+                ScoreError::MissingStaff(ABSENT_STAFF),
+            ),
+            (
+                "SetPitch",
+                ScoreCommand::SetPitch {
+                    notes: vec![ABSENT_NOTE],
+                    pitch: PitchEdit::BySemitones(1),
+                },
+                ScoreError::MissingElement(ElementRef::Note(ABSENT_NOTE)),
+            ),
+            (
+                "SetDuration",
+                ScoreCommand::SetDuration {
+                    notes: vec![ABSENT_NOTE],
+                    duration: half(),
+                },
+                ScoreError::MissingElement(ElementRef::Note(ABSENT_NOTE)),
+            ),
+            (
+                "SetTie",
+                ScoreCommand::SetTie {
+                    note: ABSENT_NOTE,
+                    tie: TieState::new(true, false),
+                },
+                ScoreError::MissingElement(ElementRef::Note(ABSENT_NOTE)),
+            ),
+            (
+                "SetLyric",
+                ScoreCommand::SetLyric {
+                    note: ABSENT_NOTE,
+                    verse: verse_one(),
+                    text: lyric("la"),
+                },
+                ScoreError::MissingElement(ElementRef::Note(ABSENT_NOTE)),
+            ),
+            (
+                "AddSpanner",
+                ScoreCommand::AddSpanner {
+                    kind: SpannerKind::Slur,
+                    from: present,
+                    to: ABSENT_NOTE,
+                },
+                ScoreError::MissingElement(ElementRef::Note(ABSENT_NOTE)),
+            ),
+            (
+                "RemoveSpanner",
+                ScoreCommand::RemoveSpanner {
+                    spanner: ABSENT_SPANNER,
+                },
+                ScoreError::MissingElement(ElementRef::Spanner(ABSENT_SPANNER)),
+            ),
+            (
+                "SetPart",
+                ScoreCommand::SetPart {
+                    notes: vec![present],
+                    part: ABSENT_PART,
+                    staff: ABSENT_STAFF,
+                },
+                ScoreError::MissingPart(ABSENT_PART),
+            ),
+            (
+                "Remove",
+                ScoreCommand::Remove {
+                    selection: Selection::Notes(vec![ABSENT_NOTE]),
+                },
+                ScoreError::MissingElement(ElementRef::Note(ABSENT_NOTE)),
+            ),
+            (
+                "Move",
+                ScoreCommand::Move {
+                    selection: Selection::Notes(vec![ABSENT_NOTE]),
+                    by: Ticks::new(QUARTER_TICKS),
+                    to_staff: None,
+                },
+                ScoreError::MissingElement(ElementRef::Note(ABSENT_NOTE)),
+            ),
+            (
+                "Duplicate",
+                ScoreCommand::Duplicate {
+                    selection: Selection::Notes(vec![ABSENT_NOTE]),
+                    at: Ticks::new(QUARTER_TICKS * 2),
+                },
+                ScoreError::MissingElement(ElementRef::Note(ABSENT_NOTE)),
+            ),
+        ]
+    }
+
+    /// Every refusal that an absent element causes, over one prepared score.
+    fn missing_refusals() -> Vec<RefusalCase> {
+        let mut prepared = stage();
+        let present = insert_note(&mut prepared, 0, Step::C);
+        let score = prepared.score;
+        absent_structure_commands()
+            .into_iter()
+            .chain(absent_content_commands(present))
+            .map(|(name, command, refusal)| RefusalCase {
+                name,
+                score: score.clone(),
+                command,
+                refusal,
+            })
+            .collect()
+    }
+
+    /// Every refusal of the representative command set.
+    fn refusal_cases() -> Vec<RefusalCase> {
+        let mut cases = vec![overlap_refusal(), tie_refusal(), filled_measure_refusal()];
+        cases.extend(missing_refusals());
+        cases
+    }
+
+    /// The structure commands of the inverse set.
+    fn structure_inverse_cases() -> Vec<InverseCase> {
+        let part_stage = stage();
+        let staff_stage = stage();
+        let staff_part = staff_stage.part;
+        let mark_stage = stage();
+        vec![
+            InverseCase {
+                name: "AddPart",
+                score: Score::new(),
+                command: add_part("Alto 1"),
+            },
+            InverseCase {
+                name: "AddStaff",
+                score: staff_stage.score,
+                command: ScoreCommand::AddStaff {
+                    part: staff_part,
+                    clef: Clef::Bass,
+                },
+            },
+            InverseCase {
+                name: "AddMark",
+                score: mark_stage.score,
+                command: ScoreCommand::AddMark {
+                    at: Ticks::new(0),
+                    kind: MarkKind::SystemBreak,
+                },
+            },
+            InverseCase {
+                name: "InsertNote",
+                score: part_stage.score,
+                command: ScoreCommand::InsertNote {
+                    staff: part_stage.staff,
+                    voice: part_stage.voice,
+                    onset: Ticks::new(QUARTER_TICKS * 2),
+                    pitch: natural(Step::G),
+                    duration: quarter(),
+                },
+            },
+        ]
+    }
+
+    /// The content commands of the inverse set.
+    fn content_inverse_cases() -> Vec<InverseCase> {
+        let rest_stage = stage();
+        let (pitch_stage, pitch_note, _pitch_second) = stage_with_two_notes();
+        let (duration_stage, duration_note) = stage_with_a_distant_second_note();
+        let (tie_stage, tie_note, _tie_second) = stage_with_two_notes();
+        let (lyric_stage, lyric_note, _lyric_second) = stage_with_two_notes();
+        let (spanner_stage, spanner_from, spanner_to) = stage_with_two_notes();
+        vec![
+            InverseCase {
+                name: "InsertRest",
+                score: rest_stage.score,
+                command: ScoreCommand::InsertRest {
+                    staff: rest_stage.staff,
+                    voice: rest_stage.voice,
+                    onset: Ticks::new(QUARTER_TICKS * 2),
+                    duration: quarter(),
+                },
+            },
+            InverseCase {
+                name: "SetPitch",
+                score: pitch_stage.score,
+                command: ScoreCommand::SetPitch {
+                    notes: vec![pitch_note],
+                    pitch: PitchEdit::Absolute(natural(Step::E)),
+                },
+            },
+            InverseCase {
+                name: "SetDuration",
+                score: duration_stage.score,
+                command: ScoreCommand::SetDuration {
+                    notes: vec![duration_note],
+                    duration: half(),
+                },
+            },
+            InverseCase {
+                name: "SetTie",
+                score: tie_stage.score,
+                command: ScoreCommand::SetTie {
+                    note: tie_note,
+                    tie: TieState::new(true, false),
+                },
+            },
+            InverseCase {
+                name: "SetLyric",
+                score: lyric_stage.score,
+                command: ScoreCommand::SetLyric {
+                    note: lyric_note,
+                    verse: verse_one(),
+                    text: lyric("la"),
+                },
+            },
+            InverseCase {
+                name: "AddSpanner",
+                score: spanner_stage.score,
+                command: ScoreCommand::AddSpanner {
+                    kind: SpannerKind::Slur,
+                    from: spanner_from,
+                    to: spanner_to,
+                },
+            },
+        ]
+    }
+
+    /// The edit commands of the inverse set.
+    fn edit_inverse_cases() -> Vec<InverseCase> {
+        let (remove_stage, _remove_first, remove_second) = stage_with_two_notes();
+        let (move_stage, _move_first, move_second) = stage_with_two_notes();
+        let (copy_stage, copy_first, _copy_second) = stage_with_two_notes();
+        vec![
+            InverseCase {
+                name: "Remove",
+                score: remove_stage.score,
+                command: ScoreCommand::Remove {
+                    selection: Selection::Notes(vec![remove_second]),
+                },
+            },
+            InverseCase {
+                name: "Move",
+                score: move_stage.score,
+                command: ScoreCommand::Move {
+                    selection: Selection::Notes(vec![move_second]),
+                    by: Ticks::new(QUARTER_TICKS),
+                    to_staff: None,
+                },
+            },
+            InverseCase {
+                name: "Duplicate",
+                score: copy_stage.score,
+                command: ScoreCommand::Duplicate {
+                    selection: Selection::Notes(vec![copy_first]),
+                    at: Ticks::new(QUARTER_TICKS * 2),
+                },
+            },
+        ]
+    }
+
+    /// Every command of the representative set that the score accepts.
+    fn inverse_cases() -> Vec<InverseCase> {
+        let mut cases = structure_inverse_cases();
+        cases.extend(content_inverse_cases());
+        cases.extend(edit_inverse_cases());
+        cases
+    }
+
+    /// Apply every inverse command of one transaction to `score`.
+    fn undo_all(score: &mut Score, inverse: Vec<ScoreCommand>, property: &str) {
+        for undo in inverse {
+            if let Err(error) = score.apply(undo) {
+                panic!("{property} inverts, and the undo answered {error}");
+            }
+        }
+    }
+
+    #[test]
+    fn apply_rejects_overlapping_note() {
+        let mut stage = stage();
+        insert_note(&mut stage, 0, Step::C);
+        let refusal = stage.score.apply(ScoreCommand::InsertNote {
+            staff: stage.staff,
+            voice: stage.voice,
+            onset: Ticks::new(0),
+            pitch: natural(Step::E),
+            duration: quarter(),
+        });
+        assert_eq!(
+            refusal,
+            Err(ScoreError::OverlappingNote {
+                staff: stage.staff,
+                voice: stage.voice,
+                onset: Ticks::new(0),
+            }),
+            "a second note at one onset in one staff and one voice gives OverlappingNote"
+        );
+    }
+
+    #[test]
+    fn apply_rejects_tie_across_pitch() {
+        let mut stage = stage();
+        let from = insert_note(&mut stage, 0, Step::C);
+        let to = insert_note(&mut stage, QUARTER_TICKS, Step::D);
+        let refusal = stage.score.apply(ScoreCommand::SetTie {
+            note: from,
+            tie: TieState::new(true, false),
+        });
+        assert_eq!(
+            refusal,
+            Err(ScoreError::TieAcrossPitch { from, to }),
+            "a tie holds one pitch, so a tie to another pitch gives TieAcrossPitch"
+        );
+    }
+
+    #[test]
+    fn apply_rejects_remove_of_filled_measure() {
+        let mut stage = stage();
+        insert_note(&mut stage, 0, Step::C);
+        let measure = first_measure(&stage.score);
+        let refusal = stage.score.apply(ScoreCommand::RemoveMeasures {
+            from: measure,
+            count: ONE_MEASURE,
+        });
+        assert_eq!(
+            refusal,
+            Err(ScoreError::MeasureNotEmpty(measure)),
+            "a measure that holds a note gives MeasureNotEmpty"
+        );
+    }
+
+    #[test]
+    fn apply_rejects_a_command_that_names_a_missing_element() {
+        for case in missing_refusals() {
+            let mut score = case.score;
+            let before = score.clone();
+            let refusal = score.apply(case.command);
+            assert_eq!(
+                refusal,
+                Err(case.refusal),
+                "{} names an element the score does not hold, so it refuses",
+                case.name
+            );
+            assert_eq!(
+                score, before,
+                "{} changes nothing when it names a missing element",
+                case.name
+            );
+        }
+    }
+
+    #[test]
+    fn apply_leaves_no_partial_change() {
+        for case in refusal_cases() {
+            let mut score = case.score;
+            let before = score.clone();
+            let refusal = score.apply(case.command);
+            assert_eq!(refusal, Err(case.refusal), "{} refuses", case.name);
+            assert_eq!(
+                score, before,
+                "{} leaves the score equal to its own clone",
+                case.name
+            );
+            assert_eq!(
+                score.revision(),
+                before.revision(),
+                "{} leaves the revision unchanged",
+                case.name
+            );
+            assert_eq!(
+                score.next_id(),
+                before.next_id(),
+                "{} mints no identifier",
+                case.name
+            );
+        }
+    }
+
+    #[test]
+    fn apply_inverse_restores_the_score() {
+        for case in inverse_cases() {
+            let mut score = case.score;
+            let before = score.clone();
+            let applied = match score.apply(case.command) {
+                Ok(applied) => applied,
+                Err(error) => panic!("{} is accepted, and it answered {error}", case.name),
+            };
+            assert!(
+                !applied.inverse.is_empty(),
+                "{} gives at least one inverse command",
+                case.name
+            );
+            undo_all(&mut score, applied.inverse, case.name);
+            assert_same_content(&score, &before, case.name);
+        }
+    }
+
+    #[test]
+    fn apply_increases_the_revision() {
+        let mut stage = stage();
+        let before = stage.score.revision().get();
+        insert_note(&mut stage, 0, Step::C);
+        let after_success = stage.score.revision().get();
+        assert!(
+            after_success > before,
+            "a successful command increases the revision"
+        );
+        let refusal = stage.score.apply(ScoreCommand::InsertNote {
+            staff: stage.staff,
+            voice: stage.voice,
+            onset: Ticks::new(0),
+            pitch: natural(Step::E),
+            duration: quarter(),
+        });
+        assert!(refusal.is_err(), "a second note at one onset is refused");
+        assert_eq!(
+            stage.score.revision().get(),
+            after_success,
+            "a refused command leaves the revision unchanged"
+        );
+    }
+
+    #[test]
+    fn copy_then_remove_is_a_cut() {
+        let (mut stage, first, second) = stage_with_two_notes();
+        let selection = Selection::Notes(vec![first, second]);
+        let before = stage.score.clone();
+        let clipboard = match stage.score.copy(&selection) {
+            Ok(clipboard) => clipboard,
+            Err(error) => panic!("a copy of two notes the score holds answered {error}"),
+        };
+        let copied: Vec<NoteId> = clipboard.notes().iter().map(Note::id).collect();
+        assert_eq!(
+            copied,
+            vec![first, second],
+            "the clipboard holds the selected notes"
+        );
+        assert_eq!(stage.score, before, "a copy leaves the score unchanged");
+        let cut = stage.score.apply(ScoreCommand::Remove { selection });
+        assert!(cut.is_ok(), "the remove half of a cut is accepted");
+        assert!(
+            stage.score.notes().is_empty(),
+            "the remove half of a cut takes both notes out of the score"
+        );
+    }
+}
