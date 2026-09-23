@@ -65,11 +65,19 @@ jobs:
       - name: Detect a change to the plan or to its guards
         id: filter
         run: |
+          # Each diff prints one path per line, whatever bytes the path holds.
+          # `-z` prints each path RAW and NUL separated, so nothing is quoted
+          # and no byte is escaped; a quoted path fails the anchored pattern
+          # below and this job would answer `false` for a plan change it never
+          # saw. `--no-renames` prints BOTH sides of a rename, so a document
+          # moved OUT of `roadmap/` is still seen. The same form runs in
+          # `scripts/dod.sh`.
           base="${{ github.base_ref }}"
+          diffnames() { git -c core.quotePath=false diff --no-renames -z --name-only "$@" | tr '\0' '\n'; }
           if [ -n "$base" ]; then
-            changed="$(git diff --name-only "origin/$base"...HEAD)"
+            changed="$(diffnames "origin/$base"...HEAD)"
           elif git rev-parse --verify --quiet HEAD^ >/dev/null; then
-            changed="$(git diff --name-only HEAD^ HEAD)"
+            changed="$(diffnames HEAD^ HEAD)"
           else
             changed="roadmap/"
           fi
@@ -108,11 +116,13 @@ jobs:
         run: cargo build --release -p plan-db
       - name: Placement
         run: cargo xtask check-placement roadmap/duet-v1/architecture.md
-      - name: Roster compile
-        run: cargo xtask check-roster roadmap/duet-v1/architecture.md "$RUNNER_TEMP/roster" .
       - name: Plan graph
         run: cargo xtask check-plan-graph roadmap/duet-v1
       - name: Plan manifest drift
         run: cargo xtask check-plan-graph roadmap/duet-v1 --check-manifest
+      - name: Roster compile
+        run: cargo xtask check-roster roadmap/duet-v1/architecture.md "$RUNNER_TEMP/roster" .
+      - name: Reason texts
+        run: cargo xtask check-conversions --appendix roadmap/duet-v1/architecture.md
       - name: Probes
         run: cargo nextest run -p xtask --test probes --no-tests=fail

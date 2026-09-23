@@ -1639,8 +1639,8 @@ showed that an invented family of ten ids could be added to this table with a gr
 | PG1 to PG41, with PG4b, PG10b, PG20b, PG26b to PG26f, PG27b, and PG31b | The placement-guard rules | 1.5 |
 | PG26, PG26b, PG26c | The three TH1 rules | 5.7 |
 | PP1 to PP41, with PP4b, PP10b, PP20b, PP26b to PP26f, PP27b, and PP31b, one per placement-guard rule | The placement-guard probes | 1.9 |
-| CG1 to CG8, with CG1b, CG2b, CG3b, and CG4b | The conversion-guard rules | 2.3 |
-| CP1 to CP8, with CP1b, CP2b, CP3b, and CP4b | The conversion-guard probes | 1.9 |
+| CG1 to CG9, with CG1b, CG2b, CG3b, and CG4b | The conversion-guard rules | 2.3 |
+| CP1 to CP9, with CP1b, CP2b, CP3b, and CP4b | The conversion-guard probes | 1.9 |
 | VR1 to VR6 | The vocabulary rules | 3.5 |
 | TH1 to TH13 | The thread rules | 5.7 |
 | CL0 to CL5, with CL1b, CL1c and CL1d | The closure rules, which PG32 runs | 1.5 |
@@ -1744,6 +1744,17 @@ Critic re-runs every probe against the same code an implementer reads. **PG25 ne
 a scratch directory**, and it takes the document, the scratch directory, and the repository root as
 three arguments; it refuses a scratch directory inside the repository and it is fail-closed on every
 input failure.
+
+**`roadmap/duet-v1/tools/plan_graph_check.py` is a fifth prototype and PG29 does not read it.** It
+carries the seven chunk-graph checks of `tools/xtask/src/check_plan_graph.rs` and it carries no rule
+id of its own, so the PG29 set stays at the four files above. **It writes no file.** This act
+removed its manifest-write path: a run with `--write-manifest` now prints one line that names
+`cargo xtask check-plan-graph <plan-dir> --write-manifest` and changes nothing on disk. Before the
+repair the prototype wrote `roadmap/duet-v1/plan-graph.md` with a note that credited itself, while
+the Rust generator wrote a note that credits the `cargo xtask` command. One run of the prototype
+therefore made the generated file differ from its generator, and the next commit that touched
+`roadmap/` went red on the `plan` step of `scripts/dod.sh`, which chunk M90 added. **One generator
+writes `plan-graph.md`**, and rule 2 of SM9 in section 13.0 names it.
 
 #### The guard family speaks two words, and each one names an exit code
 
@@ -1946,7 +1957,7 @@ site that names it**, and a site that names only the document half names the sub
 rather than a count. All five land together or none of them does. Section 2.3 states the rule
 itself.
 
-<!-- GUARD BLOCK id=probe-table rows>=64 -->
+<!-- GUARD BLOCK id=probe-table rows>=65 -->
 | Rule | What the rule refuses | Probe | What the probe plants | Recorded result |
 |---|---|---|---|---|
 | - | - | BASE | Nothing | `exit 0`; every failure counter zero |
@@ -2013,6 +2024,7 @@ itself.
 | CG6 | A suppression outside the one conversion file, in every attribute form Rust writes | CP6 | Five forms in one file: one space after `(`, a line break, a `cfg_attr` wrapper, the `allow` spelling, and the inner `#![allow]` form | `exit 1`; `SUPPRESSION: m/src/lib.rs: line 1` first, and `MEMBERS: 1   FILES: 1   FINDINGS: 5` |
 | CG7 | An exemption that a symbolic link defeats, in either direction | CP7 | Two shapes, each in its own run: the sanctioned cast inside `crates/duet-time/src/convert.rs`, and that same path made a symbolic link to a second member's live module that holds a bare cast | `exit 0`; `MEMBERS: 2   FILES: 3   FINDINGS: 0` for the first, and `exit 1`; `CAST: n/src/hot.rs: line 5` with `MEMBERS: 3   FILES: 4   FINDINGS: 1` for the second |
 | CG8 | A workspace `cargo metadata` refuses, a member file that is not UTF-8, or a member file the guard cannot open | CP8 | Three shapes, each in its own run: a `Cargo.toml` that does not parse, the byte pair `C3 28` in a member file beside a real cast, and a member file at mode 000 beside a real cast | `exit 2` every time; ``FAIL: `cargo metadata --no-deps` refused ...; the guard is fail-closed.``, `FAIL: m/src/other.rs: the bytes are not UTF-8; the guard is fail-closed.`, and `FAIL: m/src/locked.rs: the file does not open; the guard is fail-closed.` |
+| CG9 | An Appendix B.1 `b1-convert` reason cell and the `reason =` string of that function in the one exempt file that are not one text, and an `--appendix` document the guard cannot open | CP9 | Five shapes, each in its own throwaway workspace: a reason string that differs from its cell by one character; a `b1-convert` row whose site the exempt file does not declare; a function whose `#[expect]` carries a `reason =` string that no `b1-convert` row names; an `--appendix` argument that names an absent `roadmap/duet-v1/architecture.md`, which is the fail-closed shape; and a matching pair, which is the green control | `exit 1` on the first three, `exit 2` on the fourth, and `exit 0` on the control; the first prints `REASON TEXTS:    1     REASON TEXT BAD: 1` and one line that opens ``  REASON TEXT: `` and names the site, the cell text and the code text; the second and the third print the same counter shape with the same tag; the fourth prints the one named line CG9 part 1 mandates and no counter |
 
 **The baseline run, in full. Every coverage count in this document is one of these** (DR3, critic
 R10).
@@ -3123,10 +3135,16 @@ carry is the mantissa of the float. Three statements follow, and each one is a m
 which is one above `I24::MAX`, and `I24::new` answers `None` there. The `None => I24::MAX` arm the
 body already carries is the clamp, so the repair of item 1 of Appendix B.1 changes one constant and
 no control flow. The 32-bit form takes the same shape with `i32::try_from` (Appendix B.1 item 2).
-**The negative arm of each match is UNREACHABLE at these scale factors and it stays for totality.**
-A scale factor of 2^23 sends -1.0 to exactly -8_388_608.0, which `I24::new` accepts, and 2^31 sends
--1.0 to exactly -2_147_483_648.0, which `i32::try_from` accepts. Section 1.6 states the same
-property for the `None` arm of `non_zero`, and each site names its binding accordingly.
+**The negative arm of each match is UNREACHABLE at these scale factors and it stays as a defence in
+depth.** A scale factor of 2^23 sends -1.0 to exactly -8_388_608.0, which `I24::new` accepts, and
+2^31 sends -1.0 to exactly -2_147_483_648.0, which `i32::try_from` accepts. **Totality is NOT the
+reason, and revision 24 of this document said that it was.** The unguarded final arm of each match
+already makes that match total, so each guarded negative arm is an EXTRA arm and a reader who
+deletes it still compiles the crate. The arm stays because it names the answer the clamp must give
+at the low end, so a later edit of a scale factor keeps the function correct at both ends, and no
+type in either signature checks that. **The `None` arm of `non_zero` in section 1.6 is a different
+case**: there the `None` arm is the one other arm, so the match needs it. Each site names its
+binding accordingly.
 
 **The 64 is one half of the f32 spacing at the top of the 32-bit range, and this is its derivation.**
 An `f32` carries a 24-bit significand, so inside one binade every representable value sits one unit
@@ -3454,6 +3472,12 @@ lands the code half, or it reverts the appendix edit until such a chunk exists. 
 clear a red CG9 by editing the appendix**, and no party may clear it by removing the row: the marker
 `<!-- GUARD BLOCK id=b1-convert rows>=7 -->` asserts the denominator, and PG27 refuses a block cut
 below its stated minimum while PG27b refuses a floor below the block's own row count.
+**A deliberate ARCHIVE or MOVE of `roadmap/duet-v1/architecture.md` is a different case, and the
+Software Architect owns it.** The paragraph above answers a DIVERGENCE between the appendix and the
+code; an archive breaks the path the rule reads, and no repair chunk and no revert clears that. The
+Architect writes the revision that archives or moves the document and states the `scripts/dod.sh`
+edit in the same act, under rule SM4. The Orchestrator lands that policy edit, because SM4 makes
+every policy file Orchestrator-executed and CLAUDE.md makes a gate edit an adjudication.
 
 **The rule's own limit, stated here.** It binds the appendix to `duet-time::convert` alone, which is
 the one file CG7 exempts and the one file whose reasons Appendix B.1 mandates character for
@@ -8961,10 +8985,10 @@ reasons decide the hot-plug source, and the order matters because the first one 
    `unsafe` is denied workspace-wide, so this reason is sufficient on its own.
 2. **One session bus serves audio and MIDI.** cpal's PipeWire host already connects to the server,
    so the MIDI listener adds no second connection and no second failure mode.
-3. **It is expected to add no duplicate crate version**, and chunk M3 verifies it. cpal 0.18.2 pins
+3. **It is expected to add no duplicate crate version**, and chunk G1 verifies it. cpal 0.18.2 pins
    `alsa` 0.11 on Linux, and that pin is not optional. The PipeWire feature of cpal already brings
    `pipewire` 0.10.1, so the MIDI listener shares that exact version. **The research file records no
-   `alsa` version for `midir`, and `midir` is the byte path on Linux** (critic S16). Chunk M3 runs `cargo tree -i alsa` and records the result. If `midir` brings a second
+   `alsa` version for `midir`, and `midir` is the byte path on Linux** (critic S16). **Chunk G1 runs `cargo tree -i alsa` and records the result, and chunk M4 pins `midir`.** Revision 24 gave the run to chunk M3, which pins neither crate, and Appendix B.4 gave it to chunk M4, which pins `midir` and puts no member behind it; a pin alone adds no edge, so the command found nothing in either chunk. Appendix B.5 states the rule. If `midir` brings a second
    `alsa` major, this reason is void, reasons 1 and 2 still decide, and `deny.toml` reports the
    duplicate as a warning rather than a failure.
 
@@ -11242,10 +11266,28 @@ cascade the whole phase table, for an edge SM1 already orders. The cheaper mecha
 that exists.
 
 **The order inside one phase is the order the section 13.3 row prints, left to right.** For phase 1
-that is **M1, then M91, then M90, then every line chunk of the phase**. M91 precedes M90 because
-M90 adds rule CG9, which compares the Appendix B.1 reason cells with the `reason =` strings of
-`crates/duet-time/src/convert.rs`, and M91 is the chunk that repairs those strings. A run of M90
-before M91 would be red on its own gate.
+that is **M1, then M91, then M90, then M92, then every line chunk of the phase**. M91 precedes M90
+because M90 adds rule CG9, which compares the Appendix B.1 reason cells with the `reason =` strings
+of `crates/duet-time/src/convert.rs`, and M91 is the chunk that repairs those strings. A run of M90
+before M91 would be red on its own gate. M92 follows both, because it asserts in
+`crates/duet-time/tests/proptest_large.rs` the exact equality that the M91 scale factors make true.
+**A SAME-PHASE `depends_on` edge is legal when the dependency is an `M` chunk, and this is what the
+guard implements.** `tools/xtask/src/check_plan_graph.rs` reports a finding only when
+`there == here && !dep.starts_with('M')`, so a chunk may name a manifest chunk or a repair chunk of
+its own phase and the run stays clean. The guard's own module doc states the rule more narrowly, as
+a link from the opening manifest chunk alone; the code is the source of truth and this document
+follows the code. **Chunk M92 therefore ENCODES the M91 edge**: its `depends_on` is
+`[M0, T1, M91]`, and both `cargo xtask check-plan-graph roadmap/duet-v1` and the prototype exit 0.
+Chunk M92 step 1 also reads `crates/duet-time/src/convert.rs` and stops when `UNIT_TO_I24_SCALE` is
+not `8_388_608.0`; that check BACKS UP the encoded edge rather than standing in for a missing one,
+because it catches a tree that carries the edge and not the code.
+
+**The M91 to M90 order stays in this row alone, and that is a record and not an omission.** Chunk
+M90 has LANDED, so its front matter is the record of work already done and this revision does not
+rewrite it. A same-phase pair that a later revision creates encodes the edge in `depends_on`,
+because the guard permits it.
+For phase 2 the order is **M2, then M93, then every line chunk of the phase**; M93 is in phase 2 and
+not phase 1 because M90 holds `.github/workflows/ci.yml` in its phase-1 write scope.
 
 **SM2: the module seam.** `clippy::mod_module_files` is denied, so a module directory needs a
 sibling file.
@@ -11466,8 +11508,11 @@ chunk that edits the front matter proves only what the chunk decided. The rule h
    matter. A chunk that changes the generator regenerates the file in the same commit and names the
    path in its own `write_scope`. That is a refresh of a build artifact and never an edit to a
    brief, so it does not make the guard circular: the front matter the guard reads is unchanged.
-   **Chunk M90 owns the `MANIFEST_NOTE` repair**, because the generated text still credits
-   `tools/plan_graph_check.py`, which is the Python prototype and no longer the generator (R3-N3).
+   **Chunk M90 landed the `MANIFEST_NOTE` repair** (R3-N3), so the generated note credits
+   `cargo xtask check-plan-graph <plan-dir> --write-manifest` and no longer credits
+   `tools/plan_graph_check.py`. **The prototype writes no file at all**, and section 1.9 states
+   what its `--write-manifest` flag now prints. A prototype that wrote the file would put a second
+   writer on a generated artifact, and one run of it turned the next commit under `roadmap/` red.
 3. **An engineer that finds its own brief wrong STOPS and reports.** It never widens its
    `write_scope`, it never edits its own chunk file, and it never edits `architecture.md`. It
    writes one plan-store row and it returns the key upward. The row is the FIXED key
@@ -11583,18 +11628,44 @@ a gate is the defect CLAUDE.md names.
 
 SM9 rule 4 and the `M` class paragraph of SM1 govern this table. A repair chunk lands a repair the
 Architect mandates after a line chunk has closed. It is in no line, it creates no crate skeleton,
-and it pins no dependency. Both rows below answer the nine escalations that chunks M0 and T1 opened
-on 2026-09-22. **They run in the order the section 13.3 phase-1 row prints: M91, then M90, then
-every line chunk of the phase.**
+and it pins no dependency. **FOUR rows follow, and they answer two sets.** M91 and M90 answer the
+nine escalations that chunks M0 and T1 opened on 2026-09-22. M92 and M93 answer two plan defects the
+same act found: a soak property that states a weaker bound than its gate twin, and a guard oracle
+whose policy inputs trigger no job. **The three phase-1 repair chunks run in the order the
+section 13.3 phase-1 row prints: M91, then M90, then M92, then every line chunk of the phase.** M93
+is in phase 2, because chunk M90 holds `.github/workflows/ci.yml` in its phase-1 write scope and no
+two chunks of one phase may share a write-scope path (SM1, PG31).
 
 | Chunk | Phase | Creates the skeleton for | Also writes | Completion |
 |---|---|---|---|---|
 | M91 | 1 | none | `crates/duet-time/src/convert.rs`; `crates/duet-time/src/units.rs`; `crates/duet-time/tests/kernel.rs` | `cargo nextest run -p duet-time --no-tests=fail` |
 | M90 | 1 | none | `tools/xtask/src/main.rs`; `tools/xtask/src/check_plan_graph.rs`; `tools/xtask/src/check_placement.rs`; `tools/xtask/src/check_roster.rs`; `tools/xtask/src/check_conversions.rs`; `tools/xtask/src/check_closure.rs`; `tools/xtask/tests/probes.rs`; `scripts/dod.sh`, which gains the path-conditional plan-guard step of section 14 rung one and loses the `typos` fallback; `typos.toml`; `.github/workflows/ci.yml`, the `plan-lint` job; `roadmap/duet-v1/tools/conversion_check.py`, the `CG9` token PG29 reads; `roadmap/duet-v1/architecture.md`, the sub-items b, c and d of M90 step 21, which SM9 rule 4 makes atomic with the register; `roadmap/duet-v1/plan-graph.md`, regenerated under SM9 rule 2 | `cargo nextest run -p xtask --test probes --no-tests=fail` |
+| M92 | 1 | none | `crates/duet-time/tests/proptest_large.rs` | `cargo nextest run -p duet-time --no-tests=fail` |
+| M93 | 2 | none | `.github/workflows/ci.yml`, the `changes` job filter over the four PG25 policy inputs, and its output name | `cargo xtask check-plan-graph roadmap/duet-v1 --check-manifest` |
 
-**M90 is dispatched to the Orchestrator and M91 to an engineer.** `scripts/dod.sh`, `typos.toml`,
-and `.github/workflows/ci.yml` are policy files under SM4, so CLAUDE.md makes M90 an adjudication.
-M91 writes crate source alone, so it is ordinary engineering work.
+**M90 and M93 are dispatched to the Orchestrator, and M91 and M92 to an engineer.**
+`scripts/dod.sh`, `typos.toml`, and `.github/workflows/ci.yml` are policy files under SM4, so
+CLAUDE.md makes M90 and M93 an adjudication. M91 and M92 write crate source alone, so each one is
+ordinary engineering work.
+
+**M92 repairs the soak target and it runs after M91.** `crates/duet-time/tests/proptest_large.rs`
+asserted that the 24-bit drift stays inside one least significant bit, and it asserted equality only
+below half scale, while `crates/duet-time/tests/kernel.rs` asserts equality over the whole drawn
+range. A bound of one is green whenever the drift is zero, so the soak target could not go red for
+the lossless gap at all, and its module doc claimed parity with the gate file. M92 replaces that
+bound with the exact assertion `tests/kernel.rs` carries. The write scopes of M91 and M92 are
+disjoint, which is what lets both sit in phase 1 (SM1). **M92 ENCODES the M91 edge**: its
+`depends_on` is `[M0, T1, M91]`, which the guard accepts because the dependency id begins with `M`.
+The M92 step-1 check on `UNIT_TO_I24_SCALE` backs that edge up against a tree that carries the edge
+and not the code.
+
+**M93 widens the `plan-lint` trigger to four of the five inputs rule PG25 reads.** The roster
+compile copies the root `[workspace.lints]` table, `.cargo/config.toml`, `clippy.toml`,
+`rust-toolchain.toml` and `Cargo.lock` into its scratch workspace, and the `changes` job of
+`.github/workflows/ci.yml` matches `^roadmap/|^tools/xtask/` alone, so a change to any of the five
+ran no roster in the gate and none in CI. M93 takes the four policy files and leaves `Cargo.lock`
+out, because the lock file changes on every dependency edit and the job costs 4.0 GB. Section 14
+states the interim rule until M93 lands, and it states the `Cargo.lock` limit beside it.
 
 **M91 runs FIRST, and rule CG9 is the reason.** M90 adds the rule that compares each Appendix B.1
 reason cell with the `reason =` string of `crates/duet-time/src/convert.rs`. That file still holds
@@ -11966,8 +12037,8 @@ work no verb could perform.
 | Phase | Manifest and repair chunks, in run order | Also written by the manifest chunk | Line chunks that run together | Width |
 |---|---|---|---|---|
 | 0 | M0 | The `check_*.rs` xtask guards M0's own 13.1 cell names, the `dod.sh` lines, **the WHOLE `ci.yml`** as that cell states, the policy files of SM4 | T1 | 1 |
-| 1 | M1, M91, M90, in that order | none | T2, D1 | 2 |
-| 2 | M2 | none | T3, A1, D2, E1 | 4 |
+| 1 | M1, M91, M90, M92, in that order | none | T2, D1 | 2 |
+| 2 | M2, M93, in that order | none | T3, A1, D2, E1 | 4 |
 | 3 | M3 | none | T4, A2, D3, E2, N1 | 5 |
 | 4 | M4 | none | A3, C1, E3, F1, G1, N2, X1 | 7 |
 | 5 | none | none | A4, C2, F2, G2, N3, X2 | 6 |
@@ -12269,14 +12340,14 @@ that can break the binding. The `plan-lint` job passes the argument always. Sect
 states the rule, what it covers, what it does not, and the party that clears a red CG9.
 
 **Chunk M90 lands the step, and the Orchestrator dispatches phase 1 in the order section 13.3
-prints**: M1, then M91, then M90, then every line chunk of the phase. `scripts/dod.sh` is a policy
+prints**: M1, then M91, then M90, then M92, then every line chunk of the phase. `scripts/dod.sh` is a policy
 file under SM4, so CLAUDE.md makes the edit an adjudication and no engineer may make it. Every chunk
 that edits a plan document meets the late signal until M90 lands, and every line chunk of phase 1
 gets the early one. **M91 runs before M90** because M90 adds rule CG9, which compares the Appendix
 B.1 reason cells with the `reason =` strings of `crates/duet-time/src/convert.rs`, and M91 is the
-chunk that repairs those strings. **Both repair chunks run before every line chunk of the phase**,
-because M91 changes the value that `unit_to_i24` and `unit_to_i32` RETURN and chunks D1 and T2
-consume `duet-time` in the same phase. The write scopes are disjoint, so PG31 and `check-plan-graph`
+chunk that repairs those strings. **All three repair chunks of phase 1 run before every line chunk
+of the phase**, because M91 changes the value that `unit_to_i24` and `unit_to_i32` RETURN and chunks
+D1 and T2 consume `duet-time` in the same phase. The write scopes are disjoint, so PG31 and `check-plan-graph`
 are blind to that edge; rule SM1 of section 13.0 is the mechanism, and it now covers a repair chunk
 (critic C1-9). ADR 0010 records the decision and the repairs beside it.
 
@@ -12291,6 +12362,31 @@ the finding in one second instead of one round trip.
 document, it builds a scratch workspace outside the repository, and it needs a toolchain: one
 measured run reached 4.0 GB of build output and several minutes. It runs in the `plan-lint` job of
 `.github/workflows/ci.yml`, which chunk M0 wrote and chunk M90 amends.
+
+**The PG25 oracle has a trigger gap, and chunk M93 closes four fifths of it.** PG25 copies the
+repository's own `[workspace.lints]` table, `.cargo/config.toml`, `clippy.toml`,
+`rust-toolchain.toml` and `Cargo.lock` into the scratch workspace, so a change to any one of the five
+changes what the roster compile decides. The `changes` job of `.github/workflows/ci.yml` matches
+`^roadmap/|^tools/xtask/` alone, and `scripts/dod.sh` runs no roster at all for the cost reason
+above. **A change to the root `Cargo.toml`, to `clippy.toml`, to `rust-toolchain.toml` or to
+`.cargo/config.toml` therefore runs no roster in the gate and none in CI.** Chunk M93 widens the
+`changes` filter to those four paths. **Until chunk M93 lands, every such change is an SM4 act**,
+and the Orchestrator that adjudicates it runs
+`cargo xtask check-roster roadmap/duet-v1/architecture.md "${TMPDIR:-/tmp}/duet-roster" .` by hand
+before the commit and records the exit code in the commit body. This limit has the shape rule CG9
+part 6 states for its own: the gap is named at the site, the party is named, and the manual run is
+the cover until the mechanical one exists.
+
+**`Cargo.lock` is the fifth input and it stays out of the trigger, which is a decision and not an
+omission.** The lock file fixes every external crate version the roster builds against, so a change
+to it can change what PG25 decides. It also changes on every dependency edit: SM5 puts it in the
+write scope of every manifest chunk and of every chunk that adds a dependency to a member manifest.
+A `Cargo.lock` trigger would therefore put a 4.0 GB compile and several minutes on each of those
+commits, which is the cost this section names two paragraphs above when it keeps the roster out of
+the gate. **The cover is review**: a commit that moves a pinned version is a commit a reviewer reads
+for that reason, and `cargo deny check` runs in the gate over the same file. A lock-only change,
+such as a bare `cargo update`, runs no roster, and the party that makes one runs the roster command
+by hand.
 
 **`cargo xtask check-closure` is a REVIEW-TIME command and it runs in no job.** Rule CL1c of section
 1.5 takes its second source from the plan store under `~/.claude/plan-dbs/`, which is outside the
@@ -15516,9 +15612,12 @@ the register land together.
    1_195_673_408 and 1_946_040_768 each drift by exactly 64, and the first the ascending scan finds
    is -2_147_483_584. Section 2.3 gives the derivation in full.
 
-   **Both negative arms of the two matches are unreachable at these factors and stay for totality.**
-   A scale factor of 2^23 sends a unit value of -1.0 to exactly -8_388_608.0, which `I24::new`
-   accepts, and 2^31 sends it to exactly -2_147_483_648.0, which `i32::try_from` accepts. Each
+   **Both negative arms of the two matches are unreachable at these factors and stay as a defence in
+   depth.** A scale factor of 2^23 sends a unit value of -1.0 to exactly -8_388_608.0, which
+   `I24::new` accepts, and 2^31 sends it to exactly -2_147_483_648.0, which `i32::try_from` accepts.
+   **Totality is NOT the reason**: the unguarded final arm of each match already makes that match
+   total, so each guarded negative arm is an extra arm that names the answer the clamp must give at
+   the low end. Section 2.3 states the repair of that clause. Each
    binding is named for that state rather than for the clamp, so a reader of a lossless kernel does
    not read the negative arm as the arm the clamp uses (critic C1-18).
 3. **The `finite_to_f32_saturating` row names an invariant the body carries, and it names no
@@ -15646,8 +15745,11 @@ Each one needs a version, a survey row or a stated reason there is none, a pin i
 `criterion` each had a row, an owner and a chunk here, and no version anywhere in the document, so
 the rule this appendix states one line above was broken by two of its own rows. **Neither has a
 survey row either**, and `research/crate-survey.md` is a dated research file that this revision does
-not extend; the version below is therefore the source, and the chunk that writes the pin records
-`cargo tree -i <crate>` in its verification step.
+not extend; the version below is therefore the source. **The chunk that the "Chunk that needs it"
+column names records `cargo tree -e features -i <crate>`**, because that chunk adds the
+`{ workspace = true }` entry and its commit is the first one that puts the crate in the graph. The
+manifest chunk that writes the pin confirms the version and every feature name with
+`cargo info <crate>@<version>`. Appendix B.5 states both halves of the rule.
 
 **Revision 21 pinned one of the two and left `criterion` reading "M4 resolves and records it"**
 (critic C21-W9), which is the same instruction its B.5 State cell already carried, so the Version
@@ -15695,7 +15797,10 @@ dependency.
 | `Unlicense` | No | **Add it.** `midly` carries it, and chunk X3 needs `midly`. Chunk M0 applies the edit, because `deny.toml` is a policy file (SM4). |
 
 `cargo deny check` reports `multiple-versions` as a warning, not a failure. Section 8.1 reason 3 depends on `midir`'s transitive `alsa` version, and the research file does not
-record it (critic S16). Chunk M4 records the output of `cargo tree -i alsa`, because M4 pins `midir`.
+record it (critic S16). **Chunk G1 records the output of `cargo tree -i alsa`**, because G1 adds the
+`midir` entry to `crates/duet-midi/Cargo.toml` and that entry is what puts `alsa` in the graph.
+Chunk M4 pins `midir` and confirms the version with `cargo info midir@0.11.0`. Appendix B.5 states
+the rule, and section 8.1 reason 3 names the same chunk.
 
 `Unlicense` is the only `deny.toml` licence edit this plan requires.
 
@@ -15760,10 +15865,45 @@ Revision 21 stated the exception at section 5.12 and stated the rule without it 
 with B24, B25, B26 and B85, and revision 20 broke it in the other with B108, which had a mechanism
 here and no row there. The rule is stated at both sites now.
 **A row marked "resolves" is an instruction, not a gap.** The owning chunk reads the pinned
-version's own manifest, writes the resolved list into the root `[workspace.dependencies]` line, runs
-`cargo tree -e features -i <crate>`, and pastes the output into its verification step. A chunk that
+version's own manifest with `cargo info <crate>@<version>`, writes the resolved list into the root
+`[workspace.dependencies]` line, and pastes that output into its verification step. A chunk that
 cannot obtain the capability with the pinned version reports the discrepancy instead of proceeding
 (SM0).
+
+#### A `cargo tree` record belongs to the chunk that puts the crate in the graph
+
+**A `[workspace.dependencies]` entry that no member declares reaches neither the resolved graph nor
+`Cargo.lock`.** `cargo tree -e features -i <crate>` then exits 101 and prints
+`error: package ID specification` with the crate name and `did not match any packages`, and
+`cargo metadata` lists the crate nowhere. The measurement ran on cargo 1.98.1 over a scratch
+workspace of one member and one unused workspace pin. **Every manifest chunk ordered that command
+against a crate it had just pinned**, and step 5 of chunk M1 stated the same fact in its own words:
+the two pins add no edge yet, because no member declares either one. The rule has two halves.
+
+1. **The manifest chunk confirms the names.** It runs `cargo info <crate>@<version>`, which prints
+   the feature list of the published version and needs no member in the graph. The chunk confirms
+   every feature name its pin states, or confirms that the pin takes the default set, and it pastes
+   the output into the commit body. **Cargo validates no feature name in an unused workspace pin**:
+   a wrong name builds green until the first member declares the crate, so `cargo info` is the one
+   check that can fire at pin time.
+2. **The consuming chunk records the resolution.** The "Chunk that needs it" column of Appendix B.3
+   names the chunk that adds the `{ workspace = true }` entry (SM1), so its commit is the first one
+   in which the crate is in the graph. That chunk runs `cargo tree -e features -i <crate>` and
+   pastes the output into its verification step.
+
+**The rule's own limit, stated here.** Half 1 is executable where the old instruction was not, and
+its oracle is still a reviewer's eye. `cargo info` PRINTS the published feature list, and no command
+compares that list with the feature list the pin states, so a wrong feature name in a pin is caught
+by review at pin time and by the first member build after that. **Review is the check**, and this
+document claims no more for half 1. The mechanical form is a `cargo xtask` guard that reads each
+`[workspace.dependencies]` feature list and each published feature list and reports the difference;
+this revision does not write it, registers no rule id for it, and names it as the shape the repair
+would take.
+
+**The second half is OWED in the line chunk briefs, and this paragraph is the record of it.** This
+revision repairs every manifest chunk and states the rule here. Chunk G1 already carries its
+`cargo tree -i alsa` step. The other consuming chunks gain their step in the next Architect act, and
+until then this rule is the instruction a chunk author reads.
 
 ---
 

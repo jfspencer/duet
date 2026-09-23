@@ -198,15 +198,24 @@ the code that uses them (SM1).
    unmaintained since 2023**, so the advisory check may report a RUSTSEC identifier. An ignore entry
    is an SM4 adjudication and never this chunk's edit: report the identifier to the Orchestrator and
    stop if the check fails.
-8. Record every feature resolution. Run `cargo tree -e features -i <crate>` for `cpal`, `blake3`,
-   `symphonia`, `gix`, `criterion`, `crossbeam-queue`, and `async-channel`, and paste each output
-   into the commit body (Appendix B.5). `arrayvec` is chunk M3's pin, and chunk M3 recorded it.
-9. Record the transitive ALSA version. Run `cargo tree -i alsa` and paste the output into the commit
-   body. Appendix B.4 asks for it, because `midir` brings `alsa` and the survey does not record the
-   version.
+8. Confirm every feature name against the published manifest. Run `cargo info <crate>@<version>`
+   for `cpal@0.18.2`, `blake3@1.8.7`, `symphonia@0.6.1`, `gix@0.87.1`, `criterion@0.7.0`,
+   `crossbeam-queue@0.3.14`, and `async-channel@2.5.0`, and paste each output into the commit body
+   (Appendix B.5). Confirm that every feature name the pin states appears in that list. **Do NOT
+   run `cargo tree -e features -i <crate>` in this chunk.** No member declares any of the twenty new
+   pins at this commit, so `cargo tree` exits 101 and prints `error: package ID specification` with
+   the crate name. **The chunk that the "Chunk that needs it" column of Appendix B.3 names records
+   the resolved tree**, because that chunk adds the `{ workspace = true }` entry. Appendix B.5
+   states the rule.
+9. Name the owner of the ALSA record and do not run it here. `midir` brings `alsa`, and the survey
+   does not record the version (Appendix B.4). **Chunk G1 runs `cargo tree -i alsa` and records the
+   result**, because G1 adds the `midir` entry to `crates/duet-midi/Cargo.toml` and that entry is
+   what puts `alsa` in the graph. Confirm the `midir` pin with `cargo info midir@0.11.0` instead,
+   and paste the output into the commit body.
 10. Confirm that `pipewire` 0.10.1 adds no second version. `cpal` 0.18.2 already brings that version
     through its `pipewire` feature, so `cargo deny check` reports no new `multiple-versions` warning
-    (Appendix B.3). Record the `cargo tree -i pipewire` output.
+    (Appendix B.3). Confirm the pin with `cargo info pipewire@0.10.1`. **Chunk G3 records the
+    `cargo tree -i pipewire` output**, because G3 adds the `pipewire` entry.
 11. Run the Completion command:
     `cargo check -p duet-engine -p duet-project -p duet-midi -p duet-interchange --locked`. Expected
     result: exit 0. The command fails before this chunk, because `cargo` reports four unknown
@@ -227,19 +236,21 @@ pins, and the native hook runs both on the commit.
 cargo check -p duet-engine -p duet-project -p duet-midi -p duet-interchange --locked
 cargo xtask check-manifests
 cargo deny check
-cargo tree -e features -i cpal
-cargo tree -e features -i blake3
-cargo tree -e features -i symphonia
-cargo tree -e features -i gix
-cargo tree -e features -i criterion
-cargo tree -e features -i async-channel
-cargo tree -i alsa
-cargo tree -i pipewire
+cargo info cpal@0.18.2
+cargo info blake3@1.8.7
+cargo info symphonia@0.6.1
+cargo info gix@0.87.1
+cargo info criterion@0.7.0
+cargo info crossbeam-queue@0.3.14
+cargo info async-channel@2.5.0
+cargo info midir@0.11.0
+cargo info pipewire@0.10.1
 ```
 
 Expected output: the first command exits 0 and prints four `Checking` lines. The second command
-exits 0. The third command reports no licence failure and no advisory failure. Each `cargo tree`
-command prints its resolved set, and the commit body carries every one.
+exits 0. The third command reports no licence failure and no advisory failure. Each `cargo info`
+command prints the published feature list of its pin, and the commit body carries every one. **No
+`cargo tree` command belongs in this chunk**, for the reason step 8 states.
 
 The build must succeed on macOS and on Linux. The Linux run needs `libpipewire-0.3-dev`,
 `libasound2-dev`, and `pkg-config`, which chunk M0 added to `scripts/bootstrap.sh` and to the Linux

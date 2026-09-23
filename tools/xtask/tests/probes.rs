@@ -1,5 +1,5 @@
-//! Probes for the five `xtask` guards: `check-conversions`, `check-manifests`,
-//! `check-plan-graph`, `check-closure`, and `check-placement`.
+//! Probes for the six `xtask` guards: `check-conversions`, `check-manifests`,
+//! `check-plan-graph`, `check-closure`, `check-placement`, and `check-roster`.
 //!
 //! A probe plants one defect in a throwaway fixture, runs the guard over that
 //! fixture, and asserts the exit code and the line the guard prints. The guard
@@ -22,11 +22,24 @@
 //! directory that holds the throwaway document, so no key reaches the plan
 //! store of `roadmap/duet-v1`. A probe that mocked the store would prove the
 //! mock.
+//!
+//! `roster_generate_only_never_reaches_a_job` is the second exception, and the
+//! rule it holds is why. The rule reads "a gate never takes
+//! `--generate-only`", so its denominator is every file under
+//! `.github/workflows/` of this repository. The probe reads that directory and
+//! writes nothing. It is fail-closed on its own input: a directory that does
+//! not open, and a directory that holds no file, are each a failure.
+//! `roster_job_line_probe_refuses_a_planted_flag` is its committed positive
+//! control, so no reader plants a defect by hand to know that the probe can go
+//! red. Every other `roster_` probe reads a synthetic document in its own
+//! scratch directory.
 
 #[cfg(test)]
 mod tests {
     use std::path::{Path, PathBuf};
     use std::process::Command;
+    use std::sync::LazyLock;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
     use std::{env, fs};
 
@@ -227,15 +240,52 @@ path = "other/lib.rs"
         )
     }
 
-    /// A scratch directory this probe owns, outside the repository.
-    fn scratch(label: &str) -> PathBuf {
+    /// The part of a scratch name that no other process of this machine holds.
+    ///
+    /// The process id separates two probe processes that run at one time, and
+    /// the start instant separates a later process that the system gives the
+    /// same id.
+    static PROCESS_TAG: LazyLock<String> = LazyLock::new(|| {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock after epoch")
             .as_nanos();
+        format!("{}z{nanos}", std::process::id())
+    });
+
+    /// How many names this process has minted.
+    static PROBE_SERIAL: AtomicU64 = AtomicU64::new(0);
+
+    /// The next serial of this process. Two calls never return one value.
+    fn next_serial() -> u64 {
+        PROBE_SERIAL.fetch_add(1, Ordering::Relaxed)
+    }
+
+    /// The test that asked, as the harness names the thread it runs on.
+    ///
+    /// The harness names each test thread after the test item, and the
+    /// compiler holds two items of one module apart, so the name is unique. A
+    /// run that states no name falls back to the label.
+    fn probe_name(label: &str) -> String {
+        let thread = std::thread::current();
+        match thread.name() {
+            Some("main") | None => label.to_owned(),
+            Some(named) => named.replace("::", "-"),
+        }
+    }
+
+    /// A scratch directory this probe owns, outside the repository.
+    ///
+    /// The name carries the test, the process, and a serial the process never
+    /// repeats, so two probes never resolve to one path. Each probe store
+    /// lives under this directory, so one path per probe is one store
+    /// environment per probe.
+    fn scratch(label: &str) -> PathBuf {
         let dir = env::temp_dir().join(format!(
-            "xtask-probe-{label}-{}-{nanos}",
-            std::process::id()
+            "xtask-probe-{}-{}-{}",
+            probe_name(label),
+            *PROCESS_TAG,
+            next_serial()
         ));
         fs::create_dir_all(&dir).expect("scratch root");
         dir
@@ -817,6 +867,216 @@ path = "other/lib.rs"
         );
     }
 
+    /// The `b1-convert` cell of the `CG9` green control.
+    ///
+    /// The cell carries a quotation mark and the markdown escape `\|`, so the
+    /// control proves that the guard reads the cell a reader sees.
+    const CONTROL_CELL: &str = "\"a \"quoted\" word and a \\| bar\"";
+
+    /// The exempt-file source whose reason text matches [`CONTROL_CELL`].
+    ///
+    /// The literal carries a `\"` escape and breaks across two lines with a
+    /// backslash continuation, so the control proves that the guard decodes
+    /// the literal and never compares its raw source token.
+    const CONTROL_CONVERT: &str = "//! A probe member.
+#[expect(
+    clippy::as_conversions,
+    reason = \"a \\\"quoted\\\" word and a | \\
+        bar\"
+)]
+pub fn alpha(value: u64) -> u64 { value }
+";
+
+    /// A synthetic appendix whose `b1-convert` block states the given rows.
+    ///
+    /// Each pair is a site and the whole cell three of its row, quotation
+    /// marks included, so a probe states the cell exactly as an author writes
+    /// it in the markdown table.
+    fn b1_appendix(rows: &[(&str, &str)]) -> String {
+        use std::fmt::Write as _;
+
+        let mut out = String::from(
+            "# A probe appendix\n\n#### Conversion suppressions\n\n\
+             <!-- GUARD BLOCK id=b1-convert rows>=1 -->\n\
+             | Site | Lints the attribute names | Reason text that the code must carry |\n\
+             |---|---|---|\n",
+        );
+        for (site, cell) in rows {
+            let _written = writeln!(out, "| `{site}` | `as_conversions` | {cell} |");
+        }
+        out.push('\n');
+        out
+    }
+
+    /// An exempt-file source that declares one `fn` per given pair.
+    ///
+    /// Each pair is a function name and the reason text its `#[expect]`
+    /// carries, stated as the source spells it between the quotation marks.
+    fn convert_source(sites: &[(&str, &str)]) -> String {
+        use std::fmt::Write as _;
+
+        let mut out = String::from("//! A probe member.\n");
+        for (name, text) in sites {
+            let _written = writeln!(
+                out,
+                "#[expect(\n    clippy::as_conversions,\n    reason = \"{text}\"\n)]\n\
+                 pub fn {name}(value: u64) -> u64 {{ value }}\n"
+            );
+        }
+        out
+    }
+
+    /// The one member every `CG9` probe builds: the exempt file and its crate.
+    fn exempt_member(convert: &str) -> Member {
+        Member::lib(
+            "crates/duet-time",
+            "duet-time",
+            &[("src/lib.rs", CLEAN_LIB), ("src/convert.rs", convert)],
+        )
+    }
+
+    /// Build one `CG9` fixture, run the guard inside it, and clean up.
+    ///
+    /// The appendix path is absolute and names a document under the scratch
+    /// root, so no probe of this group reads this repository. A `None`
+    /// appendix writes no document, which leaves the named path absent.
+    fn conversions_with_appendix(
+        label: &str,
+        convert: &str,
+        appendix: Option<&str>,
+    ) -> (i32, String) {
+        let root = workspace(
+            label,
+            &root_manifest(&["crates/*"], &[]),
+            &[exempt_member(convert)],
+        );
+        let document = root.join("roadmap").join("duet-v1").join("architecture.md");
+        if let Some(text) = appendix {
+            write_bytes(&document, text.as_bytes());
+        }
+        let named = document.display().to_string();
+        let report = xtask(&root, &["check-conversions", "--appendix", &named]);
+        clean(&root);
+        report
+    }
+
+    #[test]
+    fn conversions_reason_text_that_differs_is_a_finding() {
+        let (code, report) = conversions_with_appendix(
+            "cg9-differs",
+            &convert_source(&[("alpha", "the divisor is 2^23")]),
+            Some(&b1_appendix(&[("alpha", "\"the divisor is 2^24\"")])),
+        );
+        assert_eq!(code, 1, "a reason text that differs is a finding: {report}");
+        assert_eq!(
+            count_lines(&report, "  REASON TEXT: "),
+            1,
+            "one line names the one divergence: {report}"
+        );
+        assert!(
+            report.contains("REASON TEXTS:    1     REASON TEXT BAD: 1"),
+            "the counter states the denominator and the failures: {report}"
+        );
+        assert!(
+            report.contains("  REASON TEXT: alpha:"),
+            "the line names the site: {report}"
+        );
+    }
+
+    #[test]
+    fn conversions_reason_row_with_no_site_is_a_finding() {
+        let (code, report) = conversions_with_appendix(
+            "cg9-row-no-site",
+            &convert_source(&[("alpha", "the divisor is 2^23")]),
+            Some(&b1_appendix(&[
+                ("alpha", "\"the divisor is 2^23\""),
+                ("ghost", "\"a site no file declares\""),
+            ])),
+        );
+        assert_eq!(code, 1, "a row with no site is a finding: {report}");
+        assert_eq!(
+            count_lines(&report, "  REASON TEXT: "),
+            1,
+            "one line names the one row: {report}"
+        );
+        assert!(
+            report.contains("REASON TEXTS:    2     REASON TEXT BAD: 1"),
+            "the counter states both sites and the one failure: {report}"
+        );
+        assert!(
+            report.contains("  REASON TEXT: ghost:"),
+            "the line names the row site: {report}"
+        );
+    }
+
+    #[test]
+    fn conversions_reason_site_with_no_row_is_a_finding() {
+        let (code, report) = conversions_with_appendix(
+            "cg9-site-no-row",
+            &convert_source(&[
+                ("alpha", "the divisor is 2^23"),
+                ("extra", "a reason no row names"),
+            ]),
+            Some(&b1_appendix(&[("alpha", "\"the divisor is 2^23\"")])),
+        );
+        assert_eq!(code, 1, "a site with no row is a finding: {report}");
+        assert_eq!(
+            count_lines(&report, "  REASON TEXT: "),
+            1,
+            "one line names the one site: {report}"
+        );
+        assert!(
+            report.contains("REASON TEXTS:    2     REASON TEXT BAD: 1"),
+            "the counter states both sites and the one failure: {report}"
+        );
+        assert!(
+            report.contains("  REASON TEXT: extra:"),
+            "the line names the code site: {report}"
+        );
+    }
+
+    #[test]
+    fn conversions_appendix_that_does_not_open_fails_closed() {
+        let (code, report) = conversions_with_appendix(
+            "cg9-absent",
+            &convert_source(&[("alpha", "the divisor is 2^23")]),
+            None,
+        );
+        assert_eq!(code, 2, "an absent appendix fails closed: {report}");
+        assert!(
+            report.contains("the appendix does not open; the guard is fail-closed."),
+            "the named line states the fail-closed reason: {report}"
+        );
+        assert!(
+            report.contains("architecture.md"),
+            "the named line names the document: {report}"
+        );
+        assert_eq!(
+            count_lines(&report, "REASON TEXT BAD: "),
+            0,
+            "a fail-closed run prints no counter: {report}"
+        );
+    }
+
+    #[test]
+    fn conversions_reason_text_that_matches_is_clean() {
+        let (code, report) = conversions_with_appendix(
+            "cg9-matches",
+            CONTROL_CONVERT,
+            Some(&b1_appendix(&[("alpha", CONTROL_CELL)])),
+        );
+        assert_eq!(code, 0, "a matching pair is clean: {report}");
+        assert!(
+            report.contains("REASON TEXTS:    1     REASON TEXT BAD: 0"),
+            "the counter states one text and no failure: {report}"
+        );
+        assert_eq!(
+            count_lines(&report, "  REASON TEXT: "),
+            0,
+            "a clean run names no site: {report}"
+        );
+    }
+
     #[test]
     fn manifests_clean_workspace_exits_zero() {
         let (code, report) = manifests(
@@ -936,6 +1196,42 @@ path = "other/lib.rs"
         assert!(
             report.contains("FINDING: A1 depends on Z9, which has no chunk file"),
             "the finding names the chunk and the missing id: {report}"
+        );
+    }
+
+    #[test]
+    fn plan_graph_vocabulary_duplicate_chunk_id_is_a_finding() {
+        let arch = architecture(&[(1, "none", "A1")], &[]);
+        let body = chunk("A1", "core", &[], &["crates/alpha/src/a.rs"]);
+        let (code, report) = plan_graph(
+            "pg-duplicate",
+            &arch,
+            &[("a1.md", body.clone()), ("a1-copy.md", body)],
+        );
+        assert_eq!(code, 1, "two files that state one id give exit 1: {report}");
+        assert!(
+            report
+                .lines()
+                .any(|line| line.starts_with("FINDING: duplicate chunk id")),
+            "the report opens the duplicate-id line with the finding word: {report}"
+        );
+        assert!(
+            report.contains("FINDING: duplicate chunk id A1 in a1.md and a1-copy.md"),
+            "the finding names the id and both files: {report}"
+        );
+    }
+
+    #[test]
+    fn plan_graph_vocabulary_empty_directory_fails_closed() {
+        let arch = architecture(&[(1, "none", "A1")], &[]);
+        let (code, report) = plan_graph("pg-empty", &arch, &[]);
+        assert_eq!(
+            code, 2,
+            "a plan directory with no chunk file gives exit 2: {report}"
+        );
+        assert!(
+            report.contains("FAIL: no chunk file found; the guard is fail-closed."),
+            "the guard states that it read no chunk and is fail-closed: {report}"
         );
     }
 
@@ -1427,14 +1723,49 @@ path = "other/lib.rs"
     /// The registered block every closure probe runs.
     const CLOSURE_BLOCK: &str = "closure-r16";
 
-    /// The plan name the guard derives from the throwaway document.
+    /// The parent the guard puts before the plan directory of a fixture.
     ///
-    /// The guard reads the directory that holds the document, which every
-    /// fixture names `plan`.
-    const CLOSURE_PLAN: &str = "roadmap/plan";
+    /// The guard reads the directory that holds the document, so each fixture
+    /// names that directory after its own token. The plan KEY therefore
+    /// differs per probe, and two probes cannot resolve to one store
+    /// environment even if `PLAN_DB_ROOT` reaches neither of them.
+    const CLOSURE_PLAN_PARENT: &str = "roadmap";
 
     /// A plan-store key that carries the suffix of another review (`CL1c`).
     const CLOSURE_OTHER_KEY: &str = "36304kihouge4-review-r21-inner";
+
+    /// The plan-store suffix one recorded `check-closure` run carries (`CL1d`).
+    const CLOSURE_RUN_SUFFIX: &str = "closure-run";
+
+    /// A key that carries the run suffix and that no store answers (`CL1d`).
+    const CLOSURE_ABSENT_RUN_KEY: &str = "11111absentrun1-closure-run";
+
+    /// The revision a review states when it sits below the `CL1d` cut-off.
+    ///
+    /// The review bytes stay the ones the three digest constants record, and
+    /// the file name alone states the revision, so the id prefix and the store
+    /// suffix both follow the name.
+    const CLOSURE_BELOW_REVISION: &str = "23";
+
+    /// The recorded body of one `check-closure` run, as `CL1d` shapes it.
+    ///
+    /// The body opens with `COMMAND: `, `EXIT: ` and `TREE: `, one per line,
+    /// and then holds the stdout of the run.
+    fn recorded_run(exit: i32) -> String {
+        format!(
+            "COMMAND: cargo xtask check-closure architecture.md review.md {CLOSURE_BLOCK}\n\
+             EXIT: {exit}\n\
+             TREE: 0123456789abcdef0123456789abcdef01234567\n\
+             REVIEW: a probe   BLOCK: {CLOSURE_BLOCK}   CLOSURE BAD: 0\n"
+        )
+    }
+
+    /// The one line that binds the block to the run that verified it (`CL1d`).
+    fn run_key_line(key: &str) -> String {
+        format!(
+            "The `check-closure` run that verified this block is recorded at plan-store key `{key}`.\n"
+        )
+    }
 
     /// The repository the closure guard resolves at compile time.
     ///
@@ -1454,22 +1785,18 @@ path = "other/lib.rs"
     /// The token opens with a letter after the revision number, because the id
     /// generator reads a digit run there as a longer revision.
     fn run_token() -> String {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock after epoch")
-            .as_nanos();
-        format!("r99z{}z{nanos}", std::process::id())
+        format!("r99z{}z{}", *PROCESS_TAG, next_serial())
     }
 
     /// Append one value to the throwaway store and return the key it minted.
-    fn store_append(root: &Path, suffix: &str, value: &str) -> String {
+    fn store_append(root: &Path, plan: &str, suffix: &str, value: &str) -> String {
         let launcher = guard_repo()
             .join(".claude")
             .join("plan-coordination")
             .join("db.sh");
         let output = Command::new("bash")
             .arg(&launcher)
-            .args(["append", CLOSURE_PLAN, suffix, value])
+            .args(["append", plan, suffix, value])
             .current_dir(guard_repo())
             .env("PLAN_DB_ROOT", root.join("store"))
             .output()
@@ -1504,14 +1831,18 @@ path = "other/lib.rs"
         )
     }
 
-    /// The whole throwaway closure section, which records the minted key.
-    fn closure_block(key: &str) -> String {
+    /// The whole throwaway closure section, which records the minted keys.
+    ///
+    /// The `run` line is the whole `CL1d` run-key line, or an empty text for a
+    /// section that records no run.
+    fn closure_block(key: &str, run: &str) -> String {
         format!(
             "### 1.9 A probe section\n\n\
              #### The revision-16 review, over the frozen document\n\n\
              {CLOSURE_SENTENCE}\n\n\
              {}\n\
-             The review file this block records is stored at plan-store key `{key}` ({CLOSURE_BLOCK}).\n\n\
+             The review file this block records is stored at plan-store key `{key}` ({CLOSURE_BLOCK}).\n\
+             {run}\n\
              <!-- GUARD BLOCK id={CLOSURE_BLOCK} rows>=4 -->\n\
              | Id | Finding | State | Section and mechanism |\n\
              |---|---|---|---|\n\
@@ -1532,17 +1863,39 @@ path = "other/lib.rs"
         token: String,
         /// The plan-store key the store minted for the review.
         key: String,
+        /// The plan-store key the store minted for the recorded run (`CL1d`).
+        run_key: String,
     }
 
     impl Closure {
         /// Write the review, append it to a throwaway store, and mint its key.
+        ///
+        /// The fixture also records one `check-closure` run that exited 0, so
+        /// the baseline section cites a run the store answers.
         fn new(label: &str) -> Self {
             let root = scratch(label);
             let token = run_token();
             let review = root.join("review").join(format!("critic-spec-{token}.md"));
             write_bytes(&review, CLOSURE_REVIEW.as_bytes());
-            let key = store_append(&root, &format!("review-{token}"), CLOSURE_REVIEW);
-            Self { root, token, key }
+            let plan = format!("{CLOSURE_PLAN_PARENT}/plan-{token}");
+            let key = store_append(&root, &plan, &format!("review-{token}"), CLOSURE_REVIEW);
+            let run_key = store_append(&root, &plan, CLOSURE_RUN_SUFFIX, &recorded_run(0));
+            Self {
+                root,
+                token,
+                key,
+                run_key,
+            }
+        }
+
+        /// The plan directory this fixture owns, under its scratch root.
+        fn plan_dir(&self) -> String {
+            format!("plan-{}", self.token)
+        }
+
+        /// The plan name `db.sh` reads for this fixture.
+        fn plan(&self) -> String {
+            format!("{CLOSURE_PLAN_PARENT}/{}", self.plan_dir())
         }
 
         /// The review file this fixture wrote.
@@ -1557,14 +1910,35 @@ path = "other/lib.rs"
             format!("review-{}", self.token)
         }
 
-        /// The baseline closure section, which records the minted key.
+        /// The baseline closure section, which records the minted keys.
         fn block(&self) -> String {
-            closure_block(&self.key)
+            closure_block(&self.key, &run_key_line(&self.run_key))
         }
 
         /// Append one more copy of the review under this fixture's suffix.
         fn append(&self, value: &str) -> String {
-            store_append(&self.root, &self.suffix(), value)
+            store_append(&self.root, &self.plan(), &self.suffix(), value)
+        }
+
+        /// Record one more `check-closure` run and return the key it minted.
+        fn append_run(&self, body: &str) -> String {
+            store_append(&self.root, &self.plan(), CLOSURE_RUN_SUFFIX, body)
+        }
+
+        /// A second review of this fixture, below the `CL1d` cut-off.
+        ///
+        /// The bytes are the ones the digest constants record and the file
+        /// name states the revision, so the id prefix reads `C23` and the
+        /// store suffix reads `review-r23`. The fixture owns its own scratch
+        /// root and its own plan, so one name for every probe is still one
+        /// store environment per probe.
+        fn below_cut_off(&self) -> (PathBuf, String) {
+            let name = format!("critic-spec-r{CLOSURE_BELOW_REVISION}.md");
+            let path = self.root.join("below").join(name);
+            write_bytes(&path, CLOSURE_REVIEW.as_bytes());
+            let suffix = format!("review-r{CLOSURE_BELOW_REVISION}");
+            let key = store_append(&self.root, &self.plan(), &suffix, CLOSURE_REVIEW);
+            (path, key)
         }
 
         /// Run the guard over one document text and this fixture's review.
@@ -1574,7 +1948,7 @@ path = "other/lib.rs"
 
         /// Run the guard over one document text, review path, and block id.
         fn guard_with(&self, document: &str, review: &Path, block: &str) -> (i32, String) {
-            let path = self.root.join("plan").join("architecture.md");
+            let path = self.root.join(self.plan_dir()).join("architecture.md");
             write_bytes(&path, document.as_bytes());
             let named = path.display().to_string();
             let read = review.display().to_string();
@@ -1594,6 +1968,36 @@ path = "other/lib.rs"
     }
 
     #[test]
+    fn fixture_scratch_never_repeats_one_path_for_one_label() {
+        let first = scratch("fixture-repeat");
+        let second = scratch("fixture-repeat");
+        assert_ne!(
+            first, second,
+            "two scratch calls under one label give two paths"
+        );
+        clean(&first);
+        clean(&second);
+    }
+
+    #[test]
+    fn fixture_closure_plan_key_carries_the_token_of_its_own_probe() {
+        let first = Closure::new("fixture-plan-first");
+        let second = Closure::new("fixture-plan-second");
+        let names = (first.plan(), second.plan());
+        let same_root = first.root == second.root;
+        clean(&first.root);
+        clean(&second.root);
+        assert_ne!(
+            names.0, names.1,
+            "two fixtures give two plan names, so two probes cannot resolve to one store"
+        );
+        assert!(
+            !same_root,
+            "two fixtures give two scratch roots, so PLAN_DB_ROOT names two parents"
+        );
+    }
+
+    #[test]
     fn closure_baseline_is_clean() {
         let (code, report) = planted("cl-base", str::to_owned);
         assert_eq!(code, 0, "a well-formed throwaway pair is clean: {report}");
@@ -1603,9 +2007,9 @@ path = "other/lib.rs"
         );
         assert!(
             report.contains(
-                "BLOCK: closure-r16   GENERATED: 4   ROWS: 4   STORE: matches   STORE COPIES: 1   CLOSURE BAD: 0"
+                "BLOCK: closure-r16   GENERATED: 4   ROWS: 4   STORE: matches   STORE COPIES: 1   CLOSURE BAD: 0   RUN KEY: verified"
             ),
-            "the summary states the generated set, the rows, and the stored copy: {report}"
+            "the summary states the generated set, the rows, the stored copy, and the recorded run: {report}"
         );
     }
 
@@ -1861,6 +2265,99 @@ path = "other/lib.rs"
                 "  STORE:     1 of 2 stored copies of this review differ from the file this run read, `{CLOSURE_CONTENT_DIGEST}`; the first is key `{second}` at md5 `{CLOSURE_DOCTORED_DIGEST}` (CL1c)"
             )),
             "the finding names the doctored copy and both digests: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_run_key_absent_is_a_finding() {
+        let fixture = Closure::new("cl-run-absent");
+        let planted_block = closure_block(&fixture.key, "");
+        let (code, report) = fixture.guard(&planted_block);
+        clean(&fixture.root);
+        assert_eq!(
+            code, 1,
+            "a section at the cut-off that cites no run is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "  RUN:       the section states no plan-store key for the `check-closure` run that verified it, so the verdict is a claim in prose that no later party can reproduce (CL1d)"
+            ),
+            "the finding states that nothing records the run: {report}"
+        );
+        assert!(
+            report.contains("RUN KEY: unrecorded"),
+            "the summary names the state of the run half: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_run_key_wrong_suffix_is_a_finding() {
+        let fixture = Closure::new("cl-run-suffix");
+        let planted_block = closure_block(&fixture.key, &run_key_line(&fixture.key));
+        let (code, report) = fixture.guard(&planted_block);
+        let named = fixture.key.clone();
+        clean(&fixture.root);
+        assert_eq!(
+            code, 1,
+            "a run key outside the run suffix is a finding: {report}"
+        );
+        assert!(
+            report.contains(&format!(
+                "  RUN:       the section names key `{named}`, whose suffix is not `{CLOSURE_RUN_SUFFIX}`; the store mints that suffix for a recorded run and for no other record (CL1d)"
+            )),
+            "the finding names the key and the suffix a run carries: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_run_key_store_does_not_answer_is_a_finding() {
+        let fixture = Closure::new("cl-run-silent");
+        let planted_block = closure_block(&fixture.key, &run_key_line(CLOSURE_ABSENT_RUN_KEY));
+        let (code, report) = fixture.guard(&planted_block);
+        clean(&fixture.root);
+        assert_eq!(
+            code, 1,
+            "a run key the store does not hold is a finding: {report}"
+        );
+        assert!(
+            report.contains(&format!("  RUN:       key `{CLOSURE_ABSENT_RUN_KEY}`:"))
+                && report.contains("; CL1d is fail-closed"),
+            "the finding names the key the store does not answer: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_run_key_failed_run_is_a_finding() {
+        let fixture = Closure::new("cl-run-failed");
+        let failed = fixture.append_run(&recorded_run(1));
+        let planted_block = closure_block(&fixture.key, &run_key_line(&failed));
+        let (code, report) = fixture.guard(&planted_block);
+        clean(&fixture.root);
+        assert_eq!(code, 1, "a recorded run that failed is a finding: {report}");
+        assert!(
+            report.contains(&format!(
+                "  RUN:       key `{failed}`: the recorded run states `EXIT: 1`, and a closure section cites a run that exited 0 (CL1d)"
+            )),
+            "the finding states the exit the record holds: {report}"
+        );
+    }
+
+    #[test]
+    fn closure_run_key_below_the_cut_off_is_clean() {
+        let fixture = Closure::new("cl-run-below");
+        let (review, stored) = fixture.below_cut_off();
+        let planted_block = closure_block(&stored, "")
+            .replace("| C99-", "| C23-")
+            .replace("| N99-", "| N23-");
+        let (code, report) = fixture.guard_with(&planted_block, &review, CLOSURE_BLOCK);
+        clean(&fixture.root);
+        assert_eq!(
+            code, 0,
+            "a section below the cut-off cites no run and is clean: {report}"
+        );
+        assert!(
+            report.contains("CLOSURE BAD: 0   RUN KEY: absent"),
+            "the summary states that the cut-off holds the run half back: {report}"
         );
     }
 
@@ -2232,7 +2729,7 @@ path = "other/lib.rs"
                 "exit 1",
             ]),
         ];
-        while rows.len() < 64 {
+        while rows.len() < 65 {
             rows.push(md_row(&["-", "a filler row", "-", "synthetic", "exit 0"]));
         }
         md_table(
@@ -3280,7 +3777,7 @@ suppressions, four `missing_copy_implementations` expectations, and three \
             "the placement rules find nothing: {report}"
         );
         assert!(
-            report.contains("MEMBER ROWS: 1362     MEMBER BAD: 0"),
+            report.contains("MEMBER ROWS: 1363     MEMBER BAD: 0"),
             "every row of every block names a referent: {report}"
         );
         assert!(
@@ -3308,6 +3805,54 @@ suppressions, four `missing_copy_implementations` expectations, and three \
             report.contains("FAIL: cannot open")
                 && report.contains("architecture.md; the guard is fail-closed."),
             "the guard names the document it cannot open: {report}"
+        );
+    }
+
+    /// The fixture document with the body of the section 9.1 fence removed.
+    ///
+    /// The parser reads a declaration and a used name from that one Rust fence,
+    /// so a document with an empty fence states neither, and the candidate set
+    /// the placement rules decide over is empty. Every guard block, marker,
+    /// heading and list fence stays, so the run reaches the candidate count
+    /// instead of one of the earlier fail-closed rules.
+    fn without_declarations(text: &str) -> String {
+        const DECLARATION_HEADING: &str = "### 9.1 The declarations";
+        let mut out = String::new();
+        let mut at_section = false;
+        let mut inside = false;
+        for line in text.lines() {
+            if inside && line != "```" {
+                continue;
+            }
+            if inside {
+                inside = false;
+                at_section = false;
+            } else if at_section && line == "```rust" {
+                inside = true;
+            } else if line == DECLARATION_HEADING {
+                at_section = true;
+            }
+            out.push_str(line);
+            out.push('\n');
+        }
+        out
+    }
+
+    #[test]
+    fn placement_vocabulary_empty_candidate_set_fails_closed() {
+        let (code, report) = placement_run(
+            "pg-nocandidate",
+            &without_declarations(&placement_document()),
+            &placement_tools(),
+            true,
+        );
+        assert_eq!(
+            code, 2,
+            "a document the parser reads to zero candidates gives exit 2: {report}"
+        );
+        assert!(
+            report.contains("FAIL: the candidate set is empty, so the parse is broken."),
+            "the guard states that the parse is broken: {report}"
         );
     }
 
@@ -4236,6 +4781,474 @@ declares the function"
 end of this row"
             ),
             "the guard names the message and the end it cannot find: {report}"
+        );
+    }
+
+    /// The line the skipped form of the roster guard prints.
+    ///
+    /// No full run prints it, so the two forms of the guard are never
+    /// confusable by exit code alone.
+    const ROSTER_SKIP_LINE: &str = "ROSTER COMPILE:   skipped (--generate-only)";
+
+    /// How many types the synthetic section 1.5 table places.
+    const ROSTER_TYPES: usize = 20;
+
+    /// How many impl blocks the synthetic roster document spells out.
+    ///
+    /// The `impl-sites` block states 66 rows against a floor of 65, so a probe
+    /// that removes one row keeps the block above its floor and reaches the
+    /// count rule instead of the fail-closed row count.
+    const ROSTER_IMPL_SITES: usize = 66;
+
+    /// The repository manifest the roster fixture gives the guard.
+    ///
+    /// The guard copies the `[workspace.lints]` table into the scratch
+    /// workspace, and it reads the table between the rust heading and the
+    /// profile banner, so the fixture carries both marks.
+    const ROSTER_REPO_MANIFEST: &str = "[workspace]
+members = []
+
+[workspace.lints.rust]
+unsafe_code = \"deny\"
+
+[workspace.lints.rustdoc]
+all = \"deny\"
+
+# ---------------------------------------------------------------------------
+# Profiles
+[profile.release]
+opt-level = 3
+";
+
+    /// A two-line workflow that gives `check-roster` the skip flag.
+    const PLANTED_JOB_LINE: &str =
+        "jobs:\n  - run: cargo xtask check-roster document scratch repo --generate-only\n";
+
+    /// The one defect one roster fixture plants.
+    #[derive(Debug, Clone, Copy)]
+    enum RosterDefect {
+        /// The document breaks no rule the skipped form measures.
+        Clean,
+        /// One declaration the section 1.5 table places is absent.
+        MissingDeclaration,
+        /// One impl block carries a body beside a bodiless signature.
+        MixedImplBlock,
+        /// The `impl-sites` block lists one site fewer than the document holds.
+        MissingImplSite,
+    }
+
+    /// One type name the synthetic section 1.5 table places.
+    fn roster_type(index: usize) -> String {
+        format!("Rst{index:02}")
+    }
+
+    /// The crate row the synthetic section 1.5 table gives one type.
+    fn roster_row(index: usize) -> &'static str {
+        if index.is_multiple_of(2) {
+            "probe-one"
+        } else {
+            "probe-two"
+        }
+    }
+
+    /// One registered table block, as the synthetic document writes it.
+    fn roster_table_block(heading: &str, id: &str, minimum: usize, rows: Vec<String>) -> String {
+        let mut out = vec![
+            format!("#### {heading}"),
+            String::new(),
+            format!("<!-- GUARD BLOCK id={id} rows>={minimum} -->"),
+        ];
+        out.extend(rows);
+        out.push(String::new());
+        out.join("\n")
+    }
+
+    /// One registered fenced block, as the synthetic document writes it.
+    fn roster_fenced_block(head: RosterHead<'_>, language: &str, lines: Vec<String>) -> String {
+        let mut out = vec![
+            format!("#### {}", head.heading),
+            String::new(),
+            format!("<!-- GUARD BLOCK id={} rows>={} -->", head.id, head.minimum),
+            format!("```{language}"),
+        ];
+        out.extend(lines);
+        out.push("```".to_owned());
+        out.push(String::new());
+        out.join("\n")
+    }
+
+    /// What one registered block of the roster fixture calls itself.
+    #[derive(Debug, Clone, Copy)]
+    struct RosterHead<'a> {
+        /// The `####` heading the guard register states.
+        heading: &'a str,
+        /// The block id the marker line states.
+        id: &'a str,
+        /// The row floor the marker line states.
+        minimum: usize,
+    }
+
+    /// Every row of the synthetic type ownership table.
+    fn roster_ownership() -> Vec<String> {
+        let rows = (0..ROSTER_TYPES)
+            .map(|index| {
+                md_row(&[
+                    &format!("`{}`", roster_row(index)),
+                    &format!("`{}`", roster_type(index)),
+                    "15.1",
+                ])
+            })
+            .collect();
+        md_table(&["Crate", "Types it declares", "Declared in"], rows)
+    }
+
+    /// Every line of the synthetic internal edge list.
+    fn roster_edges() -> Vec<String> {
+        let mut lines = vec!["probe-one -> probe-two".to_owned()];
+        lines.extend((1..18).map(|index| format!("probe-edge-{index:02} -> probe-two")));
+        lines
+    }
+
+    /// Every line of the synthetic external path list.
+    fn roster_paths() -> Vec<String> {
+        (0..70)
+            .map(|index| format!("Ext{index:02}        std::probe::Ext{index:02}"))
+            .collect()
+    }
+
+    /// Every line of the synthetic external pin list.
+    fn roster_pins() -> Vec<String> {
+        (0..13)
+            .map(|index| format!("probe-pin-{index:02}   1.0.0"))
+            .collect()
+    }
+
+    /// Every line of the synthetic workspace constant block.
+    fn roster_constants() -> Vec<String> {
+        (0..122)
+            .map(|index| format!("pub const PROBE_{index:03}: usize = 0;"))
+            .collect()
+    }
+
+    /// Every line of the synthetic substitution block.
+    ///
+    /// The guard refuses a digit after the head token of one line, so each
+    /// line states its rule in words alone.
+    fn roster_substitutions() -> Vec<String> {
+        (1..=8)
+            .map(|index| format!("S{index} probe-rule    the synthetic block states this rule"))
+            .collect()
+    }
+
+    /// Every line of the synthetic recorded size block.
+    fn roster_sizes() -> Vec<String> {
+        (0..51)
+            .map(|index| format!("Size{index:02}     8   8  generic"))
+            .collect()
+    }
+
+    /// Every line of the synthetic Drop block.
+    fn roster_drops() -> Vec<String> {
+        (0..3).map(roster_type).collect()
+    }
+
+    /// Every line of the synthetic impl site block.
+    fn roster_impl_sites() -> Vec<String> {
+        (0..ROSTER_IMPL_SITES)
+            .map(|index| format!("{} inherent {index:02}", roster_type(index % ROSTER_TYPES)))
+            .collect()
+    }
+
+    /// The impl block the synthetic document spells out at one index.
+    fn roster_impl_block(index: usize) -> String {
+        format!(
+            "impl {} {{ fn probe_{index:02}(&self) -> usize; }}",
+            roster_type(index % ROSTER_TYPES)
+        )
+    }
+
+    /// The unregistered Rust block that spells every declaration and impl out.
+    fn roster_declarations() -> String {
+        let mut out = vec![
+            "#### The declarations the roster spells out".to_owned(),
+            String::new(),
+            "```rust".to_owned(),
+        ];
+        out.extend(
+            (0..ROSTER_TYPES)
+                .map(|index| format!("struct {} {{ probe: usize }}", roster_type(index))),
+        );
+        out.extend((0..ROSTER_IMPL_SITES).map(roster_impl_block));
+        out.push("```".to_owned());
+        out.push(String::new());
+        out.join("\n")
+    }
+
+    /// The whole synthetic document, with the one defect the caller states.
+    fn roster_document(defect: RosterDefect) -> String {
+        let parts = vec![
+            "# The synthetic roster document\n".to_owned(),
+            roster_table_block(
+                "The type ownership table",
+                "ownership-table",
+                16,
+                roster_ownership(),
+            ),
+            roster_fenced_block(
+                RosterHead {
+                    heading: "The internal edge list",
+                    id: "edge-list",
+                    minimum: 18,
+                },
+                "text",
+                roster_edges(),
+            ),
+            roster_fenced_block(
+                RosterHead {
+                    heading: "Where every external name comes from",
+                    id: "external-paths",
+                    minimum: 70,
+                },
+                "text",
+                roster_paths(),
+            ),
+            roster_fenced_block(
+                RosterHead {
+                    heading: "The external crate pins the roster compile uses",
+                    id: "pins",
+                    minimum: 13,
+                },
+                "text",
+                roster_pins(),
+            ),
+            roster_fenced_block(
+                RosterHead {
+                    heading: "Every workspace constant",
+                    id: "constants",
+                    minimum: 122,
+                },
+                "rust",
+                roster_constants(),
+            ),
+            roster_fenced_block(
+                RosterHead {
+                    heading: "Every substitution the roster compile applies",
+                    id: "substitutions",
+                    minimum: 8,
+                },
+                "text",
+                roster_substitutions(),
+            ),
+            roster_fenced_block(
+                RosterHead {
+                    heading: "Every size the guard records",
+                    id: "recorded-sizes",
+                    minimum: 51,
+                },
+                "text",
+                roster_sizes(),
+            ),
+            roster_fenced_block(
+                RosterHead {
+                    heading: "Every declaration with a hand-written Drop impl",
+                    id: "drop-impls",
+                    minimum: 3,
+                },
+                "text",
+                roster_drops(),
+            ),
+            roster_fenced_block(
+                RosterHead {
+                    heading: "Every impl block the roster compiles",
+                    id: "impl-sites",
+                    minimum: 65,
+                },
+                "text",
+                roster_impl_sites(),
+            ),
+            roster_declarations(),
+        ];
+        roster_plant(&parts.join("\n"), defect)
+    }
+
+    /// The synthetic document with one defect planted in it.
+    fn roster_plant(text: &str, defect: RosterDefect) -> String {
+        match defect {
+            RosterDefect::Clean => text.to_owned(),
+            RosterDefect::MissingDeclaration => plant(
+                text,
+                &format!(
+                    "struct {} {{ probe: usize }}\n",
+                    roster_type(ROSTER_TYPES - 1)
+                ),
+                "",
+            ),
+            RosterDefect::MixedImplBlock => plant(
+                text,
+                &roster_impl_block(0),
+                "impl Rst00 { fn probe_00(&self) -> usize; fn probe_mixed(&self) -> usize { 0 } }",
+            ),
+            RosterDefect::MissingImplSite => {
+                let last = ROSTER_IMPL_SITES - 1;
+                plant(
+                    text,
+                    &format!("{} inherent {last:02}\n", roster_type(last % ROSTER_TYPES)),
+                    "",
+                )
+            },
+        }
+    }
+
+    /// Run the roster guard over one synthetic document, and clean up.
+    ///
+    /// The fixture holds its own repository root and its own scratch
+    /// directory, and the scratch sits beside the repository and never under
+    /// it, because the guard refuses a scratch path inside the repository.
+    fn roster_generate_only(label: &str, defect: RosterDefect) -> (i32, String) {
+        let root = scratch(label);
+        let document = root.join("architecture.md");
+        write_bytes(&document, roster_document(defect).as_bytes());
+        write_bytes(
+            &root.join("repo").join("Cargo.toml"),
+            ROSTER_REPO_MANIFEST.as_bytes(),
+        );
+        let report = xtask(
+            &root,
+            &[
+                "check-roster",
+                &document.display().to_string(),
+                &root.join("work").display().to_string(),
+                &root.join("repo").display().to_string(),
+                "--generate-only",
+            ],
+        );
+        clean(&root);
+        report
+    }
+
+    /// Whether no line of one workflow gives `check-roster` the skip flag.
+    ///
+    /// The helper reads one LINE at a time, and that is its own limit. A
+    /// folded YAML scalar, a shell variable that holds the flag, and an `env:`
+    /// entry each defeat it, and review holds those three.
+    fn roster_job_line_is_clean(workflow: &str) -> bool {
+        !workflow
+            .lines()
+            .any(|line| line.contains("check-roster") && line.contains("--generate-only"))
+    }
+
+    /// The workflow directory of this repository.
+    fn workflow_directory() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(2)
+            .expect("the crate manifest sits two levels under the repository root")
+            .join(".github")
+            .join("workflows")
+    }
+
+    /// The line the skipped half of `check-roster` prints and the full run never does.
+    ///
+    /// A planted run asserts it as well as the clean run, because an exit-1 run
+    /// is where a skipped form and a full form are most confusable.
+    const SKIPPED_COMPILE_LINE: &str = "ROSTER COMPILE:   skipped (--generate-only)";
+
+    #[test]
+    fn roster_generate_only_clean_document_exits_zero() {
+        let (code, report) = roster_generate_only("roster-clean", RosterDefect::Clean);
+        assert_eq!(
+            code, 0,
+            "a synthetic document that breaks no rule exits 0: {report}"
+        );
+        assert!(
+            report.contains(ROSTER_SKIP_LINE),
+            "the skipped form prints the line that names itself: {report}"
+        );
+    }
+
+    #[test]
+    fn roster_generate_only_roster_below_the_denominator_is_a_finding() {
+        let (code, report) = roster_generate_only("roster-floor", RosterDefect::MissingDeclaration);
+        assert_eq!(
+            code, 1,
+            "a roster below the section 1.5 floor is a finding: {report}"
+        );
+        assert!(
+            report
+                .lines()
+                .any(|line| line.starts_with("FINDING: the roster holds")),
+            "the guard names the first name with no declaration: {report}"
+        );
+        assert!(
+            report.contains(SKIPPED_COMPILE_LINE),
+            "a planted run states which half ran, which is where the two forms are most confusable: {report}"
+        );
+    }
+
+    #[test]
+    fn roster_generate_only_mixed_impl_block_is_a_finding() {
+        let (code, report) = roster_generate_only("roster-mixed", RosterDefect::MixedImplBlock);
+        assert_eq!(code, 1, "a mixed impl block is a finding: {report}");
+        assert!(
+            report
+                .lines()
+                .any(|line| line.starts_with("FINDING: the impl block for")),
+            "the guard names the declaration the mixed block is for: {report}"
+        );
+        assert!(
+            report.contains(SKIPPED_COMPILE_LINE),
+            "a planted run states which half ran, which is where the two forms are most confusable: {report}"
+        );
+    }
+
+    #[test]
+    fn roster_generate_only_impl_count_that_differs_is_a_finding() {
+        let (code, report) = roster_generate_only("roster-impls", RosterDefect::MissingImplSite);
+        assert_eq!(
+            code, 1,
+            "an impl count that differs from the block is a finding: {report}"
+        );
+        assert!(
+            report
+                .lines()
+                .any(|line| line.starts_with("FINDING: the roster parsed")),
+            "the guard names both counts and the difference: {report}"
+        );
+        assert!(
+            report.contains(SKIPPED_COMPILE_LINE),
+            "a planted run states which half ran, which is where the two forms are most confusable: {report}"
+        );
+    }
+
+    #[test]
+    fn roster_generate_only_never_reaches_a_job() {
+        let directory = workflow_directory();
+        let entries = fs::read_dir(&directory).expect("the workflow directory opens");
+        let mut files = 0_usize;
+        for entry in entries {
+            let path = entry.expect("one entry of the workflow directory").path();
+            if !path.is_file() {
+                continue;
+            }
+            let text = fs::read_to_string(&path).expect("one workflow file");
+            assert!(
+                roster_job_line_is_clean(&text),
+                "no job gives check-roster the skip flag: {}",
+                path.display()
+            );
+            files += 1;
+        }
+        assert!(
+            files > 0,
+            "the workflow directory holds at least one file, so the probe has a denominator"
+        );
+    }
+
+    #[test]
+    fn roster_job_line_probe_refuses_a_planted_flag() {
+        assert!(
+            !roster_job_line_is_clean(PLANTED_JOB_LINE),
+            "a planted skip flag makes the job-line helper return false"
         );
     }
 }

@@ -338,9 +338,18 @@ in the same commit as the code that uses them.
        release.
     4. Add a `changes` job that runs
        `git diff --name-only "origin/${{ github.base_ref }}"...HEAD` and sets an output named
-       `roadmap`, which is `true` when one path opens with `roadmap/`.
+       `roadmap`, which is `true` when one path opens with `roadmap/`. **Chunk M93 renames that
+       output to `plan_inputs` and widens the filter**; the note under step 5 gives the current
+       name and the full pattern.
     5. Add a `plan-lint` job on `ubuntu-26.04` that declares `needs: changes` and
        `if: needs.changes.outputs.roadmap == 'true'`. It runs these commands, in this order.
+
+       **Chunk M93 renames that output to `plan_inputs` and widens the filter**, so a party who
+       re-derives this job from this brief reads the M93 body first. M93 sets the output name at
+       every site, and its filter matches `^roadmap/`, `^tools/xtask/`, `^Cargo\.toml$`,
+       `^clippy\.toml$`, `^rust-toolchain\.toml$` and `^\.cargo/config\.toml$`, because rule PG25
+       reads the last four. This brief keeps the name M0 itself wrote, and this note is the pointer
+       to the current one.
 
        ```
        cargo xtask check-placement roadmap/duet-v1/architecture.md

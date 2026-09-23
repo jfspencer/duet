@@ -51,8 +51,11 @@ rate of one rather than a refusal.
    `non_zero(0)`, runs `cargo check -p duet-time`, observes the refusal, reverts the edit, and
    quotes the compiler message in the chunk report. **The extension of
    `constants_hold_their_literal_values` that M91 step 14 describes is a READER for the
-   `non_zero_u32` path and not a regression test for this repair**: it is green on the pre-fix code,
-   because `NonZeroU32::MIN` is 1 and every literal of `SampleRate::SUPPORTED` is already non-zero.
+   `non_zero_u32` path and not a regression test for this repair**: it is green on the pre-fix code
+   AND on the repaired code, because `NonZeroU32::MIN` is 1 and every literal of
+   `SampleRate::SUPPORTED` is already non-zero. **A test that is green on every state of the code
+   under repair can never go red for that repair**, and the phrase "green on the pre-fix code" reads
+   as if the repaired code were the state that turns it red.
    Follow-up item FU-4 of the plan store (`fluid:next_steps_from_T1`) proposes the mechanical guard
    for the condition of decision 5. **This act does not promote FU-4**; the item stays in the store
    and this decision is the site that names the gap.

@@ -111,6 +111,13 @@ CG8  a workspace that `cargo metadata` refuses, a member file that is not
 block register of section 1.9 carries no `CG` row and PG27 holds no rule of
 this file. A `CG` rule that ever reads a block enters that register in the
 same changeset.
+
+**CG9 is the one rule this prototype does not implement.** The Rust port
+compares each Appendix B.1 `b1-convert` reason cell with the `reason =` string
+of that function in `crates/duet-time/src/convert.rs`, and the two sets are one
+set in both directions. PG29 reads this file for rule IDS alone and never for
+behaviour, so the name of the rule is the whole record this file carries, and
+architecture section 1.9 states the divergence.
 """
 
 import fnmatch

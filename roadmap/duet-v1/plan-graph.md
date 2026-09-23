@@ -1,6 +1,6 @@
 # Plan graph: roadmap/duet-v1
 
-Derived from the chunk front-matter by `tools/plan_graph_check.py`. Edit the chunk files, then regenerate; never edit this file by hand.
+Derived from the chunk front-matter by `cargo xtask check-plan-graph <plan-dir> --write-manifest`. Edit the chunk files, then regenerate; never edit this file by hand.
 
 ## Objective
 
@@ -11,8 +11,8 @@ Duet v1: a vocal-first composition, record, mix, and master application on GPUI 
 | Phase | Chunks | Width |
 |---|---|---|
 | 0 | M0, T1 | 2 |
-| 1 | D1, M1, M90, M91, T2 | 5 |
-| 2 | A1, D2, E1, M2, T3 | 5 |
+| 1 | D1, M1, M90, M91, M92, T2 | 6 |
+| 2 | A1, D2, E1, M2, M93, T3 | 6 |
 | 3 | A2, D3, E2, M3, N1, T4 | 6 |
 | 4 | A3, C1, E3, F1, G1, M4, N2, X1 | 8 |
 | 5 | A4, C2, F2, G2, N3, X2 | 6 |
@@ -36,11 +36,13 @@ Duet v1: a vocal-first composition, record, mix, and master application on GPUI 
 | M1 | M | 1 | `m-01-manifest-phase-1.md` | M0, T1 | Cargo.toml; Cargo.lock; crates/duet-score/Cargo.toml; crates/duet-score/src/lib.rs; crates/duet-dsp/Cargo.toml; crates/duet-dsp/src/lib.rs |
 | M90 | M | 1 | `m-90-guard-family-and-plan-gate.md` | M0, T1 | tools/xtask/src/main.rs; tools/xtask/src/check_plan_graph.rs; tools/xtask/src/check_placement.rs; tools/xtask/src/check_roster.rs; tools/xtask/src/check_conversions.rs; tools/xtask/src/check_closure.rs; tools/xtask/tests/probes.rs; scripts/dod.sh; typos.toml; .github/workflows/ci.yml; roadmap/duet-v1/tools/conversion_check.py; roadmap/duet-v1/architecture.md; roadmap/duet-v1/plan-graph.md |
 | M91 | M | 1 | `m-91-time-kernel-repairs.md` | M0, T1 | crates/duet-time/src/convert.rs; crates/duet-time/src/units.rs; crates/duet-time/tests/kernel.rs |
+| M92 | M | 1 | `m-92-soak-target-parity.md` | M0, T1, M91 | crates/duet-time/tests/proptest_large.rs |
 | T2 | trunk | 1 | `trunk-02-score.md` | M1, T1 | crates/duet-score/Cargo.toml; crates/duet-score/src/lib.rs; crates/duet-score/src/model.rs; crates/duet-score/src/ids.rs; crates/duet-score/src/command.rs; crates/duet-score/src/event.rs; crates/duet-score/src/apply.rs; crates/duet-score/src/canonical.rs; crates/duet-score/src/error.rs; crates/duet-score/tests/canonical_determinism.rs; Cargo.lock |
 | A1 | A | 2 | `a-01-smufl-metrics-and-xmap.md` | M2, T2 | crates/duet-engrave/Cargo.toml; crates/duet-engrave/src/lib.rs; crates/duet-engrave/src/smufl.rs; crates/duet-engrave/src/metrics.rs; crates/duet-engrave/src/placement.rs; crates/duet-engrave/src/map.rs; crates/duet-engrave/src/spacing.rs; crates/duet-engrave/src/system.rs; crates/duet-engrave/src/beam.rs; crates/duet-engrave/src/spanner.rs; crates/duet-engrave/src/lyric.rs; crates/duet-engrave/src/mark.rs; Cargo.lock |
 | D2 | D | 2 | `d-02-dynamics-kernels.md` | M2, D1 | crates/duet-dsp/src/dynamics/compressor.rs; crates/duet-dsp/src/dynamics/gate.rs; crates/duet-dsp/src/dynamics/deesser.rs; crates/duet-dsp/src/dynamics/limiter.rs |
 | E1 | E | 2 | `e-01-pyramid-read-path.md` | M2, D1 | crates/duet-analysis/Cargo.toml; crates/duet-analysis/src/lib.rs; crates/duet-analysis/src/peaks.rs; crates/duet-analysis/src/pyin.rs; crates/duet-analysis/src/loudness.rs; crates/duet-analysis/src/pyin/candidates.rs; crates/duet-analysis/src/pyin/decode.rs; Cargo.lock |
 | M2 | M | 2 | `m-02-manifest-phase-2.md` | M1, T2, D1 | Cargo.toml; Cargo.lock; crates/duet-session/Cargo.toml; crates/duet-session/src/lib.rs; crates/duet-engrave/Cargo.toml; crates/duet-engrave/src/lib.rs; crates/duet-analysis/Cargo.toml; crates/duet-analysis/src/lib.rs |
+| M93 | M | 2 | `m-93-plan-lint-trigger.md` | M0, M90 | .github/workflows/ci.yml |
 | T3 | trunk | 2 | `trunk-03-session.md` | M2, T2 | crates/duet-session/Cargo.toml; crates/duet-session/src/lib.rs; crates/duet-session/src/session.rs; crates/duet-session/src/track.rs; crates/duet-session/src/take.rs; crates/duet-session/src/region.rs; crates/duet-session/src/location.rs; crates/duet-session/src/mix.rs; crates/duet-session/src/curve.rs; crates/duet-session/src/slot.rs; crates/duet-session/src/calibration.rs; crates/duet-session/src/command.rs; crates/duet-session/src/event.rs; crates/duet-session/src/error.rs; crates/duet-session/tests/session.rs; Cargo.lock |
 | A2 | A | 3 | `a-02-spacing-and-system-break.md` | M3, A1 | crates/duet-engrave/src/spacing.rs; crates/duet-engrave/src/system.rs |
 | D3 | D | 3 | `d-03-voice-slots-and-pyramid.md` | M3, D2 | crates/duet-dsp/src/voice.rs; crates/duet-dsp/src/slot.rs; crates/duet-dsp/src/pool.rs; crates/duet-dsp/src/dynamics/delay.rs; crates/duet-dsp/src/dynamics/reverb.rs; crates/duet-dsp/src/peaks/format.rs; crates/duet-dsp/src/peaks/builder.rs; crates/duet-dsp/src/peaks/reader.rs; crates/duet-dsp/Cargo.toml; Cargo.lock |

@@ -44,7 +44,7 @@ and chunks D1 and T2 consume `duet-time` in the same phase.
 |---|---|
 | `crates/duet-time/src/convert.rs` | modify (two scale constants, one body, FIVE `#[expect]` reasons, one doc block) |
 | `crates/duet-time/src/units.rs` | modify (`non_zero` and `non_zero_u32`) |
-| `crates/duet-time/tests/kernel.rs` | modify (one new test, one new constant value, three repaired tests) |
+| `crates/duet-time/tests/kernel.rs` | modify (one new test, one new constant value, FOUR repaired tests) |
 
 ## Types and signatures
 
@@ -110,9 +110,12 @@ const UNIT_TO_I32_SCALE: f64 = 32_768.0 * 65_536.0;
 
    **Rename the binding of the negative arm and state that the arm is unreachable** (critic C1-18).
    At a scale factor of 2^23 a unit value of -1.0 makes exactly -8_388_608.0, which `I24::new`
-   ACCEPTS, so `None if scaled < 0 => I24::MIN` can no longer run. The arm stays, because a match
-   over an `Option` must be total; that is the same reason architecture section 1.6 keeps the `None`
-   arm of `non_zero`. The body becomes:
+   ACCEPTS, so `None if scaled < 0 => I24::MIN` can no longer run. **The arm stays as a defence in
+   depth.** It names the answer the clamp must give at the low end, so a later edit of the scale
+   factor keeps the function correct at both ends, and no type in the signature checks that.
+   **Totality is NOT the reason**: the unguarded `None => I24::MAX` arm already makes the match
+   total, so the guarded arm is an extra arm. The `None` arm of `non_zero` in architecture section
+   1.6 is the other case, where the arm IS the one the match needs. The body becomes:
 
    ```rust
    pub fn unit_to_i24(value: Unit) -> I24 {
@@ -213,8 +216,10 @@ const UNIT_TO_I32_SCALE: f64 = 32_768.0 * 65_536.0;
    `_above_the_range` contradicts the guard beside it, `scaled < 0`, and a reader of a lossless
    kernel reads that arm as the one the clamp uses. **The negative arm is UNREACHABLE at a scale
    factor of 2^31**: a unit value of -1.0 makes exactly -2_147_483_648.0, which `i32::try_from`
-   accepts. It stays for totality, exactly as the negative arm of `unit_to_i24` does, and the doc
-   comment of the function states that in one sentence.
+   accepts. It stays as a defence in depth, exactly as the negative arm of `unit_to_i24` does: the
+   unguarded `Err(_outside_the_range) => i32::MAX` arm already makes the match total, so the guarded
+   arm is an extra arm that names the answer the clamp must give at the low end. The doc comment of
+   the function states that reason.
 
 9. Repair the `#[expect]` reason of `unit_to_i32` to the Appendix B.1 text:
 
@@ -373,7 +378,15 @@ Every assert carries a message.
 | `convert_i24_round_trip_at_the_boundaries` | The eight boundary pairs of `I24_BOUNDARY_ROUND_TRIPS`, each an identity | `tests/kernel.rs`, a plain `#[test]` |
 | `convert_i32_round_trip` | The drift stays inside 64, and it is 0 below a magnitude of 2^24 | `tests/kernel.rs`, inside `proptest!` over `any::<i32>()` |
 | `convert_i32_round_trip_at_the_boundaries` | The same bound at `i32::MIN`, `i32::MIN + 1`, -1, 0, 1, and `i32::MAX` | `tests/kernel.rs`, a plain `#[test]` |
+| `unit_to_i24_keeps_the_sign_at_both_bounds` | A unit value of -1.0 answers `I24::MIN` and a unit value of +1.0 answers `I24::MAX`, and a unit value of -0.5 answers a negative sample | `tests/kernel.rs`, a plain `#[test]` |
 | `constants_hold_their_literal_values` | `TICKS_PER_QUARTER` is 1_920, `SUPERCLOCK_HZ` is 282_240_000, and every `SampleRate::SUPPORTED` entry is non-zero. **It is a reader for the `non_zero_u32` path and it is GREEN on the pre-fix code**, so it is not a regression test for the step-15 and step-16 repair (critic C1-5) | `tests/kernel.rs`, a plain `#[test]` |
+
+**FOUR tests are repaired and not three, and `unit_to_i24_keeps_the_sign_at_both_bounds` is the
+fourth.** Step 3 changes `UNIT_TO_I24_SCALE` to 2^23, so a unit value of -1.0 answers exactly
+`I24::MIN`. At the pre-fix factor of 2^23 - 1 it answered -8_388_607, which is one above
+`I24::MIN`, so the low-end expectation of this test moves with the constant. The test carries the
+two full-scale bounds of ADR-0007 decision 1 and the sign of one interior sample, and no other test
+of this file asserts the low-end bound on its own.
 
 **The exhaustive test is a plain test and not an `#[ignore]` test.** It runs 16,777,216 iterations of
 two arithmetic operations, which is inside the budget of a unit test on both platforms. Measure it

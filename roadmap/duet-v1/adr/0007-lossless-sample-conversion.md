@@ -55,11 +55,16 @@ Two more facts bear on the decision.
    **`i32::MIN` and `i32::MAX` each round trip exactly**: `i32::MIN` is -2^31, which an `f32` holds,
    and `i32::MAX` clamps back to itself through the match.
 
-4a. **Both negative match arms are UNREACHABLE at these scale factors and both stay for totality.**
-   A factor of 2^23 sends a unit value of -1.0 to exactly -8_388_608.0, which `I24::new` accepts,
-   and 2^31 sends it to exactly -2_147_483_648.0, which `i32::try_from` accepts. A match over an
-   `Option` and a match over a `Result` must each be total, which is the same reason ADR-0008 keeps
-   the `None` arm of `non_zero`. **The 32-bit binding is named `_outside_the_range`**, because the
+4a. **Both negative match arms are UNREACHABLE at these scale factors and both stay as a defence in
+   depth.** A factor of 2^23 sends a unit value of -1.0 to exactly -8_388_608.0, which `I24::new`
+   accepts, and 2^31 sends it to exactly -2_147_483_648.0, which `i32::try_from` accepts.
+   **Totality is NOT the reason, and revision 24 of this record stated that it was.** The unguarded
+   final arm of each match already makes that match total, so each guarded negative arm is an EXTRA
+   arm and a reader who deletes it still compiles the crate. The arm stays because it names the
+   answer the clamp must give at the low end: a later edit of a scale factor then keeps the function
+   correct at both ends, and no type in either signature checks that. **The `None` arm of `non_zero`
+   in `units.rs` is a different case**, and ADR-0008 decision 2 holds it: there the `None` arm is the
+   one other arm, so the match needs it. **The 32-bit binding is named `_outside_the_range`**, because the
    name `_above_the_range` contradicts the `scaled < 0` guard beside it and a reader of a lossless
    kernel reads that arm as the one the clamp uses.
 5. **`finite_to_f32_saturating` is not on the sample path, so this decision does not reach it.** An

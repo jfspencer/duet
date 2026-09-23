@@ -25,10 +25,11 @@ GATES=(
   "deny       cargo deny check"
   "machete    cargo machete"
   "agents     cargo xtask sync-agents --check"
-  "converts   cargo xtask check-conversions"
+  "converts   cargo xtask check-conversions (CG9 when the change touches roadmap/ or convert.rs)"
   "manifests  cargo xtask check-manifests"
+  "plan       cargo xtask check-placement and check-plan-graph (when the change touches roadmap/)"
   "hooks      bash -n on every shell hook and script (shellcheck when installed)"
-  "typos      typos (advisory; when installed)"
+  "typos      typos (when installed)"
 )
 
 if [[ "${1:-}" == "--plan" ]]; then
@@ -48,6 +49,54 @@ need() {
 need cargo
 need cargo-deny
 need cargo-machete
+
+# The change under test, as ONE union that two steps read. Section 14 rung one
+# of roadmap/duet-v1/architecture.md states the three clauses. Clause 3 is why
+# the step is reachable at a push and at an amend, where the first two clauses
+# are empty. The union is computed here, above every step, because the first
+# reader of it is the `converts` step and not the `plan` step.
+#
+# `gitdiff` prints one changed path per line, whatever bytes the path holds. A
+# condition that cannot see its own input must not answer no, and a plain
+# `--name-only` cannot see four shapes. `-z` prints each path RAW and NUL
+# separated, so nothing is quoted and no byte is escaped; `core.quotePath=false`
+# alone covers the non-ASCII case and leaves a quotation mark, a backslash, a
+# tab and a newline quoted, and a quoted path fails every anchored pattern
+# below. `--no-renames` prints BOTH sides of a rename, so a document moved OUT
+# of `roadmap/` is still seen; with renames on, git prints the destination
+# alone and the step skips although the plan directory lost a file.
+#
+# A path that holds a newline prints as two lines here. That can only ADD a
+# match and never remove one, so the condition stays fail-safe in the one
+# direction that matters.
+gitdiff() {
+  git -c core.quotePath=false diff --no-renames -z "$@" | tr '\0' '\n'
+}
+
+CHANGED_PATHS=""
+DENOMINATOR_UNKNOWN=0
+if git rev-parse --verify --quiet HEAD >/dev/null 2>&1; then
+  CHANGED_PATHS="$(gitdiff --cached --name-only)"$'\n'"$(gitdiff --name-only HEAD)"
+  if git rev-parse --verify --quiet '@{upstream}' >/dev/null 2>&1; then
+    CHANGED_PATHS="$CHANGED_PATHS"$'\n'"$(gitdiff --name-only '@{upstream}..HEAD')"
+  elif merge_base="$(git merge-base origin/main HEAD 2>/dev/null)"; then
+    CHANGED_PATHS="$CHANGED_PATHS"$'\n'"$(gitdiff --name-only "$merge_base..HEAD")"
+  else
+    DENOMINATOR_UNKNOWN=1
+  fi
+else
+  DENOMINATOR_UNKNOWN=1
+fi
+
+# Whether the change under test names a path one pattern matches. A run that
+# cannot compute its denominator answers YES, so a step never skips on a
+# denominator it does not hold.
+touches() {
+  if [[ "$DENOMINATOR_UNKNOWN" == "1" ]]; then
+    return 0
+  fi
+  printf '%s\n' "$CHANGED_PATHS" | grep -qE "$1"
+}
 
 step "fmt: cargo fmt --all --check"
 cargo fmt --all --check
@@ -83,11 +132,25 @@ cargo machete
 step "agents: cargo xtask sync-agents --check"
 cargo xtask sync-agents --check
 
-step "conversions: cargo xtask check-conversions"
-cargo xtask check-conversions
+if touches '^roadmap/|^crates/duet-time/src/convert\.rs$'; then
+  step "conversions: cargo xtask check-conversions --appendix roadmap/duet-v1/architecture.md"
+  cargo xtask check-conversions --appendix roadmap/duet-v1/architecture.md
+else
+  step "conversions: cargo xtask check-conversions"
+  cargo xtask check-conversions
+fi
 
 step "manifests: cargo xtask check-manifests"
 cargo xtask check-manifests
+
+if touches '^roadmap/'; then
+  step "plan: cargo xtask check-placement and check-plan-graph"
+  cargo xtask check-placement roadmap/duet-v1/architecture.md
+  cargo xtask check-plan-graph roadmap/duet-v1
+  cargo xtask check-plan-graph roadmap/duet-v1 --check-manifest
+else
+  step "plan guards: skipped (no change under roadmap/)"
+fi
 
 step "hooks: bash -n"
 while IFS= read -r -d '' f; do
@@ -98,19 +161,11 @@ if command -v shellcheck >/dev/null 2>&1; then
     | xargs -0 shellcheck -x -S warning
 fi
 
-# The Bravura metadata is third-party SMuFL data and its glyph names are not
-# prose, so the spell check excludes it.
-#
-# The typos step stays ADVISORY. Step 13 of roadmap/duet-v1/m-00-manifest-phase-0.md
-# asks for a plain `typos` call, which makes a finding fail the gate. A run over
-# the tree reports 119 findings in roadmap/duet-v1 prose, and no chunk of the plan
-# owns a typos configuration file or the prose repair. A plain call would make
-# every commit red with no owner for the fix, so the fallback stays until the
-# Architect gives both halves an owner.
 if command -v typos >/dev/null 2>&1; then
-  step "typos (advisory)"
-  typos --exclude 'crates/duet/assets/fonts/*' \
-    || printf 'dod: typos reported findings (advisory).\n' >&2
+  step "typos"
+  typos
+else
+  step "typos: skipped (typos is not installed; run scripts/bootstrap.sh)"
 fi
 
 printf '\n\033[1;32mDefinition of Done: every gate passed.\033[0m\n'
