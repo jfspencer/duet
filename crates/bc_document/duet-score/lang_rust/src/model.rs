@@ -1290,12 +1290,11 @@ impl Score {
     /// The counter that the next mint reads.
     ///
     /// `score/meta.json` stores it beside the revision, because a reload that
-    /// restarts the counter would let a later mint alias a live identifier. It
-    /// is public for the reason `revision` is: both are read out of the
-    /// aggregate and neither is a way into it. The transaction test reads it to
-    /// prove that a refused command mints nothing.
+    /// restarts the counter would let a later mint alias a live identifier. The
+    /// canonical writer and the transaction test are the two readers, and both
+    /// live in this crate.
     #[must_use]
-    pub const fn next_id(&self) -> u64 {
+    pub(crate) const fn next_id(&self) -> u64 {
         self.next_id
     }
 
@@ -1428,6 +1427,27 @@ impl Score {
     /// `Score::apply` calls it once, after a command is accepted and applied.
     pub(crate) const fn bump_revision(&mut self) {
         self.revision = self.revision.next();
+    }
+
+    /// Take the revision counter that `score/meta.json` carried.
+    ///
+    /// The canonical reader is the one caller. Every other path steps the
+    /// counter through `bump_revision`.
+    pub(crate) const fn set_revision(&mut self, revision: Revision) {
+        self.revision = revision;
+    }
+
+    /// Take the identifier counter that `score/meta.json` carried.
+    ///
+    /// The canonical reader is the one caller. Every other path takes the next
+    /// number through `mint_id`.
+    pub(crate) const fn set_next_id(&mut self, next_id: u64) {
+        self.next_id = next_id;
+    }
+
+    /// The bag of unknown fields, for a change.
+    pub(crate) const fn extra_mut(&mut self) -> &mut BTreeMap<String, serde_json::Value> {
+        &mut self.extra
     }
 }
 
