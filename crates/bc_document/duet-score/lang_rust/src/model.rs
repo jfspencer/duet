@@ -517,6 +517,15 @@ impl Duration {
     /// the division then leaves no whole tick for a part. 255 notes in the time
     /// of one thirty-second note is such a group.
     ///
+    /// **A duration of zero ticks covers an empty span, and an empty span
+    /// intersects nothing.** The overlap rule of decision D15 reads the half-open
+    /// interval `[onset, onset + ticks())`, so two notes of one zero-tick
+    /// duration at one onset of one staff and one voice pass every overlap check
+    /// of `duet-score`, and such a note fills no measure. No command refuses a
+    /// duration, so the bound belongs to a later decision:
+    /// `escalation:T2-16` holds it. The trigger needs 61 or more parts in the
+    /// time of one thirty-second note, which no musical input produces.
+    ///
     /// Every step saturates, so no input wraps, and no input reaches a bound
     /// either: the base is one whole note at most, a dot run stays below twice
     /// the base, and `over` holds one byte, so the widest group spans fewer
@@ -1725,7 +1734,7 @@ mod tests {
     }
 
     #[test]
-    fn the_counter_never_mints_one_identifier_twice() {
+    fn the_counter_answers_a_new_number_each_time_below_its_bound() {
         let mut score = Score::new();
         let first = score.mint_id();
         let second = score.mint_id();
@@ -1733,6 +1742,21 @@ mod tests {
         assert!(
             first > 0,
             "the first measure already took the identifier at zero"
+        );
+    }
+
+    #[test]
+    fn the_counter_at_its_bound_answers_one_number_twice() {
+        let mut score = Score::new();
+        score.set_next_id(u64::MAX);
+
+        let first = score.mint_id();
+        let second = score.mint_id();
+
+        assert_eq!(
+            (first, second),
+            (u64::MAX, u64::MAX),
+            "the counter saturates, so at its bound it answers one number on every call: a score that reaches it would put two entities behind one reference, which reserve_id states"
         );
     }
 }

@@ -34,6 +34,20 @@ pub struct Applied {
     /// The facts a view needs.
     pub events: Vec<ScoreEvent>,
     /// The commands that undo this one, in application order.
+    ///
+    /// **`Score::apply` is transactional for ONE command and not for a list.**
+    /// A caller applies the whole list, in order, and a refusal part way leaves
+    /// the commands before it applied: the score is then partly undone, and
+    /// this crate holds no roll-back for that state. The list-level
+    /// transaction belongs to the undo stack of section 4.9 of
+    /// `roadmap/duet-v1/architecture.md`, which is `duet-session`.
+    ///
+    /// The list is sound against the score that the forward command LEFT, and
+    /// against no other score: the inverse of a `Remove` is a `Paste` whose
+    /// tick ranges must still be free and whose spanner endpoints must still
+    /// stand, and the inverse of a `SetVoice` names a voice that must still
+    /// stand. A caller that replays the list against a score that other
+    /// commands have touched can meet a refusal.
     pub inverse: Vec<ScoreCommand>,
     /// How many commands and how many bytes the inverse holds.
     pub inverse_cost: InverseCost,
@@ -195,6 +209,79 @@ struct Pasted {
     events: Vec<ScoreEvent>,
     /// The commands that undo the paste.
     inverse: Vec<ScoreCommand>,
+}
+
+/// The tempo map with every meter entry after `after` moved by `by`.
+///
+/// An entry AT `after` stays where it stands, because the measure that opens
+/// there keeps its start tick and only the measures behind it move. An entry
+/// that lands on a tick another entry holds replaces it, which is the rule that
+/// `meters_without` reads.
+///
+/// # Errors
+/// Returns `ScoreError::Time` when the moved list breaks a rule of
+/// `TempoMapEdit::finish`.
+fn meters_moved_after(map: &TempoMap, after: Ticks, by: Ticks) -> Result<TempoMap, ScoreError> {
+    let mut kept: BTreeMap<i64, MeterPoint> = BTreeMap::new();
+    for point in map.meters() {
+        let tick = if point.ticks() > after {
+            point.ticks().saturating_add(by)
+        } else {
+            point.ticks()
+        };
+        kept.insert(
+            tick.get(),
+            MeterPoint::new(tick, point.bbt(), point.meter()),
+        );
+    }
+    let mut edit = TempoMapEdit::new();
+    for tempo in map.tempos() {
+        edit = edit.push_tempo(*tempo);
+    }
+    for point in kept.into_values() {
+        edit = edit.push_meter(point);
+    }
+    edit.recompute_cached_views()
+        .finish()
+        .map_err(ScoreError::from)
+}
+
+/// The tempo map that states the meter of the measure after a changed one.
+///
+/// `following` is the meter of that measure and `at` is the start tick it takes.
+/// It carries a meter entry of its own when its meter differs from `meter`, the
+/// meter that the changed measure now holds, and it carries none when the two
+/// agree, because the entry of the changed measure governs that tick too.
+/// `Score::meters_at` reads the same rule at the changed measure, and the pair
+/// of the two keeps one statement of the meter at every tick. The rule is its
+/// own inverse, so a do-and-undo pair of `SetTimeSignature` is an identity on
+/// the map.
+///
+/// A change to the last measure of the score has no following measure and
+/// answers the map it took.
+///
+/// # Errors
+/// Returns `ScoreError::Time` when the new list breaks a rule of
+/// `TempoMapEdit::finish`.
+fn meters_at_boundary(
+    map: &TempoMap,
+    at: Ticks,
+    following: Option<Meter>,
+    meter: Meter,
+) -> Result<TempoMap, ScoreError> {
+    let Some(next) = following else {
+        return Ok(map.clone());
+    };
+    let edit = map.edit();
+    let placed = if next == meter {
+        edit.remove_meter_at(at)
+    } else {
+        edit.insert_meter(MeterPoint::new(at, Bbt::ORIGIN, next))
+    };
+    placed
+        .recompute_cached_views()
+        .finish()
+        .map_err(ScoreError::from)
 }
 
 /// The tick span of one bar of `meter`.
@@ -1179,7 +1266,7 @@ impl Score {
     ///
     /// A duration of zero ticks covers an empty span, which intersects nothing,
     /// so such an element fills no measure. `Duration::ticks` states the one
-    /// input that answers zero ticks.
+    /// input that answers zero ticks, and `escalation:T2-16` holds the bound.
     ///
     /// # Errors
     /// Returns `ScoreError::MeasureNotEmpty` for the first filled measure.
@@ -1286,6 +1373,19 @@ impl Score {
         let earlier = place.checked_sub(1)?;
         ordered
             .get(earlier)
+            .and_then(|id| self.measures().get(id))
+            .map(Measure::meter)
+    }
+
+    /// The meter of the measure that stands after `measure` on the timeline.
+    ///
+    /// The answer is `None` for the last measure of the score, and for a measure
+    /// the score does not hold.
+    fn meter_after(&self, measure: MeasureId) -> Option<Meter> {
+        let ordered = self.measures_in_order();
+        let place = ordered.iter().position(|id| *id == measure)?;
+        ordered
+            .get(place.saturating_add(1))
             .and_then(|id| self.measures().get(id))
             .map(Measure::meter)
     }
@@ -1494,25 +1594,33 @@ impl Score {
 
     /// Change the meter of one measure, in the measure and in the tempo map.
     ///
-    /// The two statements of the meter move together, so a query of the map and
-    /// a read of the measure can never disagree. `meters_at` states the rule
-    /// that decides whether the measure carries a meter entry of its own, and
-    /// that rule is what makes the inverse restore the map the score held.
+    /// **It moves no content.** A note onset is absolute, in ticks from score
+    /// zero, and a measure is a shared entry on the timeline and not a
+    /// container, which section 3.3 of `roadmap/duet-v1/architecture.md` states.
+    /// The bar lines therefore move under the notes: the command moves no note,
+    /// no rest, no mark, and no spanner, and nothing can collide because nothing
+    /// moves. The consequence a reader must know is that a note can now sound
+    /// across a bar line that it did not cross before, and a note that filled
+    /// its own measure can reach into the measure that follows. This crate holds
+    /// no rule that refuses that state, and no rule of section 3 asks for one.
     ///
-    /// **The start tick of every later measure is left as it stands.** A bar of
-    /// three quarter notes and a bar of four cover different spans, so after a
-    /// meter change the start ticks and the meters of the measure list state two
-    /// timelines, and a tick range between them belongs to no measure. A
-    /// re-lay-out is not a change this arm can make on its own: shifting the
-    /// later measures earlier would move a note of the shortened measure onto a
-    /// note of the measure that follows, and no decision states which note then
-    /// gives way. Decision D13 states the measure and the map, and states
-    /// nothing about the measures that follow. `escalation:T2-10` records the
-    /// gap.
+    /// **The start tick of every LATER measure is re-laid.** A bar of three
+    /// quarter notes and a bar of four cover different spans, so every measure
+    /// behind the changed one moves by the difference of the two spans. The
+    /// measure grid stays one contiguous run, and no tick range belongs to no
+    /// measure.
+    ///
+    /// The two statements of the meter move together, so a query of the map and
+    /// a read of the measure can never disagree. `meters_at` states the rule that
+    /// decides whether the changed measure carries a meter entry of its own,
+    /// `meters_moved_after` moves the entries of the later measures with those
+    /// measures, and `meters_at_boundary` states the meter of the measure that
+    /// follows. Each of the three rules is its own inverse, which is what makes
+    /// the inverse restore the map the score held.
     ///
     /// # Errors
     /// Returns `ScoreError::MissingMeasure` for an absent measure, and
-    /// `ScoreError::Time` when the new meter list breaks a map rule.
+    /// `ScoreError::Time` when a new meter list breaks a map rule.
     fn set_time_signature(
         &mut self,
         measure: MeasureId,
@@ -1521,8 +1629,13 @@ impl Score {
         let record = self.measure_of(measure)?;
         let earlier = record.meter();
         let start = record.start();
+        let bar = bar_ticks(meter);
+        let by = Ticks::new(bar.get().saturating_sub(bar_ticks(earlier).get()));
         let governing = self.meter_before(measure);
-        let map = self.meters_at(start, meter, governing)?;
+        let following = self.meter_after(measure);
+        let changed = self.meters_at(start, meter, governing)?;
+        let moved = meters_moved_after(&changed, start, by)?;
+        let map = meters_at_boundary(&moved, start.saturating_add(bar), following, meter)?;
         let outcome = Outcome::new(
             vec![ScoreEvent::SignatureChanged(measure)],
             vec![ScoreCommand::SetTimeSignature {
@@ -1533,8 +1646,23 @@ impl Score {
         if let Some(held) = self.measures_mut().get_mut(&measure) {
             held.set_meter(meter);
         }
+        self.move_measures_after(start, by);
         self.set_tempo_map(map);
         Ok(outcome)
+    }
+
+    /// Move the start tick of every measure after `start` by `by`.
+    ///
+    /// It moves no note, no rest, no mark, and no spanner, which is what makes a
+    /// meter change move the bar lines under the content. `shift_from` is the
+    /// other rule, for a command that moves the content with the grid.
+    fn move_measures_after(&mut self, start: Ticks, by: Ticks) {
+        for record in self.measures_mut().values_mut() {
+            let held = record.start();
+            if held > start {
+                record.set_start(held.saturating_add(by));
+            }
+        }
     }
 
     /// Add one score mark at one tick.
@@ -2402,41 +2530,64 @@ mod tests {
     /// A run of two measures.
     const TWO_MEASURES: NonZeroU16 = NonZeroU16::MIN.saturating_add(1);
 
-    /// Every arm of `ScoreCommand`, by the name that `command_arm` answers.
+    /// Declare every arm of `ScoreCommand` once, for the match and for the list.
     ///
     /// The inverse property is the Resilient property of this chunk, and a
     /// command with no case is a command whose inverse nothing reads.
-    /// `every_command_arm_has_an_inverse_case` holds the two tables against
-    /// this list.
-    const COMMAND_ARMS: [&str; 27] = [
-        "AddPart",
-        "RemovePart",
-        "AddStaff",
-        "RemoveStaff",
-        "SetClef",
-        "InsertMeasures",
-        "RemoveMeasures",
-        "SetKeySignature",
-        "SetTimeSignature",
-        "AddMark",
-        "RemoveMark",
-        "InsertNote",
-        "InsertRest",
-        "SetPitch",
-        "SetDuration",
-        "SetTie",
-        "SetArticulations",
-        "SetLyric",
-        "SetDynamic",
-        "AddSpanner",
-        "RemoveSpanner",
-        "SetVoice",
-        "SetPart",
-        "Move",
-        "Duplicate",
-        "Remove",
-        "Paste",
-    ];
+    /// `every_command_arm_has_an_inverse_case` holds the two case tables
+    /// against `COMMAND_ARMS`, so `COMMAND_ARMS` is the denominator of that
+    /// guard.
+    ///
+    /// **One invocation writes both items, so the denominator comes from a
+    /// match that the compiler checks.** The match of `command_arm` is
+    /// exhaustive, so a new arm of `ScoreCommand` stops this module from
+    /// building until the invocation below names it, and naming it puts the arm
+    /// into `COMMAND_ARMS` in the same edit. A hand-kept list can hold 27 names
+    /// beside a 28th arm that no case covers, and the guard would then report a
+    /// completeness it did not earn.
+    macro_rules! command_arms {
+        ($($arm:ident),+ $(,)?) => {
+            /// Every arm of `ScoreCommand`, by the name that `command_arm` answers.
+            const COMMAND_ARMS: &[&str] = &[$(stringify!($arm)),+];
+
+            /// The name of the arm that `command` names.
+            fn command_arm(command: &ScoreCommand) -> &'static str {
+                match *command {
+                    $(ScoreCommand::$arm { .. } => stringify!($arm),)+
+                }
+            }
+        };
+    }
+
+    command_arms!(
+        AddPart,
+        RemovePart,
+        AddStaff,
+        RemoveStaff,
+        SetClef,
+        InsertMeasures,
+        RemoveMeasures,
+        SetKeySignature,
+        SetTimeSignature,
+        AddMark,
+        RemoveMark,
+        InsertNote,
+        InsertRest,
+        SetPitch,
+        SetDuration,
+        SetTie,
+        SetArticulations,
+        SetLyric,
+        SetDynamic,
+        AddSpanner,
+        RemoveSpanner,
+        SetVoice,
+        SetPart,
+        Move,
+        Duplicate,
+        Remove,
+        Paste,
+    );
 
     /// The tick count of one quarter note.
     const QUARTER_TICKS: i64 = 1_920;
@@ -2548,42 +2699,6 @@ mod tests {
                 }
             })
             .expect("an accepted AddSpanner reports SpannerAdded")
-    }
-
-    /// The name of the arm that `command` names.
-    ///
-    /// The match names every arm, so a new arm of `ScoreCommand` stops this
-    /// module from building until the inverse tables cover it too.
-    fn command_arm(command: &ScoreCommand) -> &'static str {
-        match *command {
-            ScoreCommand::AddPart { .. } => "AddPart",
-            ScoreCommand::RemovePart { .. } => "RemovePart",
-            ScoreCommand::AddStaff { .. } => "AddStaff",
-            ScoreCommand::RemoveStaff { .. } => "RemoveStaff",
-            ScoreCommand::SetClef { .. } => "SetClef",
-            ScoreCommand::InsertMeasures { .. } => "InsertMeasures",
-            ScoreCommand::RemoveMeasures { .. } => "RemoveMeasures",
-            ScoreCommand::SetKeySignature { .. } => "SetKeySignature",
-            ScoreCommand::SetTimeSignature { .. } => "SetTimeSignature",
-            ScoreCommand::AddMark { .. } => "AddMark",
-            ScoreCommand::RemoveMark { .. } => "RemoveMark",
-            ScoreCommand::InsertNote { .. } => "InsertNote",
-            ScoreCommand::InsertRest { .. } => "InsertRest",
-            ScoreCommand::SetPitch { .. } => "SetPitch",
-            ScoreCommand::SetDuration { .. } => "SetDuration",
-            ScoreCommand::SetTie { .. } => "SetTie",
-            ScoreCommand::SetArticulations { .. } => "SetArticulations",
-            ScoreCommand::SetLyric { .. } => "SetLyric",
-            ScoreCommand::SetDynamic { .. } => "SetDynamic",
-            ScoreCommand::AddSpanner { .. } => "AddSpanner",
-            ScoreCommand::RemoveSpanner { .. } => "RemoveSpanner",
-            ScoreCommand::SetVoice { .. } => "SetVoice",
-            ScoreCommand::SetPart { .. } => "SetPart",
-            ScoreCommand::Move { .. } => "Move",
-            ScoreCommand::Duplicate { .. } => "Duplicate",
-            ScoreCommand::Remove { .. } => "Remove",
-            ScoreCommand::Paste { .. } => "Paste",
-        }
     }
 
     /// A quarter note with no dot and no tuplet.
@@ -2805,6 +2920,40 @@ mod tests {
             .keys()
             .next()
             .expect("a new score holds one measure")
+    }
+
+    /// The greatest identifier that `score` holds, over every keyspace.
+    ///
+    /// A score that holds none answers zero, which the first mint takes.
+    fn greatest_identifier_of(score: &Score) -> u64 {
+        let parts = score.parts().keys().map(|id| id.get());
+        let staves = score.staves().keys().map(|id| id.get());
+        let voices = score.voices().keys().map(|id| id.get());
+        let measures = score.measures().keys().map(|id| id.get());
+        let marks = score.marks().keys().map(|id| id.get());
+        let notes = score.notes().keys().map(|id| id.get());
+        let rests = score.rests().keys().map(|id| id.get());
+        let spanners = score.spanners().keys().map(|id| id.get());
+        parts
+            .chain(staves)
+            .chain(voices)
+            .chain(measures)
+            .chain(marks)
+            .chain(notes)
+            .chain(rests)
+            .chain(spanners)
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// The text of one block of a canonical document.
+    fn text_of(block: &[u8], property: &str) -> String {
+        match core::str::from_utf8(block) {
+            Ok(text) => text.to_owned(),
+            Err(error) => {
+                panic!("{property}: the writer answers UTF-8 text, and it answered {error}")
+            },
+        }
     }
 
     /// Assert that two scores hold the same content, whatever their revision.
@@ -3562,13 +3711,47 @@ mod tests {
     }
 
     #[test]
+    fn every_command_arm_writes_a_document_that_the_reader_restores() {
+        for case in inverse_cases() {
+            let name = case.name;
+            let mut score = case.score;
+            if let Err(error) = score.apply(case.command) {
+                panic!("{name} is accepted, and it answered {error}");
+            }
+            let document = match crate::canonical::write(&score) {
+                Ok(document) => document,
+                Err(error) => panic!("{name} writes a document, and the writer answered {error}"),
+            };
+            let meta = text_of(document.meta(), name);
+            let notes = text_of(document.notes(), name);
+            let spanners = text_of(document.spanners(), name);
+            let restored = match crate::canonical::read(&meta, &notes, &spanners) {
+                Ok(restored) => restored,
+                Err(error) => panic!("{name} reads back, and the reader answered {error}"),
+            };
+            assert_same_content(&restored, &score, name);
+            assert_eq!(
+                restored.revision(),
+                score.revision(),
+                "{name}: the revision reaches the document and comes back"
+            );
+            let floor = greatest_identifier_of(&score).saturating_add(1);
+            assert_eq!(
+                restored.next_id(),
+                score.next_id().max(floor),
+                "{name}: the identifier counter reaches the document and comes back, raised above every identifier the document holds"
+            );
+        }
+    }
+
+    #[test]
     fn every_command_arm_has_an_inverse_case() {
         let mut covered: BTreeSet<&str> = inverse_cases()
             .iter()
             .map(|case| command_arm(&case.command))
             .collect();
         covered.extend(structure_removal_arms());
-        let declared: BTreeSet<&str> = COMMAND_ARMS.into_iter().collect();
+        let declared: BTreeSet<&str> = COMMAND_ARMS.iter().copied().collect();
         assert_eq!(
             covered, declared,
             "every arm of ScoreCommand stands in the inverse table or in the structure-removal table, so no broken inverse can hide in an arm that no test applies"
@@ -4074,6 +4257,101 @@ mod tests {
             &score,
             &before,
             "a SetTimeSignature on the second measure inverts",
+        );
+    }
+
+    #[test]
+    fn a_time_signature_change_moves_the_bar_lines_and_no_content() {
+        let mut stage = stage();
+        let first = first_measure(&stage.score);
+        stage
+            .score
+            .apply(ScoreCommand::InsertMeasures {
+                after: first,
+                count: TWO_MEASURES,
+            })
+            .expect("an InsertMeasures after the first measure of a new score is accepted");
+        let held = note_of(
+            &stage
+                .score
+                .apply(ScoreCommand::InsertNote {
+                    staff: stage.staff,
+                    voice: stage.voice,
+                    onset: Ticks::new(QUARTER_TICKS * 2),
+                    pitch: natural(Step::C),
+                    duration: half(),
+                })
+                .expect("an InsertNote at a free onset is accepted"),
+        );
+        let before = stage.score.clone();
+        assert_eq!(
+            starts_of(&stage.score),
+            vec![0, QUARTER_TICKS * 4, QUARTER_TICKS * 8],
+            "three bars of four-four open at every fourth quarter note"
+        );
+
+        let applied = stage
+            .score
+            .apply(ScoreCommand::SetTimeSignature {
+                measure: first,
+                meter: three_four(),
+            })
+            .expect("a SetTimeSignature on a measure the score holds is accepted");
+
+        assert_eq!(
+            starts_of(&stage.score),
+            vec![0, QUARTER_TICKS * 3, QUARTER_TICKS * 7],
+            "the bar of three quarter notes moves every later bar line one quarter note earlier, and the grid stays one contiguous run"
+        );
+        let note = stage
+            .score
+            .notes()
+            .get(&held)
+            .expect("the meter change keeps the note");
+        assert_eq!(
+            (note.onset().get(), note.duration().ticks().get()),
+            (QUARTER_TICKS * 2, QUARTER_TICKS * 2),
+            "a note onset is absolute, so the meter change moves neither the onset nor the duration"
+        );
+        assert!(
+            note.onset().get() < QUARTER_TICKS * 3
+                && note.onset().saturating_add(note.duration().ticks()).get() > QUARTER_TICKS * 3,
+            "the note now sounds across the bar line at three quarter notes, which it did not cross before"
+        );
+        let four_four = Meter::new(
+            NonZeroU8::new(4).expect("four is not zero"),
+            NoteValue::Quarter,
+        );
+        assert_eq!(
+            stage
+                .score
+                .tempo_map()
+                .meter_at(Ticks::ZERO)
+                .expect("the map states a meter at tick zero")
+                .meter(),
+            three_four(),
+            "the map states the new meter of the changed measure"
+        );
+        assert_eq!(
+            stage
+                .score
+                .tempo_map()
+                .meter_at(Ticks::new(QUARTER_TICKS * 3))
+                .expect("the map states a meter at the start of the second measure")
+                .meter(),
+            four_four,
+            "the map states the meter of the measure that follows at its new start tick, so the map and the measure list never disagree"
+        );
+
+        undo_all(
+            &mut stage.score,
+            applied.inverse,
+            "a SetTimeSignature on the first of three measures",
+        );
+        assert_same_content(
+            &stage.score,
+            &before,
+            "a SetTimeSignature on the first of three measures inverts",
         );
     }
 

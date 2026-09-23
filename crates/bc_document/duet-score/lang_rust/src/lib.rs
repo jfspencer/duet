@@ -17,8 +17,12 @@ mod model;
 pub use apply::Applied;
 pub use canonical::{CanonicalDocument, read, write};
 pub use command::{Clipboard, PitchEdit, ScoreCommand, ScoreSelector, Selection};
-/// The public API of this crate names each of these time-kernel types, so a
-/// consumer reads every one of them through this crate.
+/// The time-kernel types that a consumer of this crate reads.
+///
+/// A signature of this crate names each of them, or an exported type answers
+/// one: `TempoMap::tempos` is the one path to a `Tempo`, and no signature of
+/// `duet-score` names that type. A consumer therefore reads every one of them
+/// through this crate and needs no direct dependency on `duet-time`.
 pub use duet_time::{Meter, NoteValue, SchemaVersion, Tempo, TempoMap, Ticks, TimeError, Tuplet};
 pub use error::ScoreError;
 pub use event::ScoreEvent;

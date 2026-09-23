@@ -118,8 +118,11 @@ impl CanonicalDocument {
 ///
 /// The reader checks the SHAPE of the document and not its references: a hand
 /// edit that names a staff, a voice, or a note the document does not carry
-/// reads back as an aggregate that no command of `apply` would build.
-/// `escalation:T2-2` records the gap.
+/// reads back as an aggregate that no command of `apply` would build, and a
+/// spanner that names a note the document does not carry reads back as the
+/// dangling reference that `Score::apply` refuses at both of its entry points.
+/// `escalation:T2-14` records the gap, and it is the record for the reference
+/// limit alone: `escalation:T2-2` holds the unknown-key report of rule 4.
 ///
 /// # Errors
 /// Returns `ScoreError::Schema` for a document above the schema that this

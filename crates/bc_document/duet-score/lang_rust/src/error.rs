@@ -79,6 +79,9 @@ pub enum ScoreError {
     /// `roadmap/duet-v1/architecture.md` does not print: `apply` and
     /// `canonical` call the kernel behind `?`, and the conversion keeps the
     /// call sites free of a hand-written `map_err` that could drop the source.
+    /// `#[from]` adds a public `From<TimeError> for ScoreError`, so the code and
+    /// the architecture declare two different public surfaces until one of them
+    /// changes. `escalation:T2-15` holds that choice.
     #[error(transparent)]
     Time(#[from] TimeError),
 }
