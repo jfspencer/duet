@@ -13,7 +13,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-duet-time = { path = "../duet-time" }
+duet-time = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 smallvec = { workspace = true }

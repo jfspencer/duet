@@ -10,7 +10,6 @@ use std::collections::BTreeMap;
 
 use duet_time::{
     Bbt, Meter, MeterPoint, NoteValue, SchemaVersion, TempoMap, TempoMapEdit, Ticks, Tuplet,
-    split_tuplet,
 };
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
@@ -23,10 +22,12 @@ use crate::ids::{
 /// The current schema number of the canonical document (B42).
 pub const SCHEMA: SchemaVersion = SchemaVersion::new(1);
 
-/// A non-zero byte, built at compile time.
+/// The non-zero byte that `value` spells, or one where `value` is zero.
 ///
-/// `NonZeroU8::new` returns an `Option` and `expect` is denied. A `const fn`
-/// match gives the same compile-time check with a total fallback arm.
+/// `NonZeroU8::new` answers an `Option` and `expect` is denied, so the match
+/// here reads the option in a `const` context. It checks nothing: a zero takes
+/// the second arm and the caller reads one. Each caller passes a literal, and
+/// the test of that literal is the guard.
 const fn non_zero_u8(value: u8) -> NonZeroU8 {
     match NonZeroU8::new(value) {
         Some(checked) => checked,
@@ -493,22 +494,33 @@ impl Duration {
         self.tuplet
     }
 
-    /// The exact tick count of this duration.
+    /// The tick count of this duration.
     ///
     /// The base is `NoteValue::ticks`. Each dot adds one half of the term
     /// before it, and a shift right by one takes that half. A term that
     /// reaches zero ends the sum, so a dot beyond that point adds nothing and
-    /// the answer of 13 dots is the answer of 255 dots.
+    /// the answer of 13 dots is the answer of 255 dots. A duration that holds
+    /// no tuplet is exact.
     ///
-    /// A tuplet writes `count` notes in the time of `over` notes, so the
-    /// dotted value first spans `over` written notes and `split_tuplet` then
-    /// gives one part of `count`. That is the one rounding rule of the time
-    /// kernel, and the tick resolution B40 has no factor of seven, of eleven,
-    /// or of thirteen, so a tuplet of one of those counts loses the remainder
-    /// that the rule sends to the last part.
+    /// A tuplet writes `count` notes in the time of `over` notes. The dotted
+    /// value first spans `over` written notes, and the answer is the first part
+    /// of the `duet_time::split_tuplet` division of that span into `count`
+    /// parts. That rule gives the remainder to the last part, and the tick
+    /// resolution B40 has no factor of seven, of eleven, or of thirteen, so a
+    /// group of one of those counts does not always divide evenly: `count`
+    /// copies of this answer then sum to less than the span of the group. A
+    /// caller that needs the whole span calls `split_tuplet` itself and adds
+    /// the parts. This function reads one note, and only `Score` knows which
+    /// member of the group that note is.
     ///
-    /// Every step holds at the two 64-bit bounds. A dot run or a tuplet at the
-    /// edge of the `i64` range answers a bound and never wraps.
+    /// A `count` above the tick span of the group answers zero ticks, because
+    /// the division then leaves no whole tick for a part. 255 notes in the time
+    /// of one thirty-second note is such a group.
+    ///
+    /// Every step saturates, so no input wraps, and no input reaches a bound
+    /// either: the base is one whole note at most, a dot run stays below twice
+    /// the base, and `over` holds one byte, so the widest group spans fewer
+    /// than four million ticks.
     #[must_use]
     pub fn ticks(self) -> Ticks {
         let base = self.value.ticks().get();
@@ -525,10 +537,7 @@ impl Duration {
             return Ticks::new(total);
         };
         let group = total.saturating_mul(i64::from(tuplet.over().get()));
-        split_tuplet(Ticks::new(group), tuplet.count())
-            .first()
-            .copied()
-            .unwrap_or(Ticks::ZERO)
+        Ticks::new(group.div_euclid(i64::from(tuplet.count().get())))
     }
 }
 
@@ -1462,7 +1471,7 @@ impl Default for Score {
 mod tests {
     use core::num::NonZeroU8;
 
-    use duet_time::{NoteValue, Ticks, Tuplet};
+    use duet_time::{NoteValue, Ticks, Tuplet, split_tuplet};
 
     use super::{C_MAJOR, Duration, FOUR_FOUR, SCHEMA, Score};
     use crate::ids::Revision;
@@ -1546,6 +1555,64 @@ mod tests {
         assert!(
             dotted_triplet.ticks() > plain_triplet.ticks(),
             "the dot grows the written value that the tuplet then divides"
+        );
+    }
+
+    #[test]
+    fn a_tuplet_answers_the_first_part_of_the_kernel_split() {
+        for count in [1_u8, 2, 3, 5, 7, 11, 13, 64, 255] {
+            for over in [1_u8, 2, 4, 255] {
+                let written = Duration::new(NoteValue::Quarter, 1, None);
+                let group = written.ticks().get() * i64::from(over);
+                let parts = split_tuplet(
+                    Ticks::new(group),
+                    NonZeroU8::new(count).expect("a non-zero count"),
+                );
+                let first = parts
+                    .first()
+                    .copied()
+                    .expect("a split answers one part for each note of the group");
+                let member = Duration::new(NoteValue::Quarter, 1, Some(tuplet(count, over)));
+                assert_eq!(
+                    member.ticks(),
+                    first,
+                    "a tuplet of {count} notes in the time of {over} answers the first part of the kernel split"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_tuplet_of_more_parts_than_ticks_answers_zero() {
+        let dense = Duration::new(NoteValue::ThirtySecond, 0, Some(tuplet(255, 1)));
+        assert_eq!(
+            dense.ticks(),
+            Ticks::ZERO,
+            "255 notes in the time of one thirty-second note leave no whole tick for one part"
+        );
+    }
+
+    #[test]
+    fn seven_parts_of_a_seven_tuplet_sum_below_the_span() {
+        let written = Duration::new(NoteValue::Quarter, 0, None);
+        let member = Duration::new(NoteValue::Quarter, 0, Some(tuplet(7, 4)));
+        assert!(
+            member.ticks().get() * 7 < written.ticks().get() * 4,
+            "the tick resolution has no factor of seven, so the last member of the group takes the ticks that the seven equal parts leave"
+        );
+    }
+
+    #[test]
+    fn the_opening_meter_holds_four_quarter_beats() {
+        assert_eq!(
+            FOUR_FOUR.beats_per_bar().get(),
+            4,
+            "`non_zero_u8` checks nothing, so the literal of the opening meter is pinned here"
+        );
+        assert_eq!(
+            FOUR_FOUR.beat_unit(),
+            NoteValue::Quarter,
+            "the opening meter counts quarter notes"
         );
     }
 

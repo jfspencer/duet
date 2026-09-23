@@ -149,33 +149,83 @@ fn next_ordinal(count: usize) -> NonZeroU16 {
     NonZeroU16::new(raw).unwrap_or(NonZeroU16::MIN)
 }
 
-/// The paste that puts `clipboard` back at `at`.
+/// The notes and the rests that one `(staff, voice)` pair of a clipboard holds.
+#[derive(Default)]
+struct VoiceContent {
+    /// The notes of the pair.
+    notes: Vec<Note>,
+    /// The rests of the pair.
+    rests: Vec<Rest>,
+}
+
+/// The staff and the voice that a paste of no note and no rest names.
 ///
-/// A paste names the staff and the voice that take every note and rest of the
-/// clipboard. This helper names the staff and the voice of the first note, or
-/// of the first rest. A clipboard that holds neither reads neither, so this
-/// helper then names identifier zero.
+/// `Score::paste` reads the pair of a `Paste` only to place a note or a rest,
+/// so a clipboard of spanners and marks alone never looks the pair up.
+const NO_PLACE: (StaffId, VoiceId) = (StaffId::new(0), VoiceId::new(0));
+
+/// The pastes that put `clipboard` back at `at`.
 ///
-/// A removal that spanned two staves therefore comes back into one staff. No
-/// arm of the declared command set names a staff for each element of a paste,
-/// and `escalation:T2-9` records the gap.
-fn paste_of(clipboard: Clipboard, at: Ticks) -> ScoreCommand {
-    let from_rest = clipboard
-        .rests()
-        .first()
-        .map_or((StaffId::new(0), VoiceId::new(0)), |rest| {
-            (rest.staff(), rest.voice())
-        });
-    let (staff, voice) = clipboard
-        .notes()
-        .first()
-        .map_or(from_rest, |note| (note.staff(), note.voice()));
-    ScoreCommand::Paste {
-        clipboard: Box::new(clipboard),
-        at,
-        staff,
-        voice,
+/// One `Paste` names one staff and one voice, and it sends every note and every
+/// rest of its clipboard there. The answer therefore holds one `Paste` for each
+/// distinct `(staff, voice)` pair of the clipboard, and each one carries the
+/// notes and the rests of that pair alone. A removal that spanned two staves
+/// comes back into two staves, each element into the staff it came from.
+///
+/// A spanner names two notes and a mark names a tick, so neither holds a staff
+/// of its own. Both ride in one further `Paste`, which names `NO_PLACE`: a mark
+/// and a spanner ignore the staff and the voice of the `Paste` that carries
+/// them. That `Paste` stands last, after every note it can name is back.
+///
+/// Every `Paste` reads the origin of `clipboard`, so `at` places the whole
+/// answer as one: an `at` of that origin restores every onset unchanged.
+fn restore_pastes(clipboard: &Clipboard, at: Ticks) -> Vec<ScoreCommand> {
+    let mut grouped: BTreeMap<(StaffId, VoiceId), VoiceContent> = BTreeMap::new();
+    for note in clipboard.notes() {
+        grouped
+            .entry((note.staff(), note.voice()))
+            .or_default()
+            .notes
+            .push(note.clone());
     }
+    for rest in clipboard.rests() {
+        grouped
+            .entry((rest.staff(), rest.voice()))
+            .or_default()
+            .rests
+            .push(rest.clone());
+    }
+    let mut pastes: Vec<ScoreCommand> = grouped
+        .into_iter()
+        .map(|((staff, voice), content)| ScoreCommand::Paste {
+            clipboard: Box::new(Clipboard::new(
+                clipboard.origin(),
+                content.notes,
+                content.rests,
+                Vec::new(),
+                Vec::new(),
+            )),
+            at,
+            staff,
+            voice,
+        })
+        .collect();
+    if !clipboard.spanners().is_empty() || !clipboard.marks().is_empty() {
+        let (staff, voice) = NO_PLACE;
+        pastes.push(ScoreCommand::Paste {
+            clipboard: Box::new(Clipboard::new(
+                clipboard.origin(),
+                Vec::new(),
+                Vec::new(),
+                clipboard.spanners().to_vec(),
+                clipboard.marks().to_vec(),
+            )),
+            at,
+            staff,
+            voice,
+        });
+    }
+    pastes
 }
 
 /// The semitones of one step above the C of its own octave.
@@ -815,10 +865,13 @@ impl Score {
 
     /// The commands that put `notes` back as they stand now.
     ///
-    /// It is the inverse of last resort: a `Remove` of the notes and a `Paste`
-    /// of the copy that this call takes first. A paste restores every
-    /// identifier, so the pair undoes any change to a note that no `Set`
+    /// It is the inverse of last resort: a `Remove` of the notes and then the
+    /// pastes of the copy that this call takes first. A paste restores every
+    /// identifier, so the list undoes any change to a note that no `Set`
     /// command can express. Use it only where none can.
+    ///
+    /// The notes can stand in more than one staff, so `restore_pastes` builds
+    /// the paste of each `(staff, voice)` pair of the copy.
     fn restore_of(&self, notes: &[NoteId]) -> Vec<ScoreCommand> {
         let kept: Vec<Note> = notes
             .iter()
@@ -828,12 +881,11 @@ impl Score {
         let spanners = self.spanners_touching(&elements);
         let origin = kept.iter().map(Note::onset).min().unwrap_or(Ticks::ZERO);
         let clipboard = Clipboard::new(origin, kept, Vec::new(), spanners, Vec::new());
-        vec![
-            ScoreCommand::Remove {
-                selection: Selection::Notes(notes.to_vec()),
-            },
-            paste_of(clipboard, origin),
-        ]
+        let mut inverse = vec![ScoreCommand::Remove {
+            selection: Selection::Notes(notes.to_vec()),
+        }];
+        inverse.extend(restore_pastes(&clipboard, origin));
+        inverse
     }
 }
 
@@ -1316,7 +1368,7 @@ impl Score {
         let clipboard = Clipboard::new(at, Vec::new(), Vec::new(), Vec::new(), vec![held]);
         let outcome = Outcome::new(
             vec![ScoreEvent::MarkRemoved(mark)],
-            vec![paste_of(clipboard, at)],
+            restore_pastes(&clipboard, at),
         )?;
         self.marks_mut().remove(&mark);
         Ok(outcome)
@@ -1626,7 +1678,7 @@ impl Score {
         let clipboard = Clipboard::new(Ticks::ZERO, Vec::new(), Vec::new(), vec![held], Vec::new());
         let outcome = Outcome::new(
             vec![ScoreEvent::SpannerRemoved(spanner)],
-            vec![paste_of(clipboard, Ticks::ZERO)],
+            restore_pastes(&clipboard, Ticks::ZERO),
         )?;
         self.spanners_mut().remove(&spanner);
         Ok(outcome)
@@ -1810,10 +1862,14 @@ impl Score {
 
     /// Remove a selection, and every spanner that names a removed element.
     ///
-    /// The inverse is one paste of the copy that this call takes first, so
-    /// every removed element comes back under its own identifier. A paste names
-    /// one staff and one voice, so a removal that spanned two staves comes back
-    /// into one. `escalation:T2-9` records the gap.
+    /// The inverse is the pastes of the copy that this call takes first, so
+    /// every removed element comes back under its own identifier. One `Paste`
+    /// names one staff and one voice, so `restore_pastes` builds one for each
+    /// `(staff, voice)` pair of the removed content and one more for the
+    /// spanners and the marks. A removal that spans two staves therefore comes
+    /// back into two staves.
+    ///
+    /// An empty selection removes nothing and answers an empty inverse.
     ///
     /// # Errors
     /// Returns what `resolve` returns.
@@ -1823,7 +1879,7 @@ impl Score {
         let clipboard = self.clipboard_of(&resolved, origin);
         let outcome = Outcome::new(
             vec![ScoreEvent::ElementsRemoved(selection.clone())],
-            vec![paste_of(clipboard, origin)],
+            restore_pastes(&clipboard, origin),
         )?;
         for id in resolved.elements() {
             self.notes_mut().remove(&id);
@@ -2021,21 +2077,25 @@ impl Score {
 }
 #[cfg(test)]
 mod tests {
+    use core::fmt::Debug;
     use core::num::{NonZeroU8, NonZeroU16};
 
-    use duet_time::{Meter, NoteValue, Ticks};
+    use duet_time::{Meter, NoteValue, Ticks, Tuplet};
+    use serde::Serialize;
+    use serde::de::DeserializeOwned;
+    use smallvec::SmallVec;
 
     use super::Applied;
-    use crate::command::{PitchEdit, ScoreCommand, Selection};
+    use crate::command::{Clipboard, PitchEdit, ScoreCommand, Selection};
     use crate::error::ScoreError;
     use crate::event::ScoreEvent;
     use crate::ids::{
-        ElementRef, LyricText, MarkId, MeasureId, NoteId, PartId, PartName, SpannerId, StaffId,
-        VerseNumber, VoiceId,
+        ElementRef, LyricText, MarkId, MeasureId, NoteId, PartId, PartName, RehearsalText,
+        SpannerId, StaffId, VerseNumber, VoiceId,
     };
     use crate::model::{
-        Clef, Duration, Dynamic, KeySignature, MarkKind, Note, Pitch, Score, SpannerKind, Step,
-        TieState, VoiceType,
+        Accidental, Articulation, Clef, Duration, Dynamic, KeySignature, MarkKind, Note, Pitch,
+        RepeatSide, Rest, Score, ScoreMark, Spanner, SpannerKind, Step, TieState, VoiceType,
     };
 
     /// A part identifier that no score of this module mints.
@@ -2058,6 +2118,9 @@ mod tests {
 
     /// A voice identifier that no score of this module mints.
     const ABSENT_VOICE: VoiceId = VoiceId::new(9_006);
+
+    /// A rest identifier that no score of this module mints.
+    const ABSENT_REST: NoteId = NoteId::new(9_007);
 
     /// A run of one measure.
     const ONE_MEASURE: NonZeroU16 = NonZeroU16::MIN;
@@ -2221,6 +2284,48 @@ mod tests {
             .apply(ScoreCommand::InsertNote {
                 staff: stage.staff,
                 voice: stage.voice,
+                onset: Ticks::new(onset),
+                pitch: natural(step),
+                duration: quarter(),
+            })
+            .expect("an InsertNote at a free onset is accepted");
+        note_of(&inserted)
+    }
+
+    /// Add one more staff to the part of `stage`, and answer it with its voice.
+    fn add_staff(stage: &mut Stage) -> (StaffId, VoiceId) {
+        let added = stage
+            .score
+            .apply(ScoreCommand::AddStaff {
+                part: stage.part,
+                clef: Clef::Bass,
+            })
+            .expect("AddStaff is accepted");
+        let staff = staff_of(&added);
+        let voice = *stage
+            .score
+            .staves()
+            .get(&staff)
+            .expect("the score holds the staff it just added")
+            .voices()
+            .first()
+            .expect("AddStaff gives the staff one voice");
+        (staff, voice)
+    }
+
+    /// Insert one quarter note into the named staff and voice of `stage`.
+    fn insert_note_in(
+        stage: &mut Stage,
+        staff: StaffId,
+        voice: VoiceId,
+        onset: i64,
+        step: Step,
+    ) -> NoteId {
+        let inserted = stage
+            .score
+            .apply(ScoreCommand::InsertNote {
+                staff,
+                voice,
                 onset: Ticks::new(onset),
                 pitch: natural(step),
                 duration: quarter(),
@@ -2718,6 +2823,233 @@ mod tests {
         }
     }
 
+    /// Assert that `value` comes back equal from its own JSON form.
+    fn assert_round_trip<Value>(value: &Value, kind: &str)
+    where
+        Value: Debug + PartialEq + Serialize + DeserializeOwned,
+    {
+        let text = serde_json::to_string(value).expect("a vocabulary value serializes");
+        let read: Value = serde_json::from_str(&text).expect("a vocabulary value reads back");
+        assert_eq!(read, *value, "{kind} survives the transport: {text}");
+    }
+
+    /// A tuplet of three notes in the time of two.
+    fn triplet() -> Tuplet {
+        Tuplet::new(
+            NonZeroU8::new(3).expect("three is not zero"),
+            NonZeroU8::new(2).expect("two is not zero"),
+        )
+    }
+
+    /// Every arm of `Selection`.
+    fn every_selection() -> Vec<Selection> {
+        vec![
+            Selection::Notes(vec![ABSENT_NOTE, ABSENT_REST]),
+            Selection::Spanners(vec![ABSENT_SPANNER]),
+            Selection::Marks(vec![ABSENT_MARK]),
+            Selection::Range {
+                staff: ABSENT_STAFF,
+                from: Ticks::ZERO,
+                to: Ticks::new(QUARTER_TICKS),
+            },
+        ]
+    }
+
+    /// Every arm of `ScoreEvent`.
+    fn every_event() -> Vec<ScoreEvent> {
+        vec![
+            ScoreEvent::PartAdded(ABSENT_PART),
+            ScoreEvent::PartRemoved(ABSENT_PART),
+            ScoreEvent::StaffAdded(ABSENT_STAFF),
+            ScoreEvent::StaffRemoved(ABSENT_STAFF),
+            ScoreEvent::NoteInserted(ABSENT_NOTE),
+            ScoreEvent::NoteChanged(ABSENT_NOTE),
+            ScoreEvent::ElementsRemoved(Selection::Notes(vec![ABSENT_NOTE])),
+            ScoreEvent::ElementsMoved(Selection::Range {
+                staff: ABSENT_STAFF,
+                from: Ticks::ZERO,
+                to: Ticks::new(QUARTER_TICKS),
+            }),
+            ScoreEvent::SpannerAdded(ABSENT_SPANNER),
+            ScoreEvent::SpannerRemoved(ABSENT_SPANNER),
+            ScoreEvent::MarkAdded(ABSENT_MARK),
+            ScoreEvent::MarkRemoved(ABSENT_MARK),
+            ScoreEvent::MeasuresChanged {
+                from: ABSENT_MEASURE,
+                count: 2,
+            },
+            ScoreEvent::SignatureChanged(ABSENT_MEASURE),
+            ScoreEvent::ClefChanged(ABSENT_STAFF),
+        ]
+    }
+
+    /// A clipboard that holds one element of each content kind.
+    fn full_clipboard() -> Clipboard {
+        let note = Note::new(
+            ABSENT_NOTE,
+            ABSENT_STAFF,
+            ABSENT_VOICE,
+            Ticks::ZERO,
+            Duration::new(NoteValue::Eighth, 1, Some(triplet())),
+            natural(Step::C),
+        );
+        let rest = Rest::new(
+            ABSENT_REST,
+            ABSENT_STAFF,
+            ABSENT_VOICE,
+            Ticks::new(QUARTER_TICKS),
+            quarter(),
+        );
+        let spanner = Spanner::new(ABSENT_SPANNER, SpannerKind::Slur, ABSENT_NOTE, ABSENT_REST);
+        let mark = ScoreMark::new(
+            ABSENT_MARK,
+            Ticks::new(QUARTER_TICKS),
+            MarkKind::Rehearsal(RehearsalText::new("A").expect("a rehearsal text with text")),
+        );
+        Clipboard::new(
+            Ticks::ZERO,
+            vec![note],
+            vec![rest],
+            vec![spanner],
+            vec![mark],
+        )
+    }
+
+    /// One command of every arm that names a part, a staff, or a measure.
+    fn structure_commands() -> Vec<ScoreCommand> {
+        vec![
+            add_part("Soprano 1"),
+            ScoreCommand::RemovePart { part: ABSENT_PART },
+            ScoreCommand::AddStaff {
+                part: ABSENT_PART,
+                clef: Clef::Percussion,
+            },
+            ScoreCommand::RemoveStaff {
+                staff: ABSENT_STAFF,
+            },
+            ScoreCommand::SetClef {
+                staff: ABSENT_STAFF,
+                at: Ticks::new(QUARTER_TICKS),
+                clef: Clef::TrebleOctaveDown,
+            },
+            ScoreCommand::InsertMeasures {
+                after: ABSENT_MEASURE,
+                count: ONE_MEASURE,
+            },
+            ScoreCommand::RemoveMeasures {
+                from: ABSENT_MEASURE,
+                count: ONE_MEASURE,
+            },
+            ScoreCommand::SetKeySignature {
+                measure: ABSENT_MEASURE,
+                key: KeySignature::new(-3, false),
+            },
+            ScoreCommand::SetTimeSignature {
+                measure: ABSENT_MEASURE,
+                meter: three_four(),
+            },
+        ]
+    }
+
+    /// One command of every arm that names a note, a rest, a mark, or a spanner.
+    fn content_commands() -> Vec<ScoreCommand> {
+        vec![
+            ScoreCommand::AddMark {
+                at: Ticks::ZERO,
+                kind: MarkKind::Repeat(RepeatSide::End),
+            },
+            ScoreCommand::RemoveMark { mark: ABSENT_MARK },
+            ScoreCommand::InsertNote {
+                staff: ABSENT_STAFF,
+                voice: ABSENT_VOICE,
+                onset: Ticks::ZERO,
+                pitch: natural(Step::B),
+                duration: quarter(),
+            },
+            ScoreCommand::InsertRest {
+                staff: ABSENT_STAFF,
+                voice: ABSENT_VOICE,
+                onset: Ticks::new(QUARTER_TICKS),
+                duration: half(),
+            },
+            ScoreCommand::SetPitch {
+                notes: vec![ABSENT_NOTE],
+                pitch: PitchEdit::Respell(Accidental::DoubleFlat),
+            },
+            ScoreCommand::SetDuration {
+                notes: vec![ABSENT_NOTE],
+                duration: Duration::new(NoteValue::Sixteenth, 2, Some(triplet())),
+            },
+            ScoreCommand::SetTie {
+                note: ABSENT_NOTE,
+                tie: TieState::new(true, true),
+            },
+            ScoreCommand::SetArticulations {
+                notes: vec![ABSENT_NOTE],
+                articulations: SmallVec::from_slice(&[
+                    Articulation::Staccato,
+                    Articulation::Fermata,
+                ]),
+            },
+            ScoreCommand::SetLyric {
+                note: ABSENT_NOTE,
+                verse: verse_one(),
+                text: lyric("la"),
+            },
+            ScoreCommand::SetDynamic {
+                staff: ABSENT_STAFF,
+                onset: Ticks::ZERO,
+                dynamic: Dynamic::Sfz,
+            },
+            ScoreCommand::AddSpanner {
+                kind: SpannerKind::Slur,
+                from: ABSENT_NOTE,
+                to: ABSENT_REST,
+            },
+            ScoreCommand::RemoveSpanner {
+                spanner: ABSENT_SPANNER,
+            },
+        ]
+    }
+
+    /// One command of every arm that moves, copies, or removes a selection.
+    fn edit_commands() -> Vec<ScoreCommand> {
+        vec![
+            ScoreCommand::SetVoice {
+                notes: vec![ABSENT_NOTE],
+                voice: ABSENT_VOICE,
+            },
+            ScoreCommand::SetPart {
+                notes: vec![ABSENT_NOTE],
+                part: ABSENT_PART,
+                staff: ABSENT_STAFF,
+            },
+            ScoreCommand::Move {
+                selection: Selection::Notes(vec![ABSENT_NOTE]),
+                by: Ticks::new(-QUARTER_TICKS),
+                to_staff: Some(ABSENT_STAFF),
+            },
+            ScoreCommand::Move {
+                selection: Selection::Marks(vec![ABSENT_MARK]),
+                by: Ticks::new(QUARTER_TICKS),
+                to_staff: None,
+            },
+            ScoreCommand::Duplicate {
+                selection: Selection::Spanners(vec![ABSENT_SPANNER]),
+                at: Ticks::new(QUARTER_TICKS),
+            },
+            ScoreCommand::Remove {
+                selection: Selection::Notes(vec![ABSENT_NOTE, ABSENT_REST]),
+            },
+            ScoreCommand::Paste {
+                clipboard: Box::new(full_clipboard()),
+                at: Ticks::new(QUARTER_TICKS),
+                staff: ABSENT_STAFF,
+                voice: ABSENT_VOICE,
+            },
+        ]
+    }
+
     #[test]
     fn apply_rejects_overlapping_note() {
         let mut stage = stage();
@@ -2885,5 +3217,78 @@ mod tests {
             stage.score.notes().is_empty(),
             "the remove half of a cut takes both notes out of the score"
         );
+    }
+
+    #[test]
+    fn the_inverse_of_a_cross_staff_remove_restores_every_staff() {
+        let mut stage = stage();
+        let first = insert_note(&mut stage, 0, Step::C);
+        let (lower_staff, lower_voice) = add_staff(&mut stage);
+        let second = insert_note_in(&mut stage, lower_staff, lower_voice, 0, Step::G);
+        let before = stage.score.clone();
+
+        let applied = stage
+            .score
+            .apply(ScoreCommand::Remove {
+                selection: Selection::Notes(vec![first, second]),
+            })
+            .expect("a Remove of two notes the score holds is accepted");
+        assert!(
+            stage.score.notes().is_empty(),
+            "the remove takes the note of each staff out of the score"
+        );
+        assert_eq!(
+            applied.inverse.len(),
+            2,
+            "the inverse holds one Paste for each (staff, voice) pair of the removed content"
+        );
+
+        undo_all(&mut stage.score, applied.inverse, "a cross-staff Remove");
+        assert_same_content(&stage.score, &before, "a cross-staff Remove");
+        let upper = stage
+            .score
+            .notes()
+            .get(&first)
+            .expect("the undo restores the note of the upper staff");
+        assert_eq!(
+            upper.staff(),
+            stage.staff,
+            "the note of the upper staff comes back into the upper staff"
+        );
+        let lower = stage
+            .score
+            .notes()
+            .get(&second)
+            .expect("the undo restores the note of the lower staff");
+        assert_eq!(
+            lower.staff(),
+            lower_staff,
+            "the note of the lower staff comes back into the lower staff, and not into the staff of the first Paste"
+        );
+    }
+
+    #[test]
+    fn a_selection_survives_the_transport() {
+        for selection in every_selection() {
+            assert_round_trip(&selection, "a selection");
+        }
+    }
+
+    #[test]
+    fn an_event_survives_the_transport() {
+        for event in every_event() {
+            assert_round_trip(&event, "an event");
+        }
+    }
+
+    #[test]
+    fn a_command_survives_the_transport() {
+        for command in structure_commands()
+            .into_iter()
+            .chain(content_commands())
+            .chain(edit_commands())
+        {
+            assert_round_trip(&command, "a command");
+        }
     }
 }

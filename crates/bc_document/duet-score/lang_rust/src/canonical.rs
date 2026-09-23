@@ -6,7 +6,7 @@
 //! `(staff, voice, onset, pitch, id)` order, and `score/spanners.jsonl` holds
 //! one spanner per line in `(from, kind, id)` order.
 //!
-//! Four rules of this module answer what section 3.6 leaves open.
+//! Five rules of this module answer what section 3.6 leaves open.
 //!
 //! 1. **A note stands before a rest** at one `(staff, voice, onset)`, and two
 //!    rests then stand in identifier order. The reader of a diff sees the
@@ -23,6 +23,12 @@
 //!    `duet-command` type, and that crate sits above this one, so the `read`
 //!    signature of section 3.6 carries no warning channel. The bag is the
 //!    whole report at this boundary (`escalation:T2-2`).
+//! 5. **One identifier names one line of `score/notes.jsonl`.** `Score` mints
+//!    each identifier once, so only a hand edit can give one number to a note
+//!    and to a rest, or to two notes. The score holds the notes and the rests
+//!    in two maps under one identifier type, so such a document would put two
+//!    elements behind one reference and every later command would reach both.
+//!    `read` refuses it as malformed text.
 //!
 //! The schema gate is a comparison, not an equality: a number above `SCHEMA`
 //! is `ScoreError::Schema`, and a number below it is the score of a build that
@@ -80,7 +86,8 @@ impl CanonicalDocument {
 ///
 /// # Errors
 /// Returns `ScoreError::Schema` for a document above the schema that this
-/// build reads, and `ScoreError::Parse` for malformed text.
+/// build reads, and `ScoreError::Parse` for malformed text, which includes a
+/// `score/notes.jsonl` that gives one identifier to two lines (rule 5).
 pub fn read(meta: &str, notes: &str, spanners: &str) -> Result<Score, ScoreError> {
     let found = schema_of(meta)?;
     if found > SCHEMA {
@@ -93,12 +100,16 @@ pub fn read(meta: &str, notes: &str, spanners: &str) -> Result<Score, ScoreError
     let mut score = stored.into_score();
     for line in text_records(notes) {
         let record: TimedRecord = from_json(line)?;
+        let id = record.id();
+        if score.notes().contains_key(&id) || score.rests().contains_key(&id) {
+            return Err(repeated_timed_id(id));
+        }
         match record {
             TimedRecord::Note(note) => {
-                score.notes_mut().insert(note.id(), note);
+                score.notes_mut().insert(id, note);
             },
             TimedRecord::Rest(rest) => {
-                score.rests_mut().insert(rest.id(), rest);
+                score.rests_mut().insert(id, rest);
             },
         }
     }
@@ -209,6 +220,14 @@ enum TimedRecord {
 }
 
 impl TimedRecord {
+    /// The identifier that this record carries.
+    const fn id(&self) -> NoteId {
+        match *self {
+            Self::Note(ref note) => note.id(),
+            Self::Rest(ref rest) => rest.id(),
+        }
+    }
+
     /// The place of this record in `score/notes.jsonl`.
     const fn place(&self) -> NoteFilePlace {
         match *self {
@@ -282,6 +301,22 @@ fn keyed<Id: Ord, Record>(list: Vec<Record>, id: impl Fn(&Record) -> Id) -> BTre
     list.into_iter()
         .map(|record| (id(&record), record))
         .collect()
+}
+
+/// The refusal of a `score/notes.jsonl` that names `id` twice.
+///
+/// `ScoreError::Parse` is the arm that the roster holds for a document the
+/// reader cannot take, and a repeated identifier is such a document: the notes
+/// and the rests of a score answer to one identifier type, so the second line
+/// would hide the first behind one reference (rule 5 of this module).
+fn repeated_timed_id(id: NoteId) -> ScoreError {
+    ScoreError::Parse(
+        format!(
+            "two lines of score/notes.jsonl carry identifier {}",
+            id.get()
+        )
+        .into_boxed_str(),
+    )
 }
 
 /// The schema number that `meta` states.
@@ -724,6 +759,45 @@ mod tests {
                 HIGHER_REST_ID
             ],
             "a note stands before a rest at one (staff, voice, onset), and two rests there stand in identifier order"
+        );
+    }
+
+    #[test]
+    fn canonical_read_refuses_one_identifier_in_two_maps() {
+        let mut score = sut();
+        let carrier = score
+            .notes()
+            .values()
+            .next()
+            .expect("the fixture score holds a note")
+            .clone();
+        score.rests_mut().insert(
+            carrier.id(),
+            Rest::new(
+                carrier.id(),
+                carrier.staff(),
+                carrier.voice(),
+                Ticks::new(QUARTER_TICKS * 2),
+                carrier.duration(),
+            ),
+        );
+        let (meta, notes, spanners) = blocks(&score);
+        assert_eq!(
+            records(&notes).len(),
+            3,
+            "the fixture writes one rest line beside the two note lines"
+        );
+
+        let refusal = read(&meta, &notes, &spanners);
+
+        let Err(ScoreError::Parse(ref message)) = refusal else {
+            panic!(
+                "a repeated identifier is refused as malformed text, and the reader answered {refusal:?}"
+            );
+        };
+        assert!(
+            message.contains(&carrier.id().get().to_string()),
+            "the refusal of a repeated identifier names the number, and it reads {message}"
         );
     }
 }

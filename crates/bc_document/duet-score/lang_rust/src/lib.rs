@@ -17,7 +17,9 @@ mod model;
 pub use apply::Applied;
 pub use canonical::{CanonicalDocument, read, write};
 pub use command::{Clipboard, PitchEdit, ScoreCommand, ScoreSelector, Selection};
-pub use duet_time::{Meter, NoteValue, Tempo};
+/// The public API of this crate names each of these time-kernel types, so a
+/// consumer reads every one of them through this crate.
+pub use duet_time::{Meter, NoteValue, SchemaVersion, Tempo, TempoMap, Ticks, TimeError, Tuplet};
 pub use error::ScoreError;
 pub use event::ScoreEvent;
 pub use ids::{
