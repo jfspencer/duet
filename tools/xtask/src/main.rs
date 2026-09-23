@@ -6,12 +6,16 @@
 //! the source; the two mirrors are generated and must never be edited by hand.
 //! `--check` reports drift and exits 1 without writing.
 //!
-//! `cargo xtask check-conversions`, `cargo xtask check-manifests`,
+//! `cargo xtask check-conversions [--appendix <path>]`,
+//! `cargo xtask check-manifests`,
 //! `cargo xtask check-plan-graph <plan-dir>`, and
 //! `cargo xtask check-closure <document> <review> <block>`, and
-//! `cargo xtask check-roster <document> <scratch> <repo>` are guards. Each one
-//! exits 0 when it finds nothing, 1 when it finds at least one breach, and 2
-//! when it cannot decide.
+//! `cargo xtask check-roster <document> <scratch> <repo> [--generate-only]` are
+//! guards. Each one exits 0 when it finds nothing, 1 when it finds at least one
+//! breach, and 2 when it cannot decide. `--appendix` turns on rule `CG9`, which
+//! binds each Appendix B.1 reason cell of the named document to the `reason =`
+//! string of the one exempt conversion file; the guard skips that rule and
+//! prints the skip when the caller names no document.
 //!
 //! Three rules find a root, and each task takes exactly one of them. A task
 //! that rewrites this repository takes [`repo_root`], the directory two levels
@@ -69,7 +73,12 @@ enum Command {
     /// with no non-empty `description`.
     CheckManifests,
     /// Refuse a cast and a cast suppression outside the one conversion file.
-    CheckConversions,
+    CheckConversions {
+        /// The architecture document whose Appendix B.1 reason cells bind the
+        /// `reason =` strings of the one exempt file (`CG9`).
+        #[arg(long)]
+        appendix: Option<PathBuf>,
+    },
     /// Refuse a closure block that its own review file does not support.
     CheckClosure {
         /// The architecture document to read.
@@ -88,6 +97,9 @@ enum Command {
         scratch: PathBuf,
         /// The repository root.
         repo: PathBuf,
+        /// Write the scratch workspace and skip every cargo command.
+        #[arg(long)]
+        generate_only: bool,
     },
     /// Refuse a declared type that the section 1.5 table does not place.
     CheckPlacement {
@@ -189,11 +201,11 @@ fn main() -> ExitCode {
             };
             check_manifests::run(&root)
         },
-        Command::CheckConversions => {
+        Command::CheckConversions { appendix } => {
             let Some(root) = guard_root() else {
                 return report_failure(&anyhow::anyhow!("cannot read the current directory"));
             };
-            check_conversions::run(&root)
+            check_conversions::run(&root, appendix.as_deref())
         },
         Command::CheckClosure {
             document,
@@ -204,7 +216,8 @@ fn main() -> ExitCode {
             document,
             scratch,
             repo,
-        } => check_roster::run(&document, &scratch, &repo),
+            generate_only,
+        } => check_roster::run(&document, &scratch, &repo, generate_only),
         Command::CheckPlacement { document } => check_placement::run(&document),
         Command::CheckPlanGraph {
             plan_dir,

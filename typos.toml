@@ -1,8 +1,25 @@
-# typos-cli configuration (advisory in scripts/dod.sh when the binary is present).
+# typos-cli configuration. scripts/dod.sh runs a plain `typos` call, so a
+# finding fails the gate.
 [files]
-extend-exclude = ["target/", "Cargo.lock", ".hypervisor/", "*.svg"]
+extend-exclude = [
+  "target/",
+  "Cargo.lock",
+  ".hypervisor/",
+  "*.svg",
+  "crates/duet/assets/fonts/bravura_metadata.json",
+  "roadmap/duet-v1/reviews/",
+  "roadmap/duet-v1/research/",
+]
 
 [default.extend-words]
-# identifiers that are not typos
 gpui = "gpui"
 heed = "heed"
+Criticals = "Criticals"
+criticals = "criticals"
+CRITICALS = "CRITICALS"
+tuplets = "tuplets"
+
+[default.extend-identifiers]
+note32ndUp = "note32ndUp"
+ArticAccent = "ArticAccent"
+ArticStaccato = "ArticStaccato"

@@ -24,8 +24,14 @@
 //! - `CG1b` derives the member set and the file set from the tree, so a scan
 //!   that misses a member fails by name. No environment variable changes it.
 //! - `CG8` prints one named line and fails closed.
+//! - `CG9` binds each Appendix B.1 `b1-convert` reason cell to the `reason =`
+//!   string of the one exempt file, in both directions and character for
+//!   character. It runs only when the caller names the document with
+//!   `--appendix <path>`, it prints the skip when the caller names none, and it
+//!   fails closed on a document that does not open. The compare reads the
+//!   DECODED value of the string literal and never its raw source token.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
@@ -52,6 +58,15 @@ const USE_TOKEN: &str = "use";
 
 /// The directory name Cargo gives its build tree.
 const BUILD_DIRECTORY: &str = "target";
+
+/// `CG9`. The opening of the marker line that carries the Appendix B.1 block.
+const B1_CONVERT_MARKER: &str = "<!-- GUARD BLOCK id=b1-convert rows>=";
+
+/// `CG9`. The whole-word token that opens a `reason` assignment.
+const REASON_TOKEN: &str = "reason";
+
+/// `CG9`. The line the guard prints when the caller names no appendix.
+const REASON_SKIP_LINE: &str = "REASON TEXTS:    skipped (no --appendix)";
 
 /// One workspace member, as `cargo metadata` reports it.
 #[derive(Debug)]
@@ -102,13 +117,25 @@ struct Finding {
 
 /// Run the conversion guard over every member `cargo metadata` reports.
 ///
+/// `appendix` names the architecture document whose Appendix B.1 reason cells
+/// bind the `reason =` strings of the one exempt file (`CG9`). The rule runs
+/// only when the caller names a document; the guard prints the skip otherwise.
+///
 /// # Errors
 /// Returns an error when `cargo metadata` fails, when a member file cannot be
 /// read, and when the derived coverage sets do not match the reported member
 /// set (`CG1`, `CG1b`, `CG8`).
-pub(crate) fn run(root: &Path) -> anyhow::Result<Outcome> {
+pub(crate) fn run(root: &Path, appendix: Option<&Path>) -> anyhow::Result<Outcome> {
     let stdout = io::stdout();
     let mut out = stdout.lock();
+    let rows = match appendix.map(appendix_rows) {
+        Some(Err(line)) => {
+            writeln!(out, "{line}")?;
+            return Ok(Outcome::FailClosed);
+        },
+        Some(Ok(stated)) => Some(stated),
+        None => None,
+    };
     let Some(space) = workspace(root) else {
         writeln!(
             out,
@@ -154,11 +181,42 @@ pub(crate) fn run(root: &Path) -> anyhow::Result<Outcome> {
         counts.members,
         counts.files
     )?;
-    Ok(if findings.is_empty() {
+    let reasons = match rows {
+        None => {
+            writeln!(out, "{REASON_SKIP_LINE}")?;
+            Vec::new()
+        },
+        Some(stated) => {
+            let pairs = reason_pairs(stated, exempt_reasons(exempt.as_deref()));
+            let broken = reason_findings(&pairs);
+            for line in &broken {
+                writeln!(out, "{line}")?;
+            }
+            writeln!(
+                out,
+                "REASON TEXTS:    {}     REASON TEXT BAD: {}",
+                pairs.len(),
+                broken.len()
+            )?;
+            broken
+        },
+    };
+    Ok(if findings.is_empty() && reasons.is_empty() {
         Outcome::Clean
     } else {
         Outcome::Findings
     })
+}
+
+/// `CG9`. Every site and reason text the one exempt file declares.
+///
+/// A file that does not open declares nothing, which leaves every
+/// `b1-convert` row a finding and never a clean run.
+fn exempt_reasons(exempt: Option<&Path>) -> Vec<(String, String)> {
+    exempt
+        .and_then(|path| fs::read_to_string(path).ok())
+        .map(|source| reason_sites(&source))
+        .unwrap_or_default()
 }
 
 /// `CG3`, `CG4b`, `CG6`, `CG7`, `CG8`. Every breach one member file holds.
@@ -1301,4 +1359,324 @@ fn sorted_paths(mut paths: Vec<PathBuf>) -> Vec<PathBuf> {
     });
     paths.dedup();
     paths
+}
+
+/// `CG9`. The site set and the code set of one run, keyed by the site name.
+type ReasonPairs = BTreeMap<String, ReasonPair>;
+
+/// `CG9`. What one site holds on each side of the binding.
+#[derive(Debug, Default)]
+struct ReasonPair {
+    /// The text the `b1-convert` cell states, when a row names the site.
+    cell: Option<String>,
+    /// The text the `#[expect]` states, when the exempt file declares the site.
+    code: Option<String>,
+}
+
+/// `CG9`. Read the appendix the caller named, or report that it does not open.
+///
+/// The `Err` holds the one fail-closed line the caller prints, in the shape
+/// `CG8` already uses for a workspace that does not read.
+fn appendix_rows(path: &Path) -> Result<Vec<(String, String)>, String> {
+    let Ok(document) = fs::read_to_string(path) else {
+        return Err(format!(
+            "FAIL: {}: the appendix does not open; the guard is fail-closed.",
+            path.display()
+        ));
+    };
+    Ok(block_rows(&document))
+}
+
+/// `CG9`. Every site and reason text the `b1-convert` block states.
+///
+/// Cell one names the function and cell three holds the reason between its
+/// outer quotation marks. The two rows under the marker are the table header
+/// and the alignment row, which carry no site.
+fn block_rows(document: &str) -> Vec<(String, String)> {
+    let mut rows = document.lines().skip_while(|line| !opens_b1_convert(line));
+    let _marker = rows.next();
+    rows.take_while(|line| line.trim_start().starts_with('|'))
+        .skip(2)
+        .filter_map(|line| {
+            let cells = split_row(line);
+            let site = cells.first()?.trim_matches('`').trim().to_owned();
+            let text = quoted_text(cells.get(2)?)?;
+            (!site.is_empty()).then_some((site, text))
+        })
+        .collect()
+}
+
+/// `CG9`. Whether one line is the marker that opens the `b1-convert` block.
+fn opens_b1_convert(line: &str) -> bool {
+    let text = line.trim();
+    text.starts_with(B1_CONVERT_MARKER) && text.ends_with("-->")
+}
+
+/// `CG9`. The cells of one markdown table row, as a renderer reads them.
+///
+/// The split takes every `|` the author did not escape, and each cell then
+/// answers `\|` as the one vertical bar a reader sees. The first and the last
+/// piece sit outside the table walls and carry no cell.
+fn split_row(line: &str) -> Vec<String> {
+    let mut cells = Vec::new();
+    let mut cell = String::new();
+    let mut escaped = false;
+    for mark in line.trim().chars() {
+        if escaped {
+            if mark != '|' {
+                cell.push('\\');
+            }
+            cell.push(mark);
+            escaped = false;
+        } else if mark == '\\' {
+            escaped = true;
+        } else if mark == '|' {
+            cells.push(cell.trim().to_owned());
+            cell = String::new();
+        } else {
+            cell.push(mark);
+        }
+    }
+    if escaped {
+        cell.push('\\');
+    }
+    cells.push(cell.trim().to_owned());
+    let last = cells.len().saturating_sub(1);
+    cells
+        .into_iter()
+        .enumerate()
+        .filter(|(index, _piece)| *index > 0 && *index < last)
+        .map(|(_index, piece)| piece)
+        .collect()
+}
+
+/// `CG9`. The text one cell holds between its outer quotation marks.
+fn quoted_text(cell: &str) -> Option<String> {
+    let open = cell.find('"')?;
+    let close = cell.rfind('"')?;
+    cell.get(open.saturating_add(1)..close).map(str::to_owned)
+}
+
+/// `CG9`. Every site of the exempt file and the reason its `#[expect]` states.
+///
+/// The scan holds the attribute run above each item, so an `#[expect]` that
+/// carries a `reason =` string binds to the `fn` item under it. A doc comment
+/// and a blank line leave the run intact; every other line ends it.
+fn reason_sites(source: &str) -> Vec<(String, String)> {
+    let mut found = Vec::new();
+    let mut pending: Option<String> = None;
+    let mut attribute = String::new();
+    for line in source.lines() {
+        let text = line.trim();
+        if !attribute.is_empty() || text.starts_with('#') {
+            attribute.push_str(line);
+            attribute.push('\n');
+            if unclosed(&attribute) == 0 {
+                pending = expect_reason(&attribute).or(pending);
+                attribute.clear();
+            }
+        } else if let Some(name) = fn_name(text) {
+            if let Some(reason) = pending.take() {
+                found.push((name, reason));
+            }
+        } else if !text.is_empty() && !text.starts_with("//") {
+            pending = None;
+        }
+    }
+    found
+}
+
+/// `CG9`. How many `[` of one attribute span no `]` closes, literals apart.
+fn unclosed(attribute: &str) -> usize {
+    let text: Vec<char> = attribute.chars().collect();
+    let mut depth = 0usize;
+    let mut index = 0;
+    while let Some(&mark) = text.get(index) {
+        if let Some(end) = literal_at(&text, index, mark) {
+            index = end;
+            continue;
+        }
+        if mark == '[' {
+            depth = depth.saturating_add(1);
+        } else if mark == ']' {
+            depth = depth.saturating_sub(1);
+        }
+        index = index.saturating_add(1);
+    }
+    depth
+}
+
+/// `CG9`. The decoded `reason =` text of one `#[expect(...)]` attribute.
+///
+/// An attribute that is not an `#[expect]`, and one that carries no `reason`
+/// assignment outside a literal, each answer `None`.
+fn expect_reason(attribute: &str) -> Option<String> {
+    if !attribute.trim_start().starts_with("#[expect") {
+        return None;
+    }
+    let text: Vec<char> = attribute.chars().collect();
+    let mut index = 0;
+    while let Some(&mark) = text.get(index) {
+        if let Some(end) = literal_at(&text, index, mark) {
+            index = end;
+            continue;
+        }
+        if word_at(&text, index, REASON_TOKEN)
+            && let Some(value) = reason_value(&text, index.saturating_add(REASON_TOKEN.len()))
+        {
+            return Some(value);
+        }
+        index = index.saturating_add(1);
+    }
+    None
+}
+
+/// `CG9`. The decoded text the `reason` assignment at one offset carries.
+///
+/// Two literals that sit side by side answer one text, so the value is the
+/// concatenation of every literal the assignment states.
+fn reason_value(text: &[char], from: usize) -> Option<String> {
+    let equals = skip_space(text, from);
+    if text.get(equals) != Some(&'=') {
+        return None;
+    }
+    let (mut value, mut next) = decode_literal(text, skip_space(text, equals.saturating_add(1)))?;
+    while let Some((more, after)) = decode_literal(text, skip_space(text, next)) {
+        value.push_str(&more);
+        next = after;
+    }
+    Some(value)
+}
+
+/// `CG9`. The decoded value of the string literal at one offset, and its end.
+///
+/// The answer is the text a reader sees and never the raw source token. A raw
+/// literal keeps every backslash; a plain literal answers each escape
+/// [`decode_escape`] names. A literal this decoder does not read answers
+/// `None`, which leaves its site out of the code set and makes the row that
+/// names the site a finding.
+fn decode_literal(text: &[char], start: usize) -> Option<(String, usize)> {
+    let mut index = start;
+    let mut hashes = 0usize;
+    let raw = text.get(index) == Some(&'r');
+    if raw {
+        index = index.saturating_add(1);
+        while text.get(index) == Some(&'#') {
+            hashes = hashes.saturating_add(1);
+            index = index.saturating_add(1);
+        }
+    }
+    if text.get(index) != Some(&'"') {
+        return None;
+    }
+    index = index.saturating_add(1);
+    let mut value = String::new();
+    while let Some(&mark) = text.get(index) {
+        let after = index.saturating_add(1);
+        if mark == '"' && (!raw || closed_by_hashes(text, after, hashes)) {
+            return Some((value, after.saturating_add(hashes)));
+        }
+        if !raw && mark == '\\' {
+            let (decoded, next) = decode_escape(text, after)?;
+            value.push_str(&decoded);
+            index = next;
+            continue;
+        }
+        value.push(mark);
+        index = after;
+    }
+    None
+}
+
+/// `CG9`. Whether the stated count of `#` follows one raw-literal quote.
+fn closed_by_hashes(text: &[char], after: usize, hashes: usize) -> bool {
+    (0..hashes).all(|offset| text.get(after.saturating_add(offset)) == Some(&'#'))
+}
+
+/// `CG9`. The text one escape answers, and the offset just after it.
+///
+/// A backslash before a newline answers the empty text and drops the
+/// whitespace under it, which is the continuation a long reason uses. The
+/// decoder reads `n`, `r`, `t`, `0`, `\`, `"` and `'`; every other escape,
+/// `\x` and `\u` included, answers `None`.
+fn decode_escape(text: &[char], index: usize) -> Option<(String, usize)> {
+    let &mark = text.get(index)?;
+    let after = index.saturating_add(1);
+    if mark == '\n' {
+        return Some((String::new(), skip_space(text, after)));
+    }
+    let decoded = match mark {
+        'n' => '\n',
+        'r' => '\r',
+        't' => '\t',
+        '0' => '\0',
+        '\\' => '\\',
+        '"' => '"',
+        '\'' => '\'',
+        _ => return None,
+    };
+    Some((decoded.to_string(), after))
+}
+
+/// `CG9`. The name of the `fn` item one line opens, or `None`.
+///
+/// The line must open with item keywords alone, so a `fn` inside a body and a
+/// `fn` inside a type never answers.
+fn fn_name(line: &str) -> Option<String> {
+    let mut words = line.split_whitespace();
+    let mut word = words.next()?;
+    while item_keyword(word) {
+        word = words.next()?;
+    }
+    if word != "fn" {
+        return None;
+    }
+    let spelled = words.next()?;
+    let width = spelled
+        .find(|mark: char| !is_word(mark))
+        .unwrap_or(spelled.len());
+    let name = spelled.get(..width)?;
+    (!name.is_empty()).then(|| name.to_owned())
+}
+
+/// `CG9`. Whether one word may stand between a line start and its `fn`.
+fn item_keyword(word: &str) -> bool {
+    matches!(word, "pub" | "const" | "async" | "unsafe" | "extern")
+        || word.starts_with("pub(")
+        || word.starts_with('"')
+}
+
+/// `CG9`. The two sets as one map, keyed by the site each side names.
+fn reason_pairs(rows: Vec<(String, String)>, sites: Vec<(String, String)>) -> ReasonPairs {
+    let mut pairs = ReasonPairs::new();
+    for (site, text) in rows {
+        pairs.entry(site).or_default().cell = Some(text);
+    }
+    for (site, text) in sites {
+        pairs.entry(site).or_default().code = Some(text);
+    }
+    pairs
+}
+
+/// `CG9`. Every line the binding fails on, in site order.
+fn reason_findings(pairs: &ReasonPairs) -> Vec<String> {
+    pairs
+        .iter()
+        .filter_map(|(site, pair)| {
+            let line = match (pair.cell.as_deref(), pair.code.as_deref()) {
+                (Some(cell), Some(code)) if cell == code => return None,
+                (Some(cell), Some(code)) => {
+                    format!("the cell states \"{cell}\" and the code states \"{code}\"")
+                },
+                (Some(_cell), None) => {
+                    "the `b1-convert` row names a site the exempt file does not declare".to_owned()
+                },
+                (None, Some(_code)) => {
+                    "the exempt file states a reason that no `b1-convert` row names".to_owned()
+                },
+                (None, None) => return None,
+            };
+            Some(format!("  REASON TEXT: {site}: {line}"))
+        })
+        .collect()
 }

@@ -46,7 +46,7 @@ const REQUIRED: [&str; 6] = [
 ];
 
 /// The line that tells a reader `plan-graph.md` is generated.
-const MANIFEST_NOTE: &str = "Derived from the chunk front-matter by `tools/plan_graph_check.py`. Edit the chunk files, then regenerate; never edit this file by hand.";
+const MANIFEST_NOTE: &str = "Derived from the chunk front-matter by `cargo xtask check-plan-graph <plan-dir> --write-manifest`. Edit the chunk files, then regenerate; never edit this file by hand.";
 
 /// The objective paragraph of the generated manifest.
 const OBJECTIVE: &str = "Duet v1: a vocal-first composition, record, mix, and master application on GPUI Kit, AI-first with a git-like history, on macOS 26 and Ubuntu 26.04. The measurable completion outcome is architecture.md section 14 (three rungs: `scripts/dod.sh` green on both platforms, the named test commands, and the human product review gate).";
@@ -111,9 +111,9 @@ pub(crate) fn run(plan_dir: &Path, mode: ManifestMode) -> anyhow::Result<Outcome
     };
     let collected = match collect_chunks(plan_dir)? {
         Ok(collected) => collected,
-        Err(reason) => {
-            writeln!(out, "FAIL: {reason}")?;
-            return Ok(Outcome::Findings);
+        Err(stop) => {
+            writeln!(out, "{}", stop.line())?;
+            return Ok(stop.outcome());
         },
     };
     let Collected { chunks, malformed } = collected;
@@ -398,13 +398,68 @@ fn states_a_chunk_key(text: &str) -> bool {
         .any(|(key, _)| REQUIRED.contains(&key))
 }
 
+/// Why one read of the plan directory stopped before the rules ran.
+///
+/// The two stops differ in the word they print AND in the exit code they
+/// decide, so each arm carries its own whole line and its own [`Outcome`].
+#[derive(Debug)]
+enum Stop {
+    /// Two chunk files state one id, which breaks rule 1 of this guard.
+    ///
+    /// The field is the whole line the guard prints.
+    DuplicateId(String),
+    /// The plan directory holds no chunk file, so the guard measured nothing.
+    NoChunkFile,
+}
+
+impl Stop {
+    /// The part of the line that follows the word.
+    fn body(&self) -> &str {
+        match self {
+            Self::DuplicateId(body) => body,
+            Self::NoChunkFile => "no chunk file found; the guard is fail-closed.",
+        }
+    }
+
+    /// The exit code this stop decides.
+    const fn outcome(&self) -> Outcome {
+        match self {
+            Self::DuplicateId(_) => Outcome::Findings,
+            Self::NoChunkFile => Outcome::FailClosed,
+        }
+    }
+
+    /// The whole line the guard prints for this stop.
+    ///
+    /// The word comes from [`Self::outcome`] and never from the arm, so a
+    /// later arm cannot print `FINDING:` at exit 2 or `FAIL:` at exit 1.
+    /// ADR 0010 decision 1 binds the word to the exit code.
+    fn line(&self) -> String {
+        format!("{} {}", word(self.outcome()), self.body())
+    }
+}
+
+/// The word one exit code decides (ADR 0010 decision 1).
+///
+/// Exit 1 is a breach of a rule the guard measures about the plan it reads,
+/// and exit 2 is a failure of the guard's own input. [`Outcome::Clean`] takes
+/// the fail-closed word because no [`Stop`] decides it: a stop that somehow
+/// reported a clean run is a defect, and `FAIL:` is the safe answer to one.
+const fn word(outcome: Outcome) -> &'static str {
+    match outcome {
+        Outcome::Findings => "FINDING:",
+        Outcome::Clean | Outcome::FailClosed => "FAIL:",
+    }
+}
+
 /// Read every chunk file of the plan directory.
 ///
-/// The inner `Err` holds the reason the guard stops with a finding.
+/// The inner `Err` holds the stop that ends the run before the rules read the
+/// chunk set.
 ///
 /// # Errors
 /// Returns an error when the plan directory or one chunk file cannot be read.
-fn collect_chunks(plan_dir: &Path) -> anyhow::Result<Result<Collected, String>> {
+fn collect_chunks(plan_dir: &Path) -> anyhow::Result<Result<Collected, Stop>> {
     let entries =
         fs::read_dir(plan_dir).with_context(|| format!("cannot read {}", plan_dir.display()))?;
     let mut names: Vec<String> = Vec::new();
@@ -443,10 +498,10 @@ fn collect_chunks(plan_dir: &Path) -> anyhow::Result<Result<Collected, String>> 
             continue;
         };
         if let Some(first) = collected.chunks.get(id) {
-            return Ok(Err(format!(
+            return Ok(Err(Stop::DuplicateId(format!(
                 "duplicate chunk id {id} in {name} and {}",
                 first.file_name
-            )));
+            ))));
         }
         let position = collected.chunks.items.len();
         collected.chunks.index.insert(id.to_owned(), position);
@@ -459,7 +514,7 @@ fn collect_chunks(plan_dir: &Path) -> anyhow::Result<Result<Collected, String>> 
         });
     }
     if collected.chunks.items.is_empty() {
-        return Ok(Err("no chunk file found".to_owned()));
+        return Ok(Err(Stop::NoChunkFile));
     }
     Ok(Ok(collected))
 }

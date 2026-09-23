@@ -41,6 +41,17 @@
 //! `std::env::set_var` is disallowed and a child variable reaches the same
 //! place.
 //!
+//! The guard splits at the compiler edge, and one flag names the half that
+//! runs. With `--generate-only` the guard reads the document, writes the
+//! scratch workspace, counts, and starts no cargo child, which takes about one
+//! second. Without the flag it does everything, and one measured full run
+//! reached 4.0 GB of build artifacts and several minutes cold. The skipped
+//! half decides the parse rules and the count rules; the compiler is the only
+//! oracle for the lint table, so the skipped half decides nothing about it. A
+//! skipped run prints a line no full run prints, so the two are never
+//! confusable by exit code alone, and a probe holds the flag out of every job
+//! under `.github/workflows/`.
+//!
 //! The two containment rules read different paths, and the prototype states
 //! why. The scratch directory is held against the repository as the caller
 //! writes both, so a caller that names the repository one way and the scratch
@@ -178,9 +189,18 @@ const SIZE_MEMBER: &str = "roster-sizes";
 
 /// Run the roster compile over the architecture document.
 ///
+/// `generate_only` keeps every rule the document decides and drops the rule
+/// the compiler decides. The run writes the scratch workspace, counts, prints
+/// [`SKIPPED_COMPILE`], and starts no cargo child.
+///
 /// # Errors
 /// Returns an error when a write to the output stream fails.
-pub(crate) fn run(document: &Path, scratch: &Path, repo: &Path) -> anyhow::Result<Outcome> {
+pub(crate) fn run(
+    document: &Path,
+    scratch: &Path,
+    repo: &Path,
+    generate_only: bool,
+) -> anyhow::Result<Outcome> {
     let stdout = io::stdout();
     let mut out = stdout.lock();
     if !document.is_file() {
@@ -207,6 +227,11 @@ pub(crate) fn run(document: &Path, scratch: &Path, repo: &Path) -> anyhow::Resul
         return Ok(Outcome::FailClosed);
     }
     if fs::create_dir_all(scratch).is_err() {
+        writeln!(
+            out,
+            "FAIL: cannot create the scratch directory {}; the guard is fail-closed.",
+            scratch.display()
+        )?;
         return Ok(Outcome::FailClosed);
     }
     let plan = match target_plan(&mut out, repo, scratch)? {
@@ -219,7 +244,7 @@ pub(crate) fn run(document: &Path, scratch: &Path, repo: &Path) -> anyhow::Resul
         repo: repo.to_path_buf(),
         target: plan.directory.clone(),
     };
-    let produced = compile(&mut out, &places);
+    let produced = compile(&mut out, &places, generate_only);
     let removed = if plan.owned {
         remove_target(&plan.directory)
     } else {
@@ -350,13 +375,35 @@ fn remove_target(target: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// The line the skipped half of this guard prints, and the full run never does.
+const SKIPPED_COMPILE: &str = "ROSTER COMPILE:   skipped (--generate-only)";
+
 /// Generate the scratch workspace, resolve it, lint it, and measure it.
+///
+/// The skipped half stops after the generator, which is where the compiler
+/// takes over. It prints [`SKIPPED_COMPILE`] on every path THROUGH THIS
+/// FUNCTION, so a caller reads the half that ran from the report and never
+/// from the exit code alone.
+///
+/// The bound of that sentence carries no COUNT, because three review rounds
+/// each named a number that the code refuted. The property is the statement:
+/// every exit that reaches the stream before the line skips the line in BOTH
+/// forms, so no skipped run can read as a clean full run. That is what the
+/// line exists to hold, and it is true at every exit.
 ///
 /// # Errors
 /// Returns an error when a write to the output stream fails, or when a file
 /// the guard needs cannot be read.
-fn compile(out: &mut impl io::Write, places: &Places) -> anyhow::Result<Outcome> {
+fn compile(
+    out: &mut impl io::Write,
+    places: &Places,
+    generate_only: bool,
+) -> anyhow::Result<Outcome> {
     let generated = generate(out, places)?;
+    if generate_only {
+        writeln!(out, "{SKIPPED_COMPILE}")?;
+        return Ok(generated);
+    }
     if generated != Outcome::Clean {
         return Ok(generated);
     }
@@ -2921,7 +2968,7 @@ fn report(
         let missing = roster.owner.keys().find(|name| !seen.contains(name));
         writeln!(
             out,
-            "FAIL: the roster holds {} items and section 1.5 places {floor}; the first name with no declaration is {}.",
+            "FINDING: the roster holds {} items and section 1.5 places {floor}; the first name with no declaration is {}.",
             parse.seen.len(),
             missing.map(String::as_str).unwrap_or_default()
         )?;
@@ -2934,7 +2981,7 @@ fn report(
         for block in named {
             writeln!(
                 out,
-                "FAIL: the impl block for {} carries a body beside a bodiless signature, so the whole block leaves the roster; write every item as a signature or write every item with a body.",
+                "FINDING: the impl block for {} carries a body beside a bodiless signature, so the whole block leaves the roster; write every item as a signature or write every item with a body.",
                 block.target
             )?;
         }
@@ -2951,7 +2998,7 @@ fn report(
     if parse.count != impl_floor {
         writeln!(
             out,
-            "FAIL: the roster parsed {} impl blocks and the `impl-sites` block lists {impl_floor}; the two are one set and they differ by {}.",
+            "FINDING: the roster parsed {} impl blocks and the `impl-sites` block lists {impl_floor}; the two are one set and they differ by {}.",
             parse.count,
             parse.count.abs_diff(impl_floor)
         )?;

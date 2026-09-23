@@ -1639,8 +1639,8 @@ showed that an invented family of ten ids could be added to this table with a gr
 | PG1 to PG41, with PG4b, PG10b, PG20b, PG26b to PG26f, PG27b, and PG31b | The placement-guard rules | 1.5 |
 | PG26, PG26b, PG26c | The three TH1 rules | 5.7 |
 | PP1 to PP41, with PP4b, PP10b, PP20b, PP26b to PP26f, PP27b, and PP31b, one per placement-guard rule | The placement-guard probes | 1.9 |
-| CG1 to CG8, with CG1b, CG2b, CG3b, and CG4b | The conversion-guard rules | 2.3 |
-| CP1 to CP8, with CP1b, CP2b, CP3b, and CP4b | The conversion-guard probes | 1.9 |
+| CG1 to CG9, with CG1b, CG2b, CG3b, and CG4b | The conversion-guard rules | 2.3 |
+| CP1 to CP9, with CP1b, CP2b, CP3b, and CP4b | The conversion-guard probes | 1.9 |
 | VR1 to VR6 | The vocabulary rules | 3.5 |
 | TH1 to TH13 | The thread rules | 5.7 |
 | CL0 to CL5, with CL1b, CL1c and CL1d | The closure rules, which PG32 runs | 1.5 |
@@ -1946,7 +1946,7 @@ site that names it**, and a site that names only the document half names the sub
 rather than a count. All five land together or none of them does. Section 2.3 states the rule
 itself.
 
-<!-- GUARD BLOCK id=probe-table rows>=64 -->
+<!-- GUARD BLOCK id=probe-table rows>=65 -->
 | Rule | What the rule refuses | Probe | What the probe plants | Recorded result |
 |---|---|---|---|---|
 | - | - | BASE | Nothing | `exit 0`; every failure counter zero |
@@ -2013,6 +2013,7 @@ itself.
 | CG6 | A suppression outside the one conversion file, in every attribute form Rust writes | CP6 | Five forms in one file: one space after `(`, a line break, a `cfg_attr` wrapper, the `allow` spelling, and the inner `#![allow]` form | `exit 1`; `SUPPRESSION: m/src/lib.rs: line 1` first, and `MEMBERS: 1   FILES: 1   FINDINGS: 5` |
 | CG7 | An exemption that a symbolic link defeats, in either direction | CP7 | Two shapes, each in its own run: the sanctioned cast inside `crates/duet-time/src/convert.rs`, and that same path made a symbolic link to a second member's live module that holds a bare cast | `exit 0`; `MEMBERS: 2   FILES: 3   FINDINGS: 0` for the first, and `exit 1`; `CAST: n/src/hot.rs: line 5` with `MEMBERS: 3   FILES: 4   FINDINGS: 1` for the second |
 | CG8 | A workspace `cargo metadata` refuses, a member file that is not UTF-8, or a member file the guard cannot open | CP8 | Three shapes, each in its own run: a `Cargo.toml` that does not parse, the byte pair `C3 28` in a member file beside a real cast, and a member file at mode 000 beside a real cast | `exit 2` every time; ``FAIL: `cargo metadata --no-deps` refused ...; the guard is fail-closed.``, `FAIL: m/src/other.rs: the bytes are not UTF-8; the guard is fail-closed.`, and `FAIL: m/src/locked.rs: the file does not open; the guard is fail-closed.` |
+| CG9 | An Appendix B.1 `b1-convert` reason cell and the `reason =` string of that function in the one exempt file that are not one text, and an `--appendix` document the guard cannot open | CP9 | Five shapes, each in its own throwaway workspace: a reason string that differs from its cell by one character; a `b1-convert` row whose site the exempt file does not declare; a function whose `#[expect]` carries a `reason =` string that no `b1-convert` row names; an `--appendix` argument that names an absent `roadmap/duet-v1/architecture.md`, which is the fail-closed shape; and a matching pair, which is the green control | `exit 1` on the first three, `exit 2` on the fourth, and `exit 0` on the control; the first prints `REASON TEXTS:    1     REASON TEXT BAD: 1` and one line that opens ``  REASON TEXT: `` and names the site, the cell text and the code text; the second and the third print the same counter shape with the same tag; the fourth prints the one named line CG9 part 1 mandates and no counter |
 
 **The baseline run, in full. Every coverage count in this document is one of these** (DR3, critic
 R10).

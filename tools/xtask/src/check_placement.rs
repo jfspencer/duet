@@ -1779,7 +1779,7 @@ const DATA_BLOCKS: &[BlockSpec] = &[
         "probe-table",
         "Every rule, its probe, and the recorded result",
         BlockKind::Table,
-        64,
+        65,
     ),
     block(
         "external-verdicts",
@@ -9615,7 +9615,7 @@ pub(crate) fn run(document: &Path) -> anyhow::Result<Outcome> {
             out,
             "FAIL: the candidate set is empty, so the parse is broken."
         )?;
-        return Ok(Outcome::Findings);
+        return Ok(Outcome::FailClosed);
     }
     Ok(if lists.any() {
         Outcome::Findings
