@@ -11,3 +11,10 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+duet-time = { path = "../duet-time" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+smallvec = { workspace = true }
+thiserror = { workspace = true }
