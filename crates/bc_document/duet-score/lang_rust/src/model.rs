@@ -1175,7 +1175,7 @@ pub struct Score {
     tempo_map: TempoMap,
     /// The revision counter, which increases on every applied command.
     revision: Revision,
-    /// The schema number that this score was read under.
+    /// The schema number that this score stands under, always `SCHEMA`.
     schema: SchemaVersion,
     /// Fields from a newer schema that this build does not model.
     extra: BTreeMap<String, serde_json::Value>,
@@ -1367,7 +1367,13 @@ impl Score {
         self.revision
     }
 
-    /// The schema number that this score was read under.
+    /// The schema number that this score stands under.
+    ///
+    /// It is `SCHEMA` for every score this build holds, and NOT always the
+    /// number the document stated. `canonical::read` refuses a document above
+    /// `SCHEMA` and normalizes a document below it: no release carried an
+    /// earlier schema, so the read runs no migration step and the score comes
+    /// back under `SCHEMA`. A write then stamps `SCHEMA` on the document.
     #[must_use]
     pub const fn schema(&self) -> SchemaVersion {
         self.schema

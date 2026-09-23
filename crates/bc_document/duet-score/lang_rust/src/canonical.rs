@@ -744,10 +744,12 @@ mod tests {
         let older = SchemaVersion::new(SCHEMA.get().saturating_sub(1));
         let mut object = meta_object(&meta);
         object.insert("schema".to_owned(), Value::from(older.get()));
-        let outcome = read(&object_text(object), &notes, &spanners);
-        assert!(
-            !matches!(outcome, Err(ScoreError::Schema { .. })),
-            "the schema gate compares with a greater-than test, so a document below the schema this build reads runs the migration chain rather than a refusal"
+        let read_back = read(&object_text(object), &notes, &spanners)
+            .expect("a document below the schema this build reads is not refused");
+        assert_eq!(
+            read_back.schema(),
+            SCHEMA,
+            "the schema gate compares with a greater-than test, and the read normalizes an older document to SCHEMA rather than refusing it or keeping the stored number"
         );
     }
 

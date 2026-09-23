@@ -60,20 +60,21 @@ impl Outcome {
     /// form, which is the measure that the undo stack of section 4.9 holds its
     /// memory bound against. Both counts hold at `u32::MAX`.
     ///
-    /// # Errors
-    /// Returns `ScoreError::Serialize` when the inverse has no JSON form.
-    fn new(events: Vec<ScoreEvent>, inverse: Vec<ScoreCommand>) -> Result<Self, ScoreError> {
-        let bytes = serde_json::to_vec(&inverse)
-            .map_err(|error| ScoreError::Serialize(error.to_string().into_boxed_str()))?;
-        let cost = InverseCost::new(
-            u32::try_from(inverse.len()).unwrap_or(u32::MAX),
-            u32::try_from(bytes.len()).unwrap_or(u32::MAX),
-        );
-        Ok(Self {
+    /// **The measurement cannot refuse.** A list with no JSON form measures
+    /// `u32::MAX` bytes, which is the value the undo stack already reads as too
+    /// large to keep. A refusal here would be the one fallible step that stands
+    /// AFTER a mint in eight arms, and the transaction rule of section 3.4 says
+    /// that no identifier is minted before every validation passes.
+    fn new(events: Vec<ScoreEvent>, inverse: Vec<ScoreCommand>) -> Self {
+        let bytes = serde_json::to_vec(&inverse).map_or(u32::MAX, |form| {
+            u32::try_from(form.len()).unwrap_or(u32::MAX)
+        });
+        let cost = InverseCost::new(u32::try_from(inverse.len()).unwrap_or(u32::MAX), bytes);
+        Self {
             events,
             inverse,
             cost,
-        })
+        }
     }
 }
 
@@ -211,9 +212,18 @@ fn non_zero_u16(count: usize) -> NonZeroU16 {
     NonZeroU16::new(raw).unwrap_or(NonZeroU16::MIN)
 }
 
-/// The ordinal that follows `count` parts of one voice type.
-fn next_ordinal(count: usize) -> NonZeroU16 {
-    non_zero_u16(count.saturating_add(1))
+/// The ordinal above `greatest`, or the first ordinal where there is none.
+///
+/// It is one above the greatest ordinal that a voice type already carries, and
+/// NOT a count of the parts of that voice type. A count repeats an ordinal
+/// after a removal from the middle of the run: with "Soprano 1" gone and
+/// "Soprano 2" standing, a count answers two and two parts then print one
+/// label. Decision D21 states the count, and this is the amendment that the
+/// second critic round asked for.
+fn next_ordinal(greatest: Option<NonZeroU16>) -> NonZeroU16 {
+    greatest.map_or(NonZeroU16::MIN, |held| {
+        NonZeroU16::new(held.get().saturating_add(1)).unwrap_or(NonZeroU16::MAX)
+    })
 }
 
 /// The notes and the rests that one `(staff, voice)` pair of a clipboard holds.
@@ -517,7 +527,7 @@ impl Score {
     /// Returns the refusal of the arm.
     fn dispatch(&mut self, command: ScoreCommand) -> Result<Outcome, ScoreError> {
         match command {
-            ScoreCommand::AddPart { voice_type, name } => self.add_part(voice_type, name),
+            ScoreCommand::AddPart { voice_type, name } => Ok(self.add_part(voice_type, name)),
             ScoreCommand::RemovePart { part } => self.remove_part(part),
             ScoreCommand::AddStaff { part, clef } => self.add_staff(part, clef),
             ScoreCommand::RemoveStaff { staff } => self.remove_staff(staff),
@@ -528,7 +538,7 @@ impl Score {
             ScoreCommand::SetTimeSignature { measure, meter } => {
                 self.set_time_signature(measure, meter)
             },
-            ScoreCommand::AddMark { at, kind } => self.add_mark(at, kind),
+            ScoreCommand::AddMark { at, kind } => Ok(self.add_mark(at, kind)),
             ScoreCommand::RemoveMark { mark } => self.remove_mark(mark),
             ScoreCommand::InsertNote {
                 staff,
@@ -959,26 +969,29 @@ impl Score {
 impl Score {
     /// Add one part, with the ordinal that its voice type gives it.
     ///
-    /// The ordinal is the count of parts that already carry the same voice
-    /// type, plus one: "Soprano 1" and then "Soprano 2".
+    /// The ordinal is one above the greatest ordinal that the same voice type
+    /// already carries: "Soprano 1" and then "Soprano 2". A count of the parts
+    /// would repeat an ordinal after a removal, and the ordinal is the number
+    /// that a user reads in the part label.
     ///
-    /// # Errors
-    /// Returns `ScoreError::Serialize` when the inverse has no JSON form.
-    fn add_part(&mut self, voice_type: VoiceType, name: PartName) -> Result<Outcome, ScoreError> {
+    /// It refuses nothing: a part names no other entity, and the ordinal and
+    /// the identifier both come from the score itself.
+    fn add_part(&mut self, voice_type: VoiceType, name: PartName) -> Outcome {
         let ordinal = next_ordinal(
             self.parts()
                 .values()
                 .filter(|part| part.voice_type() == voice_type)
-                .count(),
+                .map(Part::ordinal)
+                .max(),
         );
         let part = PartId::new(self.mint_id());
         let outcome = Outcome::new(
             vec![ScoreEvent::PartAdded(part)],
             vec![ScoreCommand::RemovePart { part }],
-        )?;
+        );
         self.parts_mut()
             .insert(part, Part::new(part, voice_type, ordinal, name));
-        Ok(outcome)
+        outcome
     }
 
     /// Remove one part, its staves, its voices, and their content.
@@ -986,7 +999,9 @@ impl Score {
     /// The inverse rebuilds the part alone, under a NEW identifier, and
     /// restores no staff and no note. No command of the declared set names an
     /// identifier for a new part, a new staff, or a new voice, so a structure
-    /// removal has no true undo. `escalation:T2-9` records the gap.
+    /// removal has no true undo. `escalation:T2-9` records the gap. The ORDINAL
+    /// of the rebuilt part is one above the greatest that its voice type then
+    /// carries, which is the ordinal it held only where it held the greatest.
     ///
     /// # Errors
     /// Returns `ScoreError::MissingPart` for an absent part.
@@ -1001,7 +1016,7 @@ impl Score {
         let outcome = Outcome::new(
             vec![ScoreEvent::PartRemoved(part)],
             vec![ScoreCommand::AddPart { voice_type, name }],
-        )?;
+        );
         for staff in staves {
             self.strip_staff(staff);
         }
@@ -1056,7 +1071,7 @@ impl Score {
         let outcome = Outcome::new(
             vec![ScoreEvent::StaffAdded(staff)],
             vec![ScoreCommand::RemoveStaff { staff }],
-        )?;
+        );
         let mut record = Staff::new(staff, clef, 0);
         record.push_voice(voice);
         self.staves_mut().insert(staff, record);
@@ -1080,7 +1095,7 @@ impl Score {
         let owner = self.part_of_staff(staff);
         let inverse =
             owner.map_or_else(Vec::new, |part| vec![ScoreCommand::AddStaff { part, clef }]);
-        let outcome = Outcome::new(vec![ScoreEvent::StaffRemoved(staff)], inverse)?;
+        let outcome = Outcome::new(vec![ScoreEvent::StaffRemoved(staff)], inverse);
         self.strip_staff(staff);
         if let Some(record) = owner.and_then(|part| self.parts_mut().get_mut(&part)) {
             record.drop_staff(staff);
@@ -1105,7 +1120,7 @@ impl Score {
                 at,
                 clef: earlier,
             }],
-        )?;
+        );
         if let Some(record) = self.staves_mut().get_mut(&staff) {
             record.set_clef(clef);
         }
@@ -1339,7 +1354,7 @@ impl Score {
                 count: count.get(),
             }],
             vec![ScoreCommand::RemoveMeasures { from: first, count }],
-        )?;
+        );
         self.shift_from(start, span, meters);
         for (index, id) in minted.into_iter().enumerate() {
             let step = i64::try_from(index).unwrap_or(i64::MAX);
@@ -1412,7 +1427,7 @@ impl Score {
                 count: removed.get(),
             }],
             inverse,
-        )?;
+        );
         for id in &run {
             self.measures_mut().remove(id);
         }
@@ -1436,7 +1451,7 @@ impl Score {
                 measure,
                 key: earlier,
             }],
-        )?;
+        );
         if let Some(record) = self.measures_mut().get_mut(&measure) {
             record.set_key(key);
         }
@@ -1480,7 +1495,7 @@ impl Score {
                 measure,
                 meter: earlier,
             }],
-        )?;
+        );
         if let Some(held) = self.measures_mut().get_mut(&measure) {
             held.set_meter(meter);
         }
@@ -1490,17 +1505,16 @@ impl Score {
 
     /// Add one score mark at one tick.
     ///
-    /// # Errors
-    /// Returns `ScoreError::Serialize` when the inverse has no JSON form.
-    fn add_mark(&mut self, at: Ticks, kind: MarkKind) -> Result<Outcome, ScoreError> {
+    /// It refuses nothing: a mark names a tick and no other entity.
+    fn add_mark(&mut self, at: Ticks, kind: MarkKind) -> Outcome {
         let mark = MarkId::new(self.mint_id());
         let outcome = Outcome::new(
             vec![ScoreEvent::MarkAdded(mark)],
             vec![ScoreCommand::RemoveMark { mark }],
-        )?;
+        );
         self.marks_mut()
             .insert(mark, ScoreMark::new(mark, at, kind));
-        Ok(outcome)
+        outcome
     }
 
     /// Remove one score mark.
@@ -1521,7 +1535,7 @@ impl Score {
         let outcome = Outcome::new(
             vec![ScoreEvent::MarkRemoved(mark)],
             restore_pastes(&clipboard, at),
-        )?;
+        );
         self.marks_mut().remove(&mark);
         Ok(outcome)
     }
@@ -1550,7 +1564,7 @@ impl Score {
             vec![ScoreCommand::Remove {
                 selection: Selection::Notes(vec![note]),
             }],
-        )?;
+        );
         self.notes_mut()
             .insert(note, Note::new(note, staff, voice, onset, duration, pitch));
         Ok(outcome)
@@ -1575,7 +1589,7 @@ impl Score {
             vec![ScoreCommand::Remove {
                 selection: Selection::Notes(vec![rest]),
             }],
-        )?;
+        );
         self.rests_mut()
             .insert(rest, Rest::new(rest, staff, voice, onset, duration));
         Ok(outcome)
@@ -1599,7 +1613,7 @@ impl Score {
             });
             changes.push((*id, edited_pitch(earlier, pitch)));
         }
-        let outcome = Outcome::new(events, inverse)?;
+        let outcome = Outcome::new(events, inverse);
         for (id, next) in changes {
             if let Some(note) = self.notes_mut().get_mut(&id) {
                 note.set_pitch(next);
@@ -1640,7 +1654,7 @@ impl Score {
                 duration: earlier,
             });
         }
-        let outcome = Outcome::new(events, inverse)?;
+        let outcome = Outcome::new(events, inverse);
         for id in notes {
             if let Some(note) = self.notes_mut().get_mut(id) {
                 note.set_duration(duration);
@@ -1669,7 +1683,7 @@ impl Score {
         let outcome = Outcome::new(
             vec![ScoreEvent::NoteChanged(note)],
             vec![ScoreCommand::SetTie { note, tie: earlier }],
-        )?;
+        );
         if let Some(record) = self.notes_mut().get_mut(&note) {
             record.set_tie(tie);
         }
@@ -1716,7 +1730,7 @@ impl Score {
                 articulations: earlier,
             });
         }
-        let outcome = Outcome::new(events, inverse)?;
+        let outcome = Outcome::new(events, inverse);
         for id in notes {
             if let Some(note) = self.notes_mut().get_mut(id) {
                 note.set_articulations(articulations.clone());
@@ -1757,7 +1771,7 @@ impl Score {
                 }]
             },
         );
-        let outcome = Outcome::new(vec![ScoreEvent::NoteChanged(note)], inverse)?;
+        let outcome = Outcome::new(vec![ScoreEvent::NoteChanged(note)], inverse);
         if let Some(record) = self.notes_mut().get_mut(&note) {
             record.set_lyric(verse, text);
         }
@@ -1781,14 +1795,14 @@ impl Score {
         dynamic: Dynamic,
     ) -> Result<Outcome, ScoreError> {
         self.staff_of(staff)?;
-        Outcome::new(
+        Ok(Outcome::new(
             Vec::new(),
             vec![ScoreCommand::SetDynamic {
                 staff,
                 onset,
                 dynamic,
             }],
-        )
+        ))
     }
 
     /// Add one spanner between two notes.
@@ -1811,7 +1825,7 @@ impl Score {
         let outcome = Outcome::new(
             vec![ScoreEvent::SpannerAdded(spanner)],
             vec![ScoreCommand::RemoveSpanner { spanner }],
-        )?;
+        );
         self.spanners_mut()
             .insert(spanner, Spanner::new(spanner, kind, from, to));
         Ok(outcome)
@@ -1831,7 +1845,7 @@ impl Score {
         let outcome = Outcome::new(
             vec![ScoreEvent::SpannerRemoved(spanner)],
             restore_pastes(&clipboard, Ticks::ZERO),
-        )?;
+        );
         self.spanners_mut().remove(&spanner);
         Ok(outcome)
     }
@@ -1875,7 +1889,7 @@ impl Score {
                 voice: earlier,
             });
         }
-        let outcome = Outcome::new(events, inverse)?;
+        let outcome = Outcome::new(events, inverse);
         for id in notes {
             if let Some(note) = self.notes_mut().get_mut(id) {
                 let held = note.staff();
@@ -1938,7 +1952,7 @@ impl Score {
                 voice: earlier_voice,
             });
         }
-        let outcome = Outcome::new(events, inverse)?;
+        let outcome = Outcome::new(events, inverse);
         for id in notes {
             if let Some(note) = self.notes_mut().get_mut(id) {
                 note.set_place(staff, voice);
@@ -1992,7 +2006,7 @@ impl Score {
             });
         }
         let inverse = move_inverse(selection, by, to_staff, &places);
-        let outcome = Outcome::new(vec![ScoreEvent::ElementsMoved(selection.clone())], inverse)?;
+        let outcome = Outcome::new(vec![ScoreEvent::ElementsMoved(selection.clone())], inverse);
         for place in places {
             self.place_element(place.id, place.staff, place.voice, place.onset);
         }
@@ -2051,7 +2065,7 @@ impl Score {
         let outcome = Outcome::new(
             vec![ScoreEvent::ElementsRemoved(selection.clone())],
             restore_pastes(&clipboard, origin),
-        )?;
+        );
         for id in resolved.elements() {
             self.notes_mut().remove(&id);
             self.rests_mut().remove(&id);
@@ -2141,7 +2155,7 @@ impl Score {
             taken.push(next);
         }
         let pasted = self.mint_paste(clipboard, shift, to);
-        let outcome = Outcome::new(pasted.events.clone(), pasted.inverse.clone())?;
+        let outcome = Outcome::new(pasted.events.clone(), pasted.inverse.clone());
         self.commit_paste(pasted);
         Ok(outcome)
     }
@@ -2265,6 +2279,7 @@ impl Score {
 mod tests {
     use core::fmt::Debug;
     use core::num::{NonZeroU8, NonZeroU16};
+    use std::collections::BTreeSet;
 
     use duet_time::{Meter, NoteValue, Ticks, Tuplet};
     use serde::Serialize;
@@ -2313,6 +2328,45 @@ mod tests {
 
     /// A run of one measure.
     const ONE_MEASURE: NonZeroU16 = NonZeroU16::MIN;
+
+    /// A run of two measures.
+    const TWO_MEASURES: NonZeroU16 = NonZeroU16::MIN.saturating_add(1);
+
+    /// Every arm of `ScoreCommand`, by the name that `command_arm` answers.
+    ///
+    /// The inverse property is the Resilient property of this chunk, and a
+    /// command with no case is a command whose inverse nothing reads.
+    /// `every_command_arm_has_an_inverse_case` holds the two tables against
+    /// this list.
+    const COMMAND_ARMS: [&str; 27] = [
+        "AddPart",
+        "RemovePart",
+        "AddStaff",
+        "RemoveStaff",
+        "SetClef",
+        "InsertMeasures",
+        "RemoveMeasures",
+        "SetKeySignature",
+        "SetTimeSignature",
+        "AddMark",
+        "RemoveMark",
+        "InsertNote",
+        "InsertRest",
+        "SetPitch",
+        "SetDuration",
+        "SetTie",
+        "SetArticulations",
+        "SetLyric",
+        "SetDynamic",
+        "AddSpanner",
+        "RemoveSpanner",
+        "SetVoice",
+        "SetPart",
+        "Move",
+        "Duplicate",
+        "Remove",
+        "Paste",
+    ];
 
     /// The tick count of one quarter note.
     const QUARTER_TICKS: i64 = 1_920;
@@ -2394,6 +2448,72 @@ mod tests {
                 }
             })
             .expect("an accepted InsertNote reports NoteInserted")
+    }
+
+    /// The mark that `MarkAdded` names in `applied`.
+    fn mark_of(applied: &Applied) -> MarkId {
+        applied
+            .events
+            .iter()
+            .find_map(|event| {
+                if let ScoreEvent::MarkAdded(mark) = *event {
+                    Some(mark)
+                } else {
+                    None
+                }
+            })
+            .expect("an accepted AddMark reports MarkAdded")
+    }
+
+    /// The spanner that `SpannerAdded` names in `applied`.
+    fn spanner_of(applied: &Applied) -> SpannerId {
+        applied
+            .events
+            .iter()
+            .find_map(|event| {
+                if let ScoreEvent::SpannerAdded(spanner) = *event {
+                    Some(spanner)
+                } else {
+                    None
+                }
+            })
+            .expect("an accepted AddSpanner reports SpannerAdded")
+    }
+
+    /// The name of the arm that `command` names.
+    ///
+    /// The match names every arm, so a new arm of `ScoreCommand` stops this
+    /// module from building until the inverse tables cover it too.
+    fn command_arm(command: &ScoreCommand) -> &'static str {
+        match *command {
+            ScoreCommand::AddPart { .. } => "AddPart",
+            ScoreCommand::RemovePart { .. } => "RemovePart",
+            ScoreCommand::AddStaff { .. } => "AddStaff",
+            ScoreCommand::RemoveStaff { .. } => "RemoveStaff",
+            ScoreCommand::SetClef { .. } => "SetClef",
+            ScoreCommand::InsertMeasures { .. } => "InsertMeasures",
+            ScoreCommand::RemoveMeasures { .. } => "RemoveMeasures",
+            ScoreCommand::SetKeySignature { .. } => "SetKeySignature",
+            ScoreCommand::SetTimeSignature { .. } => "SetTimeSignature",
+            ScoreCommand::AddMark { .. } => "AddMark",
+            ScoreCommand::RemoveMark { .. } => "RemoveMark",
+            ScoreCommand::InsertNote { .. } => "InsertNote",
+            ScoreCommand::InsertRest { .. } => "InsertRest",
+            ScoreCommand::SetPitch { .. } => "SetPitch",
+            ScoreCommand::SetDuration { .. } => "SetDuration",
+            ScoreCommand::SetTie { .. } => "SetTie",
+            ScoreCommand::SetArticulations { .. } => "SetArticulations",
+            ScoreCommand::SetLyric { .. } => "SetLyric",
+            ScoreCommand::SetDynamic { .. } => "SetDynamic",
+            ScoreCommand::AddSpanner { .. } => "AddSpanner",
+            ScoreCommand::RemoveSpanner { .. } => "RemoveSpanner",
+            ScoreCommand::SetVoice { .. } => "SetVoice",
+            ScoreCommand::SetPart { .. } => "SetPart",
+            ScoreCommand::Move { .. } => "Move",
+            ScoreCommand::Duplicate { .. } => "Duplicate",
+            ScoreCommand::Remove { .. } => "Remove",
+            ScoreCommand::Paste { .. } => "Paste",
+        }
     }
 
     /// A quarter note with no dot and no tuplet.
@@ -2533,6 +2653,22 @@ mod tests {
             .collect();
         ordered.sort_unstable();
         ordered.into_iter().map(|(_, id)| id).collect()
+    }
+
+    /// The measure that stands second on the timeline of `score`.
+    fn second_measure_of(score: &Score) -> MeasureId {
+        *measures_by_start(score)
+            .get(1)
+            .expect("the fixture score holds at least two measures")
+    }
+
+    /// The start tick of every measure of `score`, in timeline order.
+    fn starts_of(score: &Score) -> Vec<i64> {
+        measures_by_start(score)
+            .iter()
+            .filter_map(|id| score.measures().get(id))
+            .map(|measure| measure.start().get())
+            .collect()
     }
 
     /// A score of two measures, and the measure that stands second.
@@ -3044,12 +3180,181 @@ mod tests {
         ]
     }
 
+    /// The measure and signature commands of the inverse set.
+    fn signature_inverse_cases() -> Vec<InverseCase> {
+        let clef_stage = stage();
+        let clef_staff = clef_stage.staff;
+        let key_score = Score::new();
+        let key_measure = first_measure(&key_score);
+        let insert_score = Score::new();
+        let insert_after = first_measure(&insert_score);
+        let (meter_score, meter_measure) = stage_with_two_measures();
+        let mut mark_stage = stage();
+        let mark = mark_of(
+            &mark_stage
+                .score
+                .apply(ScoreCommand::AddMark {
+                    at: Ticks::new(QUARTER_TICKS),
+                    kind: MarkKind::Rehearsal(
+                        RehearsalText::new("B").expect("a rehearsal text with text"),
+                    ),
+                })
+                .expect("an AddMark is accepted"),
+        );
+        vec![
+            InverseCase {
+                name: "SetClef",
+                score: clef_stage.score,
+                command: ScoreCommand::SetClef {
+                    staff: clef_staff,
+                    at: Ticks::ZERO,
+                    clef: Clef::Bass,
+                },
+            },
+            InverseCase {
+                name: "SetKeySignature",
+                score: key_score,
+                command: ScoreCommand::SetKeySignature {
+                    measure: key_measure,
+                    key: KeySignature::new(-3, false),
+                },
+            },
+            InverseCase {
+                name: "InsertMeasures",
+                score: insert_score,
+                command: ScoreCommand::InsertMeasures {
+                    after: insert_after,
+                    count: TWO_MEASURES,
+                },
+            },
+            InverseCase {
+                name: "SetTimeSignature",
+                score: meter_score,
+                command: ScoreCommand::SetTimeSignature {
+                    measure: meter_measure,
+                    meter: three_four(),
+                },
+            },
+            InverseCase {
+                name: "RemoveMark",
+                score: mark_stage.score,
+                command: ScoreCommand::RemoveMark { mark },
+            },
+        ]
+    }
+
+    /// The commands of the inverse set that move or mark one note.
+    fn place_inverse_cases() -> Vec<InverseCase> {
+        let (articulation_stage, articulation_note, _articulation_second) = stage_with_two_notes();
+        let dynamic_stage = stage();
+        let dynamic_staff = dynamic_stage.staff;
+        let (mut spanner_stage, spanner_from, spanner_to) = stage_with_two_notes();
+        let spanner = spanner_of(
+            &spanner_stage
+                .score
+                .apply(ScoreCommand::AddSpanner {
+                    kind: SpannerKind::Slur,
+                    from: spanner_from,
+                    to: spanner_to,
+                })
+                .expect("an AddSpanner between two notes the score holds is accepted"),
+        );
+        let mut voice_stage = stage();
+        let voice_note = insert_note(&mut voice_stage, 0, Step::C);
+        let second_voice = add_voice(&mut voice_stage);
+        let mut part_stage = stage();
+        let (lower_staff, lower_voice) = add_staff(&mut part_stage);
+        let part_note = insert_note_in(&mut part_stage, lower_staff, lower_voice, 0, Step::G);
+        let part_owner = part_stage.part;
+        let part_target = part_stage.staff;
+        let mut paste_stage = stage();
+        let paste_note = insert_note(&mut paste_stage, 0, Step::C);
+        let paste_clipboard = paste_stage
+            .score
+            .copy(&Selection::Notes(vec![paste_note]))
+            .expect("a copy of one note the score holds is accepted");
+        let paste_staff = paste_stage.staff;
+        let paste_voice = paste_stage.voice;
+        vec![
+            InverseCase {
+                name: "SetArticulations",
+                score: articulation_stage.score,
+                command: ScoreCommand::SetArticulations {
+                    notes: vec![articulation_note],
+                    articulations: SmallVec::from_slice(&[
+                        Articulation::Staccato,
+                        Articulation::Fermata,
+                    ]),
+                },
+            },
+            InverseCase {
+                name: "SetDynamic",
+                score: dynamic_stage.score,
+                command: ScoreCommand::SetDynamic {
+                    staff: dynamic_staff,
+                    onset: Ticks::ZERO,
+                    dynamic: Dynamic::Sfz,
+                },
+            },
+            InverseCase {
+                name: "RemoveSpanner",
+                score: spanner_stage.score,
+                command: ScoreCommand::RemoveSpanner { spanner },
+            },
+            InverseCase {
+                name: "SetVoice",
+                score: voice_stage.score,
+                command: ScoreCommand::SetVoice {
+                    notes: vec![voice_note],
+                    voice: second_voice,
+                },
+            },
+            InverseCase {
+                name: "SetPart",
+                score: part_stage.score,
+                command: ScoreCommand::SetPart {
+                    notes: vec![part_note],
+                    part: part_owner,
+                    staff: part_target,
+                },
+            },
+            InverseCase {
+                name: "Paste",
+                score: paste_stage.score,
+                command: ScoreCommand::Paste {
+                    clipboard: Box::new(paste_clipboard),
+                    at: Ticks::new(QUARTER_TICKS * 2),
+                    staff: paste_staff,
+                    voice: paste_voice,
+                },
+            },
+        ]
+    }
+
     /// Every command of the representative set that the score accepts.
+    ///
+    /// The three structural removals are NOT here: their inverse rebuilds
+    /// equivalent structure under new identifiers, so they cannot pass the
+    /// property. `structure_removal_arms` names them, and one test each pins
+    /// what they do restore and what they do not.
     fn inverse_cases() -> Vec<InverseCase> {
         let mut cases = structure_inverse_cases();
         cases.extend(content_inverse_cases());
         cases.extend(edit_inverse_cases());
+        cases.extend(signature_inverse_cases());
+        cases.extend(place_inverse_cases());
         cases
+    }
+
+    /// The arms whose inverse rebuilds structure under new identifiers.
+    ///
+    /// No clipboard carries a part, a staff, a voice, or a measure, and no
+    /// command of the declared set names an identifier for one, so these three
+    /// restore the SHAPE of what they removed and not the thing itself.
+    /// `escalation:T2-9` records the gap, and one test each holds the weaker
+    /// property they do carry.
+    fn structure_removal_arms() -> Vec<&'static str> {
+        vec!["RemovePart", "RemoveStaff", "RemoveMeasures"]
     }
 
     /// Apply every inverse command of one transaction to `score`.
@@ -3406,6 +3711,204 @@ mod tests {
             undo_all(&mut score, applied.inverse, case.name);
             assert_same_content(&score, &before, case.name);
         }
+    }
+
+    #[test]
+    fn every_command_arm_has_an_inverse_case() {
+        let mut covered: BTreeSet<&str> = inverse_cases()
+            .iter()
+            .map(|case| command_arm(&case.command))
+            .collect();
+        covered.extend(structure_removal_arms());
+        let declared: BTreeSet<&str> = COMMAND_ARMS.into_iter().collect();
+        assert_eq!(
+            covered, declared,
+            "every arm of ScoreCommand stands in the inverse table or in the structure-removal table, so no broken inverse can hide in an arm that no test applies"
+        );
+    }
+
+    #[test]
+    fn the_inverse_of_a_part_removal_rebuilds_the_part_and_not_its_content() {
+        let mut stage = stage();
+        insert_note(&mut stage, 0, Step::C);
+        let part = stage.part;
+
+        let applied = stage
+            .score
+            .apply(ScoreCommand::RemovePart { part })
+            .expect("a RemovePart of a part the score holds is accepted");
+        assert!(
+            !applied.inverse.is_empty(),
+            "an accepted RemovePart carries an inverse"
+        );
+        undo_all(&mut stage.score, applied.inverse, "a RemovePart");
+
+        assert_eq!(
+            stage.score.parts().len(),
+            1,
+            "the inverse of a RemovePart rebuilds one part"
+        );
+        assert!(
+            !stage.score.parts().contains_key(&part),
+            "the rebuilt part takes a NEW identifier, which escalation:T2-9 records as the open gap"
+        );
+        let rebuilt = stage
+            .score
+            .parts()
+            .values()
+            .next()
+            .expect("the score holds the rebuilt part");
+        assert_eq!(
+            rebuilt.voice_type(),
+            VoiceType::Soprano,
+            "the rebuilt part carries the voice type of the part that stood"
+        );
+        assert!(
+            rebuilt.staves().is_empty(),
+            "the inverse of a RemovePart restores no staff"
+        );
+        assert!(
+            stage.score.staves().is_empty() && stage.score.voices().is_empty(),
+            "the inverse of a RemovePart restores no staff record and no voice"
+        );
+        assert!(
+            stage.score.notes().is_empty(),
+            "the inverse of a RemovePart restores no note"
+        );
+    }
+
+    #[test]
+    fn the_inverse_of_a_staff_removal_rebuilds_the_staff_and_not_its_content() {
+        let mut stage = stage();
+        insert_note(&mut stage, 0, Step::C);
+        let staff = stage.staff;
+        let part = stage.part;
+
+        let applied = stage
+            .score
+            .apply(ScoreCommand::RemoveStaff { staff })
+            .expect("a RemoveStaff of a staff the score holds is accepted");
+        undo_all(&mut stage.score, applied.inverse, "a RemoveStaff");
+
+        assert_eq!(
+            stage.score.staves().len(),
+            1,
+            "the inverse of a RemoveStaff rebuilds one staff"
+        );
+        assert!(
+            !stage.score.staves().contains_key(&staff),
+            "the rebuilt staff takes a NEW identifier, which escalation:T2-9 records as the open gap"
+        );
+        let rebuilt = stage
+            .score
+            .staves()
+            .values()
+            .next()
+            .expect("the score holds the rebuilt staff");
+        assert_eq!(
+            rebuilt.clef(),
+            Clef::Treble,
+            "the rebuilt staff opens with the clef that the staff that stood opened with"
+        );
+        assert_eq!(
+            rebuilt.voices().len(),
+            1,
+            "the rebuilt staff opens with one voice, because InsertNote names one"
+        );
+        assert_eq!(
+            stage
+                .score
+                .parts()
+                .get(&part)
+                .expect("the part stands through a staff removal")
+                .staves()
+                .len(),
+            1,
+            "the part holds the rebuilt staff"
+        );
+        assert!(
+            stage.score.notes().is_empty(),
+            "the inverse of a RemoveStaff restores no note"
+        );
+    }
+
+    #[test]
+    fn the_inverse_of_a_measure_removal_rebuilds_the_measure_and_not_its_identifier() {
+        let mut score = Score::new();
+        let first = first_measure(&score);
+        score
+            .apply(ScoreCommand::InsertMeasures {
+                after: first,
+                count: TWO_MEASURES,
+            })
+            .expect("an InsertMeasures is accepted");
+        let removed = second_measure_of(&score);
+        let before = score.clone();
+
+        let applied = score
+            .apply(ScoreCommand::RemoveMeasures {
+                from: removed,
+                count: ONE_MEASURE,
+            })
+            .expect("a RemoveMeasures of one empty measure is accepted");
+        assert_eq!(
+            score.measures().len(),
+            2,
+            "the removal takes one measure of the three"
+        );
+        undo_all(&mut score, applied.inverse, "a RemoveMeasures");
+
+        assert_eq!(
+            score.measures().len(),
+            before.measures().len(),
+            "the inverse of a RemoveMeasures rebuilds one measure for each measure removed"
+        );
+        assert!(
+            !score.measures().contains_key(&removed),
+            "the rebuilt measure takes a NEW identifier, which escalation:T2-9 records as the open gap"
+        );
+        let starts: Vec<i64> = starts_of(&score);
+        assert_eq!(
+            starts,
+            starts_of(&before),
+            "every measure of the rebuilt grid stands where it stood"
+        );
+        assert_eq!(
+            score.tempo_map(),
+            before.tempo_map(),
+            "the meter list comes back with the measure grid"
+        );
+    }
+
+    #[test]
+    fn an_added_part_takes_an_ordinal_that_no_part_of_its_voice_type_holds() {
+        let mut score = Score::new();
+        let first = part_of(
+            &score
+                .apply(add_part("Soprano 1"))
+                .expect("AddPart is accepted"),
+        );
+        score
+            .apply(add_part("Soprano 2"))
+            .expect("AddPart is accepted");
+        score
+            .apply(ScoreCommand::RemovePart { part: first })
+            .expect("a RemovePart is accepted");
+        score
+            .apply(add_part("Soprano 3"))
+            .expect("AddPart is accepted");
+
+        let mut ordinals: Vec<u16> = score
+            .parts()
+            .values()
+            .map(|part| part.ordinal().get())
+            .collect();
+        ordinals.sort_unstable();
+        assert_eq!(
+            ordinals,
+            vec![2, 3],
+            "the ordinal is one above the greatest that the voice type carries, so a removal from the middle of the run leaves no two parts under one label"
+        );
     }
 
     #[test]

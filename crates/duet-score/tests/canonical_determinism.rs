@@ -208,6 +208,16 @@ mod tests {
         core::str::from_utf8(block).expect("a canonical block is UTF-8")
     }
 
+    /// The identifier counter that one meta block states.
+    fn counter_of(meta: &[u8]) -> u64 {
+        let document: Value =
+            serde_json::from_str(text(meta)).expect("meta.json is one JSON object");
+        document
+            .get("next_id")
+            .and_then(Value::as_u64)
+            .expect("meta.json carries the identifier counter")
+    }
+
     /// The `id` field of every record of one JSON Lines block, in file order.
     fn identifiers_in_file_order(block: &[u8]) -> Vec<u64> {
         text(block)
@@ -248,9 +258,19 @@ mod tests {
         let shuffled = score_in_order([3, 0, 2, 1], [2, 0, 3, 1]);
         assert_eq!(
             shuffled, ascending,
-            "the two insert orders build one content, so a byte difference can come only from the writer"
+            "the two insert orders build one content"
+        );
+        assert_eq!(
+            shuffled.revision(),
+            ascending.revision(),
+            "the two fixtures run one command sequence, so they stand at one revision"
         );
         let third = write(&shuffled).expect("the score of the second insert order writes");
+        assert_eq!(
+            counter_of(third.meta()),
+            counter_of(first.meta()),
+            "meta.json carries the identifier counter and the revision, and content equality reads neither, so the premise of this test needs both pinned: the two fixtures mint one set of identifiers"
+        );
         assert_eq!(
             third.meta(),
             first.meta(),
