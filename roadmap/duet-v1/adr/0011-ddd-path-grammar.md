@@ -1,4 +1,4 @@
-# ADR-0011: The DDD path grammar, eight bounded contexts, and front matter
+# ADR-0011: The DDD path grammar, nine bounded contexts, and front matter
 
 ## Status
 
@@ -32,10 +32,13 @@ an application service; none of them is a context.
 3. **A unit file that is not Rust sits beside `lang_rust/`.** The grammar refuses a file at the
    `lang_rust/` root that no shell declares (`file_outside_shell`), so the Bravura font, the macOS
    `Info.plist`, a per-crate `CLAUDE.md`, and a future `build.rs` sit in the unit directory. Cargo
-   reaches a build script there with `build = "../build.rs"`.
-4. **Eight product contexts, acyclic** (architecture section 1.2, "The bounded context map"):
-   `time`, `document`, `notation`, `audio`, `midi`, `project`, `gateway`, `app`, plus the tool contexts
-   `plan_store` and `repo_guard`. Crate names, `use` paths, and every `cargo -p` command do not change.
+   reaches a build script there with `build = "../build.rs"`, and the CG1 walk does not; architecture
+   section 2.3 names that escape and the party that closes it.
+4. **Nine product contexts, acyclic** (architecture section 1.2, "The bounded context map"):
+   `time`, `document`, `vocabulary`, `notation`, `audio`, `midi`, `project`, `gateway`, `app`, plus the
+   tool contexts `plan_store` and `repo_guard`. `bc_vocabulary` holds `duet-command` alone: it is the
+   published language, and it carries the wire forms of four other contexts (`MidiRecord`,
+   `TransportCommand`, `LoudnessReport`, `FailureCode`), so no domain context names it. Crate names, `use` paths, and every `cargo -p` command do not change.
 5. **`.ddd/grammar.toml`** declares the Rust shell: `src` is the source root, `benches` is an extra
    source root, and `tests` and `proptest-regressions` are the test root with the kind `integration`.
 6. **Front matter and its gate arrive together, in chunk M94.** The guard ports the grammar subset
@@ -54,7 +57,10 @@ an application service; none of them is a context.
   `duet-agent`.** The Engineering Critic and the Software Architect both showed four two-way context
   edges: nine crates depend on `duet-command`, and `duet-core` depends on almost every crate. A context
   pair with edges both ways has no upstream, and the `bc_` segment is the most costly segment to change.
-  `duet-command` moved to `bc_document` with the two aggregates whose commands it wraps.
+  `duet-command` moved out.
+- **`duet-command` in `bc_document`, with the two aggregates whose commands it wraps.** The graph is
+  acyclic, but the context would then hold the wire vocabulary of MIDI, audio, and the gateway under
+  the name "document". The crate did not exist yet, so the correct name cost only plan text.
 - **Front matter on every file in the move itself.** With no checker, hand-written blocks are unchecked
   declarations: a wrong layer value is invisible, and the first run of the guard would be noise.
 - **The move as a plan chunk.** It rewrites the write scope of every chunk, so it shares a write-scope

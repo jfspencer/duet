@@ -1,7 +1,7 @@
 ---
 id: E1
 line: E
-depends_on: [M2, D1]
+depends_on: [M2, D1, M94]
 write_scope:
   - crates/bc_audio/duet-analysis/lang_rust/Cargo.toml
   - crates/bc_audio/duet-analysis/lang_rust/src/lib.rs

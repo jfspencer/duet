@@ -5,8 +5,8 @@ depends_on: [M2, T3, A1, D2, E1]
 write_scope:
   - Cargo.toml
   - Cargo.lock
-  - crates/bc_document/duet-command/lang_rust/Cargo.toml
-  - crates/bc_document/duet-command/lang_rust/src/lib.rs
+  - crates/bc_vocabulary/duet-command/lang_rust/Cargo.toml
+  - crates/bc_vocabulary/duet-command/lang_rust/src/lib.rs
   - crates/bc_audio/duet-media/lang_rust/Cargo.toml
   - crates/bc_audio/duet-media/lang_rust/src/lib.rs
 parallelism: serial-only: SM1 runs the manifest chunk alone before every line chunk of its phase.
@@ -43,8 +43,8 @@ Orchestrator.
 |---|---|
 | `Cargo.toml` | modify (`[workspace.dependencies]` only) |
 | `Cargo.lock` | modify |
-| `crates/bc_document/duet-command/lang_rust/Cargo.toml` | create |
-| `crates/bc_document/duet-command/lang_rust/src/lib.rs` | create |
+| `crates/bc_vocabulary/duet-command/lang_rust/Cargo.toml` | create |
+| `crates/bc_vocabulary/duet-command/lang_rust/src/lib.rs` | create |
 | `crates/bc_audio/duet-media/lang_rust/Cargo.toml` | create |
 | `crates/bc_audio/duet-media/lang_rust/src/lib.rs` | create |
 
@@ -67,7 +67,7 @@ its verification step.
 ### The two internal path entries (SM1 rule 4)
 
 ```toml
-duet-command = { path = "crates/bc_document/duet-command/lang_rust" }
+duet-command = { path = "crates/bc_vocabulary/duet-command/lang_rust" }
 duet-media = { path = "crates/bc_audio/duet-media/lang_rust" }
 ```
 
@@ -144,7 +144,7 @@ rule.
 
 1. Confirm that M2, T3, A1, D2, and E1 landed: `crates/bc_document/duet-session/lang_rust`, `crates/bc_notation/duet-engrave/lang_rust`, and
    `crates/bc_audio/duet-analysis/lang_rust` each hold source beyond the skeleton, and
-   `cargo nextest run -p duet-session --no-tests=fail` passes. Confirm that `crates/bc_document/duet-command/lang_rust`
+   `cargo nextest run -p duet-session --no-tests=fail` passes. Confirm that `crates/bc_vocabulary/duet-command/lang_rust`
    and `crates/bc_audio/duet-media/lang_rust` do not exist. Report a discrepancy and stop if any one is false.
 2. Add the `arrayvec` pin and the `hound` pin to `[workspace.dependencies]` of the root
    `Cargo.toml`, in alphabetical order with the entries the table already holds. Add the two

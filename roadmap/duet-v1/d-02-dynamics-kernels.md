@@ -1,7 +1,7 @@
 ---
 id: D2
 line: D
-depends_on: [M2, D1]
+depends_on: [M2, D1, M94]
 write_scope:
   - crates/bc_audio/duet-dsp/lang_rust/src/dynamics/compressor.rs
   - crates/bc_audio/duet-dsp/lang_rust/src/dynamics/gate.rs

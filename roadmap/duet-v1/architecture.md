@@ -142,7 +142,7 @@ premise-review finding.
    document, because a hub crate defeats the bounded contexts and serializes the build
    (critic 8.2).
 
-6. **Group the crates into eight bounded contexts, and put the context in the path** (ADR 0011).
+6. **Group the crates into nine bounded contexts, and put the context in the path** (ADR 0011).
    The repository adopts the ultravisor DDD path grammar: a crate lives at
    `crates/bc_<context>/<crate>/lang_rust/`. The crate names, the `use` paths, and every `-p`
    command stay the same. Section 1.2 gives the context map, and the map is acyclic over the
@@ -284,7 +284,8 @@ the `lang_rust/` root that no shell declares.
 | Context | Crates | Subdomain | Role toward the other contexts |
 |---|---|---|---|
 | `bc_time` | `duet-time` | generic | Shared kernel. Every context reads it, and it reads none. |
-| `bc_document` | `duet-score`, `duet-session`, `duet-command` | core | The two document aggregates and the published language (`Verb`, `DomainEvent`, `BundleDocument`) that every downstream context conforms to. |
+| `bc_document` | `duet-score`, `duet-session` | core | The two document aggregates: the score and the session. |
+| `bc_vocabulary` | `duet-command` | core | The published language: `Verb`, `DomainEvent`, `BundleDocument`, and every value that crosses the transport, including the wire forms that `bc_midi`, `bc_audio`, and `bc_gateway` exchange. Every downstream context conforms to it. |
 | `bc_notation` | `duet-engrave`, `duet-interchange` | core | Engraving of the score, and the anticorruption layer to MusicXML and SMF. |
 | `bc_audio` | `duet-dsp`, `duet-media`, `duet-analysis`, `duet-engine`, `duet-export` | core | Signal blocks, source files, measurement, the real-time engine, and the offline render. |
 | `bc_midi` | `duet-midi` | supporting | Device presence and streams. Conformist to the document language. |
@@ -293,8 +294,8 @@ the `lang_rust/` root that no shell declares.
 | `bc_app` | `duet` | supporting | Presentation only. |
 
 **The context graph is acyclic, and the order is its proof.** Collapse every edge of section 1.3
-onto the contexts above and the order `time`, `document`, `notation` and `audio`, `midi`,
-`project`, `gateway`, `app` holds with every edge pointing to an earlier context. `bc_project`
+onto the contexts above and the order `time`, `document`, `vocabulary`, `notation` and `audio`,
+`midi`, `project`, `gateway`, `app` holds with every edge pointing to an earlier context. `bc_project`
 reads `bc_audio` through `duet-media`; no other pair of the same rank has an edge. A crate that
 joins a context keeps this order, and a new context is an ADR.
 
@@ -310,7 +311,7 @@ PG40 reads this block. Every crate of the crate table appears once.
 duet-time        time
 duet-score       document
 duet-session     document
-duet-command     document
+duet-command     vocabulary
 duet-engrave     notation
 duet-interchange notation
 duet-dsp         audio
@@ -1824,6 +1825,11 @@ therefore made the generated file differ from its generator, and the next commit
 `roadmap/` went red on the `plan` step of `scripts/dod.sh`, which chunk M90 added. **One generator
 writes `plan-graph.md`**, and rule 2 of SM9 in section 13.0 names it.
 
+**The five prototypes under `roadmap/duet-v1/tools/` are frozen at the path form that ADR 0011
+replaced, and no gate runs them.** `placement_check.py` still reads `crates/<name>/` for PG40 and
+knows no `context-map` block, so it now stops on DR7 against this document. PG29 reads only their
+rule ids, which did not change. The `cargo xtask` guards are the only implementation of every rule.
+
 #### The guard family speaks two words, and each one names an exit code
 
 **`FAIL:` marks exit 2 and nothing else.** Exit 2 is the fail-closed state: the guard could not
@@ -3266,6 +3272,11 @@ module above the crate root is not scanned, because the walk starts at the membe
 whose one target sits outside `src/` leaves the whole of `src/` outside the walk. **CG1b answers the
 second by a DERIVED file set**; the first is a review item, and `cargo machete` and the compiler both
 see the module.
+**A third shape follows from ADR 0011: a build script in the unit directory.** A `build.rs` must
+sit beside `lang_rust/`, because the grammar refuses it at the `lang_rust/` root, so the manifest
+names it with `build = "../build.rs"`. The walk starts at `lang_rust/` and does not reach it. No
+chunk of this plan writes a build script; the chunk that first needs one adds the `build` target
+path from `cargo metadata` to the CG1 walk in the same change.
 
 #### CG1b is a derived coverage rule and it holds no constant
 
@@ -11777,7 +11788,7 @@ Each trunk chunk owns one crate, so the trunk is four lines of one chunk each.
 | T1 | 0 | The time kernel, `convert`, `Finite` with its `try_from`, `Unit`, the five kernel counts, `SchemaVersion`, `Ratio`, `NoteValue`, `Tuplet`, the tempo map, the tuplet rule, and the nightly proptest target | `crates/bc_time/duet-time/lang_rust/Cargo.toml`, `src/lib.rs`, `src/{units,convert,position,span,finite,bbt,tempo,tuplet,error}.rs`, `tests/kernel.rs`, `tests/proptest_large.rs`, `Cargo.lock` | `cargo nextest run -p duet-time --no-tests=fail` |
 | T2 | 1 | The score aggregate, `ScoreCommand`, `apply`, the canonical reader and writer, and the determinism test that rung two command 4 selects | `crates/bc_document/duet-score/lang_rust/Cargo.toml`, `src/lib.rs`, `src/{model,ids,command,event,apply,canonical,error}.rs`, `crates/bc_document/duet-score/lang_rust/tests/canonical_determinism.rs`, `Cargo.lock` | `cargo nextest run -p duet-score --no-tests=fail` |
 | T3 | 2 | Tracks with `name`, `input`, `monitor`, `armed`; takes with `TakeFlag::MidiPortLost` and `TakeSetMuted`, regions with `RegionSetStart`, locations, strips with the B86 refusal, `DeviceKey`, `ParamIdRange`, `ParamRange`, `param_range`, `SlotKind` with its eight arms, `MasterStage` with `ORDER` and `slot_kind`, curves, `SessionCommand` | `crates/bc_document/duet-session/lang_rust/Cargo.toml`, `src/lib.rs`, `src/{session,track,take,region,location,mix,curve,slot,calibration,command,event,error}.rs`, `tests/`, `Cargo.lock` | `cargo nextest run -p duet-session --no-tests=fail` |
-| T4 | 3 | `Verb`, `VerbOutcome`, `EditCommand`, `Mode`, `ModeView`, `ViewState`, `ViewDocument`, `PortSlot`, `MidiPortId`, `MidiPortInfo`, `MidiMessage`, `MidiNote`, `Velocity`, `MidiRecord`, `NoteEntry` with their `size_of` test, `DitherKind`, `FaultCode`, snapshots, `BundleDocument`, the plain-data assertion | `crates/bc_document/duet-command/lang_rust/Cargo.toml`, `src/lib.rs`, `src/{verb,outcome,request,event,snapshot,view,document,fault,midi,recent,export,error}.rs`, `tests/`, `Cargo.lock` | `cargo nextest run -p duet-command --no-tests=fail` |
+| T4 | 3 | `Verb`, `VerbOutcome`, `EditCommand`, `Mode`, `ModeView`, `ViewState`, `ViewDocument`, `PortSlot`, `MidiPortId`, `MidiPortInfo`, `MidiMessage`, `MidiNote`, `Velocity`, `MidiRecord`, `NoteEntry` with their `size_of` test, `DitherKind`, `FaultCode`, snapshots, `BundleDocument`, the plain-data assertion | `crates/bc_vocabulary/duet-command/lang_rust/Cargo.toml`, `src/lib.rs`, `src/{verb,outcome,request,event,snapshot,view,document,fault,midi,recent,export,error}.rs`, `tests/`, `Cargo.lock` | `cargo nextest run -p duet-command --no-tests=fail` |
 
 ### 13.2 The lines of work
 
@@ -12292,9 +12303,11 @@ yet is written in the FUTURE tense and names the chunk that builds it** (critic 
 - `cargo nextest run --workspace --locked` and `cargo test --doc` are green.
 - Every tracked path classifies without a `Malformed` result under `.ddd/grammar.toml`, every member
   manifest sits at `(crates|tools)/bc_<context>/<package>/lang_rust/Cargo.toml` with the context the
-  bounded context map names, and every graded `.rs` file carries a valid front-matter block.
+  bounded context map names, and every front-matter block in the tree is valid.
   **Chunk M94 will add `cargo xtask check-ddd` to `scripts/dod.sh`**; until it lands, the `members`
-  globs and PG40 are the only mechanical cover (ADR 0011).
+  globs and PG40 are the only mechanical cover (ADR 0011). **Front matter is required on every
+  `.rs` file that a commit writes after M94, and not on the whole tree**: the run prints
+  `WITHOUT BLOCK` for the files that no commit has written since, and that counter is a report.
 - `typos` is clean. **It cannot fail the gate today**: `scripts/dod.sh` runs
   `typos --exclude 'crates/bc_app/duet/assets/fonts/*' || printf ...`, so a finding prints and the script
   continues. **Chunk M90 removes the fallback and the flag, and writes the configuration that makes

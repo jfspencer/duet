@@ -1,7 +1,7 @@
 ---
 id: A1
 line: A
-depends_on: [M2, T2]
+depends_on: [M2, T2, M94]
 write_scope:
   - crates/bc_notation/duet-engrave/lang_rust/Cargo.toml
   - crates/bc_notation/duet-engrave/lang_rust/src/lib.rs

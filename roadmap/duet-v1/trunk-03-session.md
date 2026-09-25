@@ -1,7 +1,7 @@
 ---
 id: T3
 line: trunk
-depends_on: [M2, T2]
+depends_on: [M2, T2, M94]
 write_scope:
   - crates/bc_document/duet-session/lang_rust/Cargo.toml
   - crates/bc_document/duet-session/lang_rust/src/lib.rs

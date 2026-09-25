@@ -172,7 +172,7 @@ the code that uses them (SM1).
 
 ## Steps
 
-1. Confirm that M3, T4, A2, D3, E2, and N1 landed: `crates/bc_document/duet-command/lang_rust` and `crates/bc_audio/duet-media/lang_rust`
+1. Confirm that M3, T4, A2, D3, E2, and N1 landed: `crates/bc_vocabulary/duet-command/lang_rust` and `crates/bc_audio/duet-media/lang_rust`
    each hold source beyond the skeleton, and `cargo nextest run -p duet-command --no-tests=fail`
    passes. Confirm that the four new crate directories do not exist. Confirm that
    `.github/workflows/ci.yml` names `ubuntu-26.04` and installs `libpipewire-0.3-dev`, which chunk

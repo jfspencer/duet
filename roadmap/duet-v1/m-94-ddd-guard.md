@@ -1,7 +1,7 @@
 ---
 id: M94
 line: M
-depends_on: [M90, M92, T2, D1]
+depends_on: [M90, M92, T2, D1, M2, M93]
 write_scope:
   - tools/bc_repo_guard/xtask/lang_rust/src/main.rs
   - tools/bc_repo_guard/xtask/lang_rust/src/check_ddd.rs
@@ -66,6 +66,9 @@ write_scope:
   - tools/bc_repo_guard/xtask/lang_rust/src/check_roster.rs
   - tools/bc_repo_guard/xtask/lang_rust/src/sync_agents.rs
   - tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs
+  - crates/bc_document/duet-session/lang_rust/src/lib.rs
+  - crates/bc_notation/duet-engrave/lang_rust/src/lib.rs
+  - crates/bc_audio/duet-analysis/lang_rust/src/lib.rs
 parallelism: serial-only: SM4 makes `scripts/dod.sh` and `CLAUDE.md` policy files, so the Orchestrator executes this chunk, and it must land before the phase-2 line chunks so that each of them writes front matter under the gate.
 completion: "cargo xtask check-ddd exits 0 on the repository and prints non-zero PATHS, MEMBERS and BLOCKS counters; cargo nextest run -p xtask --test ddd --no-tests=fail passes; scripts/dod.sh runs the ddd step; cargo xtask check-plan-graph roadmap/duet-v1 --check-manifest exits 0; commit SHA on a branch chunk/m94-ddd-guard"
 ---
@@ -143,8 +146,12 @@ names its upstream set in its `///` doc.
    `(crates|tools)/bc_<context>/<package>/lang_rust/`. Report a discrepancy and stop.
 
 2. **Write `scripts/ddd-fixtures.sh` and generate `paths.tsv`.** The script takes the path of an
-   ultravisor checkout, records `git -C <checkout> rev-parse HEAD` in the fixture header, and runs
-   the upstream `classify` from `packages/ddd-migrate` with Bun over two input sets:
+   ultravisor checkout and the pinned commit, which it reads from the header of the committed
+   fixture. It checks the pin out into a temporary worktree
+   (`git -C <checkout> worktree add --detach <tmp> <pin>`), refuses when the pin is absent, writes the
+   pin in the fixture header, and runs the upstream `classify` from `packages/ddd-migrate` of that
+   worktree with Bun over two input sets. The pin moves only in a change that edits the header and
+   regenerates both fixtures together:
    - every `git ls-files` path of this repository;
    - an adversarial set, committed as an input file, with at least one path for each
      `MalformedReason` the Rust shell can produce (`unknown_structural_kind`, `superseded_kind`,
@@ -176,19 +183,24 @@ names its upstream set in its `///` doc.
    upstream does not have: a `.rs` block never carries `subdomain`**, because the context map
    declares it once per context and a per-file copy has no parity check.
 
-6. **Write `.ddd/context-map.toml`** with the eight product contexts of architecture section 1.2 and
+6. **Write `.ddd/context-map.toml`** with the nine product contexts of architecture section 1.2 and
    the two tool contexts (`plan_store` holds `plan-db`, `repo_guard` holds `xtask`, both `generic`).
    Each `[[relationship]]` names `downstream`, `upstream`, and one upstream `RelationshipPattern`
    literal. `check-ddd` then checks:
    - every crate of every context is a workspace member, and every member is in exactly one context;
    - every member manifest sits at `(crates|tools)/bc_<context>/<package>/lang_rust/Cargo.toml`, the
      unit segment equals `package.name`, and the name holds no `_`;
+   - **the `bc_<context>` segment of every member path equals the context the file gives that
+     crate**, so a `git mv` of a crate into another context directory is a finding;
    - the context graph over the `cargo metadata` edges is acyclic, and every cross-context edge has
      a declared relationship (`relationship-undeclared`, a finding);
    - a declared relationship with no edge yet is `relationship-unrealised`, which the run REPORTS
      and does not fail, because a later chunk builds the edge;
    - with `--architecture <path>`, the `context-map` block of that document names the same crate to
-     context pairs as the file.
+     context pairs as the file, **over the crates under `crates/` alone**. The block holds the
+     crates of the section 1.2 crate table, which PG40 holds to that table, and the tool contexts
+     `plan_store` and `repo_guard` live in the file alone. A pair in one source and not the other is
+     a finding in each direction.
 
 7. **The command.** `cargo xtask check-ddd [--architecture <path>] [--require-front-matter <path>...]`
    classifies every `git ls-files` path, reads front matter from every `.rs` and `.toml` file that
@@ -201,18 +213,26 @@ names its upstream set in its `///` doc.
    denominator is fail-closed (exit 2). `--write <path> --l <layer> [--p <pattern>] [--tags <t>...]`
    writes one canonical block with the step 5 writer and changes nothing else in the file.
 
-8. **Add the `ddd` step to `scripts/dod.sh`**, after `manifests`. It passes every changed `.rs` path
-   of `CHANGED_PATHS` to `--require-front-matter`, and it passes
-   `--architecture roadmap/duet-v1/architecture.md` when the change touches `roadmap/`. **So after
+8. **Add the `ddd` step to `scripts/dod.sh`**, after `manifests`. It passes
+   `--architecture roadmap/duet-v1/architecture.md` on EVERY run, because a move of a crate or an
+   edit of `.ddd/context-map.toml` touches no file under `roadmap/`. It passes every changed `.rs`
+   path of `CHANGED_PATHS` that exists in the working tree to `--require-front-matter`; a deleted
+   path and the old side of a rename are skipped, because `--no-renames` lists both. **When
+   `DENOMINATOR_UNKNOWN` is 1, the step passes `--require-front-matter-all`**, which requires a block
+   on every tracked graded `.rs` file: the step cannot see which files changed, so it answers yes the
+   way `touches` does, and the remedy for a red run is a branch with an upstream or `origin/main`. **So after
    this chunk lands, every chunk that writes a `.rs` file writes its block in the same commit, and
    the gate refuses a commit that does not.**
 
 9. **Write the blocks** for every `.rs` path of the write scope with `cargo xtask check-ddd --write`.
+   The three `lib.rs` skeletons that chunk M2 created are in the write scope: rule 4 of
+   `check-plan-graph` allows that overlap, because T3, A1, and E1 depend on this chunk.
    Choose `l` from `domain`, `application`, `infrastructure`, `interface`, and `unlayered`, and `p`
    from the `TacticalPattern` set, by the design intent the file carries. Choose `unlayered` or
    `unassigned` when no term is honest (grammar README section 9); never invent a value to avoid an
    abstention. The four `duet-dsp` dynamics files that chunk D2 writes in this phase are outside the
-   write scope, and D2 writes their blocks.
+   write scope, and D2 writes their blocks, because D2 depends on this chunk and the gate requires a
+   block on every file D2 changes.
 
 10. Edit `CLAUDE.md`: the comment rule lists the `/* ---uv ... --- */` block as machine-read, and
     the "Path grammar" rule names `cargo xtask check-ddd` in its `Enforced by` line.
@@ -227,7 +247,9 @@ In `tests/ddd.rs` (the `test-author` skill), every assert with a message:
 - `front-matter.tsv` parity: every read outcome and every written byte string.
 - Each `MalformedReason` row of the adversarial set is red in the port, one test per reason.
 - The writer is idempotent: a second `--write` with the same value changes no byte.
-- Red probes over a scratch repository: a member at `crates/duet-x/lang_rust/`, a unit segment that
+- Red probes over a scratch repository: a crate moved to a `bc_` directory that the file does not
+  give it, a context-map pair in the file and not the architecture block, a pair in the block and
+  not the file, a deleted `.rs` path passed to `--require-front-matter` (skipped, green), a member at `crates/duet-x/lang_rust/`, a unit segment that
   differs from `package.name`, a package name with `_`, a context cycle, an undeclared cross-context
   edge, a `subdomain` key in a `.rs` block, a `--require-front-matter` path with no block, an empty
   repository (exit 2), and an `--architecture` document whose block disagrees with the file.

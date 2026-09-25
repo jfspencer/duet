@@ -3,21 +3,21 @@ id: T4
 line: trunk
 depends_on: [M3, T2, T3]
 write_scope:
-  - crates/bc_document/duet-command/lang_rust/Cargo.toml
-  - crates/bc_document/duet-command/lang_rust/src/lib.rs
-  - crates/bc_document/duet-command/lang_rust/src/verb.rs
-  - crates/bc_document/duet-command/lang_rust/src/outcome.rs
-  - crates/bc_document/duet-command/lang_rust/src/request.rs
-  - crates/bc_document/duet-command/lang_rust/src/event.rs
-  - crates/bc_document/duet-command/lang_rust/src/snapshot.rs
-  - crates/bc_document/duet-command/lang_rust/src/view.rs
-  - crates/bc_document/duet-command/lang_rust/src/document.rs
-  - crates/bc_document/duet-command/lang_rust/src/fault.rs
-  - crates/bc_document/duet-command/lang_rust/src/midi.rs
-  - crates/bc_document/duet-command/lang_rust/src/recent.rs
-  - crates/bc_document/duet-command/lang_rust/src/export.rs
-  - crates/bc_document/duet-command/lang_rust/src/error.rs
-  - crates/bc_document/duet-command/lang_rust/tests/vocabulary.rs
+  - crates/bc_vocabulary/duet-command/lang_rust/Cargo.toml
+  - crates/bc_vocabulary/duet-command/lang_rust/src/lib.rs
+  - crates/bc_vocabulary/duet-command/lang_rust/src/verb.rs
+  - crates/bc_vocabulary/duet-command/lang_rust/src/outcome.rs
+  - crates/bc_vocabulary/duet-command/lang_rust/src/request.rs
+  - crates/bc_vocabulary/duet-command/lang_rust/src/event.rs
+  - crates/bc_vocabulary/duet-command/lang_rust/src/snapshot.rs
+  - crates/bc_vocabulary/duet-command/lang_rust/src/view.rs
+  - crates/bc_vocabulary/duet-command/lang_rust/src/document.rs
+  - crates/bc_vocabulary/duet-command/lang_rust/src/fault.rs
+  - crates/bc_vocabulary/duet-command/lang_rust/src/midi.rs
+  - crates/bc_vocabulary/duet-command/lang_rust/src/recent.rs
+  - crates/bc_vocabulary/duet-command/lang_rust/src/export.rs
+  - crates/bc_vocabulary/duet-command/lang_rust/src/error.rs
+  - crates/bc_vocabulary/duet-command/lang_rust/tests/vocabulary.rs
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-command --no-tests=fail passes; cargo clippy -p duet-command --all-targets -- -D warnings is clean; commit SHA on a branch chunk/t4-command"
@@ -37,28 +37,28 @@ four impls, and the plain-data assertion. It implements architecture sections 1.
 states the goal, the write scope, and the Completion command.
 
 Section 13.4 puts `T2 and T3 before T4`, because `Verb` wraps `ScoreCommand` and `SessionCommand`.
-Chunk M3 creates the `crates/bc_document/duet-command/lang_rust` skeleton, so the crate root and the member manifest
+Chunk M3 creates the `crates/bc_vocabulary/duet-command/lang_rust` skeleton, so the crate root and the member manifest
 already exist. Dispatch: **Duet Engineer**.
 
 ## Files
 
 | Path | Action |
 |---|---|
-| `crates/bc_document/duet-command/lang_rust/Cargo.toml` | modify (add `[dependencies]`) |
-| `crates/bc_document/duet-command/lang_rust/src/lib.rs` | modify (add the `mod` lines, the `pub use` lines, and the plain-data assertion) |
-| `crates/bc_document/duet-command/lang_rust/src/verb.rs` | create |
-| `crates/bc_document/duet-command/lang_rust/src/outcome.rs` | create |
-| `crates/bc_document/duet-command/lang_rust/src/request.rs` | create |
-| `crates/bc_document/duet-command/lang_rust/src/event.rs` | create |
-| `crates/bc_document/duet-command/lang_rust/src/snapshot.rs` | create |
-| `crates/bc_document/duet-command/lang_rust/src/view.rs` | create |
-| `crates/bc_document/duet-command/lang_rust/src/document.rs` | create |
-| `crates/bc_document/duet-command/lang_rust/src/fault.rs` | create |
-| `crates/bc_document/duet-command/lang_rust/src/midi.rs` | create |
-| `crates/bc_document/duet-command/lang_rust/src/recent.rs` | create |
-| `crates/bc_document/duet-command/lang_rust/src/export.rs` | create |
-| `crates/bc_document/duet-command/lang_rust/src/error.rs` | create |
-| `crates/bc_document/duet-command/lang_rust/tests/vocabulary.rs` | create |
+| `crates/bc_vocabulary/duet-command/lang_rust/Cargo.toml` | modify (add `[dependencies]`) |
+| `crates/bc_vocabulary/duet-command/lang_rust/src/lib.rs` | modify (add the `mod` lines, the `pub use` lines, and the plain-data assertion) |
+| `crates/bc_vocabulary/duet-command/lang_rust/src/verb.rs` | create |
+| `crates/bc_vocabulary/duet-command/lang_rust/src/outcome.rs` | create |
+| `crates/bc_vocabulary/duet-command/lang_rust/src/request.rs` | create |
+| `crates/bc_vocabulary/duet-command/lang_rust/src/event.rs` | create |
+| `crates/bc_vocabulary/duet-command/lang_rust/src/snapshot.rs` | create |
+| `crates/bc_vocabulary/duet-command/lang_rust/src/view.rs` | create |
+| `crates/bc_vocabulary/duet-command/lang_rust/src/document.rs` | create |
+| `crates/bc_vocabulary/duet-command/lang_rust/src/fault.rs` | create |
+| `crates/bc_vocabulary/duet-command/lang_rust/src/midi.rs` | create |
+| `crates/bc_vocabulary/duet-command/lang_rust/src/recent.rs` | create |
+| `crates/bc_vocabulary/duet-command/lang_rust/src/export.rs` | create |
+| `crates/bc_vocabulary/duet-command/lang_rust/src/error.rs` | create |
+| `crates/bc_vocabulary/duet-command/lang_rust/tests/vocabulary.rs` | create |
 | `Cargo.lock` | modify (SM5 rule 2) |
 
 ## Types and signatures
@@ -823,11 +823,11 @@ const _: () = {
 
 ## Steps
 
-1. Read `crates/bc_document/duet-command/lang_rust/Cargo.toml` and `crates/bc_document/duet-command/lang_rust/src/lib.rs`. Confirm that M3
+1. Read `crates/bc_vocabulary/duet-command/lang_rust/Cargo.toml` and `crates/bc_vocabulary/duet-command/lang_rust/src/lib.rs`. Confirm that M3
    created both and that the manifest holds no `[dependencies]` section. Confirm that `duet-score`
    and `duet-session` export every type this chunk names. Report a discrepancy and stop if any one
    is false.
-2. Add the dependency entries to `crates/bc_document/duet-command/lang_rust/Cargo.toml`. The section 1.2 row for
+2. Add the dependency entries to `crates/bc_vocabulary/duet-command/lang_rust/Cargo.toml`. The section 1.2 row for
    `duet-command` names three third-party crates, and section 1.3 gives the three internal edges.
 
    ```toml
@@ -876,7 +876,7 @@ const _: () = {
     `src/outcome.rs` with `VerbOutcome` and `VerbData`. `cost` and `is_user_started` each name every
     arm, because `clippy::wildcard_enum_match_arm` is denied. Add both `mod` lines. Run the same
     command. Expected result: the run passes.
-13. Write the failing `BundleDocument` tests in `crates/bc_document/duet-command/lang_rust/tests/vocabulary.rs`. They
+13. Write the failing `BundleDocument` tests in `crates/bc_vocabulary/duet-command/lang_rust/tests/vocabulary.rs`. They
     assert that `Score`, `Session`, and `MixState` return `true` from `tracked`, that `ViewState`
     returns `false`, that each `paths` list has the same length as its `to_bytes` output, and that
     `from_bytes` of `to_bytes` returns an equal value. Run
