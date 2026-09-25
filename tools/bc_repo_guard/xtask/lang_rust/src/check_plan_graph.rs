@@ -20,6 +20,10 @@
 //! 8. Every file that opens a front-matter fence parses. A file that opens the
 //!    fence and that the parser then rejects leaves the rules and the manifest
 //!    with no trace, so it is a finding.
+//! 9. Every `write_scope` path that opens `crates/` or `tools/` parses as
+//!    `<crates|tools>/bc_<context>/<package>/<rest>`, where `<rest>` opens
+//!    `lang_rust/` or a unit sibling: `assets/`, `packaging/`, `CLAUDE.md`, or
+//!    `build.rs`.
 //!
 //! `plan-graph.md` is generated, so [`ManifestMode::Check`] holds the file
 //! against the text the front matter generates now. The rules run first: a run
@@ -34,6 +38,7 @@ use std::path::Path;
 use anyhow::Context as _;
 
 use crate::Outcome;
+use crate::check_placement::parse_unit_path;
 
 /// Every key a chunk file must carry in its front matter.
 const REQUIRED: [&str; 6] = [
@@ -128,6 +133,7 @@ pub(crate) fn run(plan_dir: &Path, mode: ManifestMode) -> anyhow::Result<Outcome
     let groups = group_by_phase(&chunks, &phases);
     check_phase_scopes(&chunks, &groups, &mut report);
     check_link_edges(&links, &chunks, &mut report);
+    check_scope_shapes(&chunks, &mut report);
     if mode == ManifestMode::Check && report.findings.is_empty() {
         let wanted = manifest_text(&chunks, &phases, &groups);
         if let Some(finding) = manifest_drift(plan_dir, &wanted)? {
@@ -895,6 +901,47 @@ fn check_rows(chunks: &ChunkSet, phases: &PhaseTable, report: &mut Report) {
     for id in &phases.order {
         if !chunks.contains(id) {
             report.finding(format!("{id} has a row in section 13.3 and no chunk file"));
+        }
+    }
+}
+
+/// Every root directory whose paths check 9 holds to the unit shape.
+const UNIT_ROOTS: [&str; 2] = ["crates", "tools"];
+
+/// Every directory of a unit that sits beside `lang_rust/`.
+const UNIT_SIBLING_DIRS: [&str; 2] = ["assets/", "packaging/"];
+
+/// Every file of a unit that sits beside `lang_rust/`.
+const UNIT_SIBLING_FILES: [&str; 2] = ["CLAUDE.md", "build.rs"];
+
+/// Whether one `write_scope` path is in the unit shape, or outside check 9.
+fn scope_shape_holds(path: &str) -> bool {
+    let Some(root) = UNIT_ROOTS.iter().find(|root| {
+        path.strip_prefix(**root)
+            .is_some_and(|tail| tail.starts_with('/'))
+    }) else {
+        return true;
+    };
+    parse_unit_path(path, root).is_some_and(|unit| {
+        unit.rest.starts_with("lang_rust/")
+            || UNIT_SIBLING_DIRS
+                .iter()
+                .any(|dir| unit.rest.starts_with(dir))
+            || UNIT_SIBLING_FILES.contains(&unit.rest.as_str())
+    })
+}
+
+/// Report every `write_scope` path outside the unit shape (check 9).
+fn check_scope_shapes(chunks: &ChunkSet, report: &mut Report) {
+    for chunk in chunks.iter() {
+        for path in &chunk.write_scope {
+            if !scope_shape_holds(path) {
+                report.finding(format!(
+                    "{} writes {path}, which is not `<crates|tools>/bc_<context>/<package>/` \
+followed by `lang_rust/` or a unit sibling",
+                    chunk.id
+                ));
+            }
         }
     }
 }
