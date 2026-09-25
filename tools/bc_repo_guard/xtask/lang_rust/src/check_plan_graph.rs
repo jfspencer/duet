@@ -38,7 +38,7 @@ use std::path::Path;
 use anyhow::Context as _;
 
 use crate::Outcome;
-use crate::check_placement::parse_unit_path;
+use crate::check_placement::{parse_unit_path, unit_rest_holds, without_dot_slash};
 
 /// Every key a chunk file must carry in its front matter.
 const REQUIRED: [&str; 6] = [
@@ -908,27 +908,16 @@ fn check_rows(chunks: &ChunkSet, phases: &PhaseTable, report: &mut Report) {
 /// Every root directory whose paths check 9 holds to the unit shape.
 const UNIT_ROOTS: [&str; 2] = ["crates", "tools"];
 
-/// Every directory of a unit that sits beside `lang_rust/`.
-const UNIT_SIBLING_DIRS: [&str; 2] = ["assets/", "packaging/"];
-
-/// Every file of a unit that sits beside `lang_rust/`.
-const UNIT_SIBLING_FILES: [&str; 2] = ["CLAUDE.md", "build.rs"];
-
 /// Whether one `write_scope` path is in the unit shape, or outside check 9.
-fn scope_shape_holds(path: &str) -> bool {
+fn scope_shape_holds(written: &str) -> bool {
+    let path = without_dot_slash(written);
     let Some(root) = UNIT_ROOTS.iter().find(|root| {
         path.strip_prefix(**root)
             .is_some_and(|tail| tail.starts_with('/'))
     }) else {
         return true;
     };
-    parse_unit_path(path, root).is_some_and(|unit| {
-        unit.rest.starts_with("lang_rust/")
-            || UNIT_SIBLING_DIRS
-                .iter()
-                .any(|dir| unit.rest.starts_with(dir))
-            || UNIT_SIBLING_FILES.contains(&unit.rest.as_str())
-    })
+    parse_unit_path(path, root).is_some_and(|unit| unit_rest_holds(&unit.rest))
 }
 
 /// Report every `write_scope` path outside the unit shape (check 9).

@@ -6936,14 +6936,36 @@ pub(crate) fn parse_unit_path(path: &str, root: &str) -> Option<UnitPath> {
     })
 }
 
-/// Every token of one chunk row that opens `crates/`.
+/// Every directory of a unit that sits beside `lang_rust/`.
+const UNIT_SIBLING_DIRS: [&str; 2] = ["assets/", "packaging/"];
+
+/// Every file of a unit that sits beside `lang_rust/`.
+const UNIT_SIBLING_FILES: [&str; 2] = ["CLAUDE.md", "build.rs"];
+
+/// Whether the path after a unit directory opens `lang_rust/` or a unit sibling.
 ///
-/// A token ends at whitespace or at a markdown or sentence delimiter, and a
-/// trailing `.` or `:` is not part of it.
+/// PG40 and the plan graph check 9 both read this one rule.
+pub(crate) fn unit_rest_holds(rest: &str) -> bool {
+    rest.starts_with("lang_rust/")
+        || UNIT_SIBLING_DIRS.iter().any(|dir| rest.starts_with(dir))
+        || UNIT_SIBLING_FILES.contains(&rest)
+}
+
+/// One path with every leading `./` removed.
+pub(crate) fn without_dot_slash(path: &str) -> &str {
+    path.trim_start_matches("./")
+}
+
+/// Every token of one chunk row that names `crates/`.
+///
+/// A token ends at whitespace or at a markdown or sentence delimiter. Emphasis
+/// marks, a trailing `.` or `:`, and a leading `./` are not part of it. A token
+/// that holds `crates/` at any offset is kept, so a path that does not open with
+/// it fails the shape instead of leaving the rule.
 fn crate_tokens(text: &str) -> Vec<String> {
     text.split(|one: char| one.is_whitespace() || "`'\"(),;|<>[]".contains(one))
-        .map(|token| token.trim_end_matches(['.', ':']))
-        .filter(|token| token.starts_with("crates/"))
+        .map(|token| without_dot_slash(token.trim_matches('*').trim_end_matches(['.', ':', '*'])))
+        .filter(|token| token.contains("crates/"))
         .map(str::to_owned)
         .collect()
 }
@@ -7040,6 +7062,12 @@ fn chunk_path_finding(
 (PG40)"
         ));
     };
+    if !unit.rest.is_empty() && !unit_rest_holds(&unit.rest) {
+        return Some(format!(
+            "the row names `{token}`, whose path after the crate directory is not \
+`lang_rust/` or a unit sibling (PG40)"
+        ));
+    }
     let Some(mapped) = contexts.get(&unit.package) else {
         return Some(format!(
             "the row names `{token}` and the `context-map` block carries no context for `{}` \
@@ -7155,7 +7183,9 @@ impl ChunkCrateAudit {
     fn scan_row(&mut self, text: &str, row: &RowOwner<'_>, contexts: &BTreeMap<String, String>) {
         let tokens: BTreeSet<String> = crate_tokens(text).into_iter().collect();
         for token in tokens {
-            if parse_unit_path(&token, "crates").is_some() {
+            if parse_unit_path(&token, "crates")
+                .is_some_and(|unit| unit.rest.is_empty() || unit_rest_holds(&unit.rest))
+            {
                 self.parsed_paths = self.parsed_paths.saturating_add(1);
             }
             if let Some(reason) = chunk_path_finding(&token, row, contexts) {

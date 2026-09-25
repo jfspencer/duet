@@ -78,19 +78,41 @@ mod tests {
             .lines()
             .find(|line| line.contains("grep -qE '^roadmap/|"))
             .expect("the CI workflow holds the plan changed-path filter");
-        let named: Vec<&str> = filter
+        let pattern = filter
             .split("grep -qE '")
             .nth(1)
             .and_then(|rest| rest.split('\'').next())
-            .expect("the filter holds one quoted pattern")
+            .expect("the filter holds one quoted pattern");
+        assert!(
+            filter_names_path(pattern, &crate_path),
+            "the CI filter `{pattern}` names no prefix of the guard crate path `{crate_path}`"
+        );
+    }
+
+    /// Whether one non-empty alternative of a changed-path pattern is a prefix of a path.
+    ///
+    /// An empty alternative matches every string, so it names no path.
+    fn filter_names_path(pattern: &str, path: &str) -> bool {
+        let with_slash = format!("{path}/");
+        pattern
             .split('|')
             .map(|alternative| alternative.trim_start_matches('^'))
-            .collect();
+            .filter(|prefix| !prefix.is_empty())
+            .any(|prefix| with_slash.starts_with(prefix))
+    }
+
+    #[test]
+    fn gate_filter_empty_alternative_names_no_path() {
         assert!(
-            named
-                .iter()
-                .any(|prefix| format!("{crate_path}/").starts_with(prefix)),
-            "the CI filter {named:?} names no prefix of the guard crate path `{crate_path}`"
+            !filter_names_path("^roadmap/|", "tools/bc_repo_guard/xtask/lang_rust"),
+            "an empty alternative is not a prefix of the guard crate path"
+        );
+        assert!(
+            filter_names_path(
+                "^roadmap/|^tools/bc_repo_guard/",
+                "tools/bc_repo_guard/xtask/lang_rust"
+            ),
+            "a non-empty alternative that is a prefix names the guard crate path"
         );
     }
 
@@ -1848,6 +1870,30 @@ followed by `lang_rust/` or a unit sibling"
         assert!(
             report.contains(&scope_shape_finding(path)),
             "the finding names the chunk and the path: {report}"
+        );
+    }
+
+    #[test]
+    fn plan_graph_check9_dot_slash_path_with_no_context_is_a_finding() {
+        let path = "./crates/duet-aa/src/x.rs";
+        let (code, report) = plan_graph_scope("pg9-dot", path);
+        assert_eq!(
+            code, 1,
+            "a `./` path with no context directory is a finding: {report}"
+        );
+        assert!(
+            report.contains(&scope_shape_finding(path)),
+            "the finding names the chunk and the path as written: {report}"
+        );
+    }
+
+    #[test]
+    fn plan_graph_check9_dot_slash_path_under_lang_rust_is_clean() {
+        let (code, report) =
+            plan_graph_scope("pg9-dot-rust", "./crates/bc_x/duet-aa/lang_rust/src/x.rs");
+        assert_eq!(
+            code, 0,
+            "a `./` path under `lang_rust/` is in the unit shape: {report}"
         );
     }
 
@@ -5076,6 +5122,66 @@ context `bc_synth` and the `context-map` block puts `duet` in `bc_app` (PG40)"
 a rule with no path to decide is a silent pass (PG40)"
             ),
             "the guard names the zero denominator: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg40_bold_path_in_the_old_shape_is_a_finding() {
+        let (code, report) = placement_pg40_row("pg40-bold", "**crates/duet-aa/Cargo.toml**");
+        assert_eq!(
+            code, 1,
+            "a bold path that skips the context directory is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "CHUNK CRATE:A1: the row names `crates/duet-aa/Cargo.toml`, a path outside the \
+`crates/bc_<context>/<crate>/` shape (PG40)"
+            ),
+            "the guard names the path without its emphasis marks: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg40_dot_slash_path_in_the_old_shape_is_a_finding() {
+        let (code, report) = placement_pg40_row("pg40-dot", "`./crates/duet-aa/Cargo.toml`");
+        assert_eq!(
+            code, 1,
+            "a `./` path that skips the context directory is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "CHUNK CRATE:A1: the row names `crates/duet-aa/Cargo.toml`, a path outside the \
+`crates/bc_<context>/<crate>/` shape (PG40)"
+            ),
+            "the guard names the path without its `./` prefix: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg40_source_outside_lang_rust_is_a_finding() {
+        let (code, report) = placement_pg40_row("pg40-rest", "`crates/bc_app/duet/src/lib.rs`");
+        assert_eq!(
+            code, 1,
+            "a source file beside `lang_rust/` is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "CHUNK CRATE:A1: the row names `crates/bc_app/duet/src/lib.rs`, whose path after \
+the crate directory is not `lang_rust/` or a unit sibling (PG40)"
+            ),
+            "the guard names the path whose rest breaks the unit shape: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg40_unit_siblings_and_a_bare_unit_are_clean() {
+        let (code, report) = placement_pg40_row(
+            "pg40-sibling",
+            "`crates/bc_app/duet/assets/y.otf` `crates/bc_app/duet/CLAUDE.md` `crates/bc_app/duet/`",
+        );
+        assert_eq!(
+            code, 0,
+            "a unit sibling and a bare unit directory are in the shape: {report}"
         );
     }
 
