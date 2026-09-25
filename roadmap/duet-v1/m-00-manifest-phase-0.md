@@ -14,22 +14,22 @@ write_scope:
   - scripts/dod.sh
   - scripts/bootstrap.sh
   - .github/workflows/ci.yml
-  - tools/xtask/Cargo.toml
-  - tools/xtask/src/main.rs
-  - tools/xtask/src/check_conversions.rs
-  - tools/xtask/src/check_placement.rs
-  - tools/xtask/src/check_roster.rs
-  - tools/xtask/src/check_closure.rs
-  - tools/xtask/src/check_manifests.rs
-  - tools/xtask/src/check_plan_graph.rs
-  - tools/xtask/tests/probes.rs
-  - crates/duet/Cargo.toml
-  - crates/duet/packaging/macos/Info.plist
-  - crates/duet/assets/fonts/Bravura.otf
-  - crates/duet/assets/fonts/bravura_metadata.json
-  - crates/duet/assets/fonts/LICENSE.txt
-  - crates/duet-time/Cargo.toml
-  - crates/duet-time/src/lib.rs
+  - tools/bc_repo_guard/xtask/lang_rust/Cargo.toml
+  - tools/bc_repo_guard/xtask/lang_rust/src/main.rs
+  - tools/bc_repo_guard/xtask/lang_rust/src/check_conversions.rs
+  - tools/bc_repo_guard/xtask/lang_rust/src/check_placement.rs
+  - tools/bc_repo_guard/xtask/lang_rust/src/check_roster.rs
+  - tools/bc_repo_guard/xtask/lang_rust/src/check_closure.rs
+  - tools/bc_repo_guard/xtask/lang_rust/src/check_manifests.rs
+  - tools/bc_repo_guard/xtask/lang_rust/src/check_plan_graph.rs
+  - tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs
+  - crates/bc_app/duet/lang_rust/Cargo.toml
+  - crates/bc_app/duet/packaging/macos/Info.plist
+  - crates/bc_app/duet/assets/fonts/Bravura.otf
+  - crates/bc_app/duet/assets/fonts/bravura_metadata.json
+  - crates/bc_app/duet/assets/fonts/LICENSE.txt
+  - crates/bc_time/duet-time/lang_rust/Cargo.toml
+  - crates/bc_time/duet-time/lang_rust/src/lib.rs
   - .claude/skills/gpui-kit/SKILL.md
   - .claude/skills/gpui-kit/references/gpui/
 parallelism: serial-only: SM1 runs the manifest chunk alone before every line chunk of its phase, and SM4 makes every policy file of this cell an Orchestrator adjudication.
@@ -78,28 +78,28 @@ defect that escalates, never a resolution.
 | `scripts/dod.sh` | modify |
 | `scripts/bootstrap.sh` | modify |
 | `.github/workflows/ci.yml` | modify (the whole file) |
-| `tools/xtask/Cargo.toml` | modify |
-| `tools/xtask/src/main.rs` | modify |
-| `tools/xtask/src/check_conversions.rs` | create |
-| `tools/xtask/src/check_placement.rs` | create |
-| `tools/xtask/src/check_roster.rs` | create |
-| `tools/xtask/src/check_closure.rs` | create |
-| `tools/xtask/src/check_manifests.rs` | create |
-| `tools/xtask/src/check_plan_graph.rs` | create |
-| `tools/xtask/tests/probes.rs` | create |
-| `crates/duet/Cargo.toml` | modify |
-| `crates/duet/packaging/macos/Info.plist` | modify |
-| `crates/duet/assets/fonts/Bravura.otf` | create |
-| `crates/duet/assets/fonts/bravura_metadata.json` | create |
-| `crates/duet/assets/fonts/LICENSE.txt` | create |
-| `crates/duet-time/Cargo.toml` | create |
-| `crates/duet-time/src/lib.rs` | create |
+| `tools/bc_repo_guard/xtask/lang_rust/Cargo.toml` | modify |
+| `tools/bc_repo_guard/xtask/lang_rust/src/main.rs` | modify |
+| `tools/bc_repo_guard/xtask/lang_rust/src/check_conversions.rs` | create |
+| `tools/bc_repo_guard/xtask/lang_rust/src/check_placement.rs` | create |
+| `tools/bc_repo_guard/xtask/lang_rust/src/check_roster.rs` | create |
+| `tools/bc_repo_guard/xtask/lang_rust/src/check_closure.rs` | create |
+| `tools/bc_repo_guard/xtask/lang_rust/src/check_manifests.rs` | create |
+| `tools/bc_repo_guard/xtask/lang_rust/src/check_plan_graph.rs` | create |
+| `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs` | create |
+| `crates/bc_app/duet/lang_rust/Cargo.toml` | modify |
+| `crates/bc_app/duet/packaging/macos/Info.plist` | modify |
+| `crates/bc_app/duet/assets/fonts/Bravura.otf` | create |
+| `crates/bc_app/duet/assets/fonts/bravura_metadata.json` | create |
+| `crates/bc_app/duet/assets/fonts/LICENSE.txt` | create |
+| `crates/bc_time/duet-time/lang_rust/Cargo.toml` | create |
+| `crates/bc_time/duet-time/lang_rust/src/lib.rs` | create |
 | `.claude/skills/gpui-kit/SKILL.md` | modify |
 | `.claude/skills/gpui-kit/references/gpui/` | create (step 25 restores the files this directory holds) |
 
 ## Types and signatures
 
-### The `tools/xtask` command surface (section 2.3, section 14)
+### The `tools/bc_repo_guard/xtask/lang_rust` command surface (section 2.3, section 14)
 
 Section 2.3 names `cargo xtask check-conversions`. Section 14 names
 `cargo xtask check-placement <document>`,
@@ -107,7 +107,7 @@ Section 2.3 names `cargo xtask check-conversions`. Section 14 names
 `cargo xtask check-closure <document> <review> <block>`. Section 13.1 names
 `cargo xtask check-manifests`. `roadmap/duet-v1/tools/plan_graph_check.py` carries the chunk-file
 rules of section 13, and it becomes `cargo xtask check-plan-graph <plan-dir> [--write-manifest]`.
-The `Command` enum of `tools/xtask/src/main.rs` gains six arms.
+The `Command` enum of `tools/bc_repo_guard/xtask/lang_rust/src/main.rs` gains six arms.
 
 ```rust
 /// Available tasks.
@@ -184,12 +184,12 @@ pub(crate) enum Outcome {
 pub(crate) fn run(root: &Path) -> anyhow::Result<Outcome>;
 ```
 
-`anyhow` stays confined to `tools/xtask`, which the root manifest already pins.
+`anyhow` stays confined to `tools/bc_repo_guard/xtask/lang_rust`, which the root manifest already pins.
 
 ### The internal path entry (SM1 rule 4)
 
 ```toml
-duet-time = { path = "crates/duet-time" }
+duet-time = { path = "crates/bc_time/duet-time/lang_rust" }
 ```
 
 A member crate reaches an internal crate with `duet-<crate> = { workspace = true }`, and that entry
@@ -238,31 +238,31 @@ in the same commit as the code that uses them.
 
    | File | What it carries | Where it lands |
    |---|---|---|
-   | `conversion_check.py` | CG1 to CG8, the twelve conversion rules (section 2.3) | `tools/xtask/src/check_conversions.rs` |
-   | `placement_check.py` | Every PG rule but PG25 (section 1.9) | `tools/xtask/src/check_placement.rs` |
-   | `roster_compile.sh` | PG25, the roster compile (section 1.9) | `tools/xtask/src/check_roster.rs` |
-   | `closure_check.py` | PG32, the closure rules CL1 to CL5 (section 1.9) | `tools/xtask/src/check_closure.rs` |
-   | `plan_graph_check.py` | The seven chunk-file rules of section 13 | `tools/xtask/src/check_plan_graph.rs` |
+   | `conversion_check.py` | CG1 to CG8, the twelve conversion rules (section 2.3) | `tools/bc_repo_guard/xtask/lang_rust/src/check_conversions.rs` |
+   | `placement_check.py` | Every PG rule but PG25 (section 1.9) | `tools/bc_repo_guard/xtask/lang_rust/src/check_placement.rs` |
+   | `roster_compile.sh` | PG25, the roster compile (section 1.9) | `tools/bc_repo_guard/xtask/lang_rust/src/check_roster.rs` |
+   | `closure_check.py` | PG32, the closure rules CL1 to CL5 (section 1.9) | `tools/bc_repo_guard/xtask/lang_rust/src/check_closure.rs` |
+   | `plan_graph_check.py` | The seven chunk-file rules of section 13 | `tools/bc_repo_guard/xtask/lang_rust/src/check_plan_graph.rs` |
    | `review_ids.py` | The generated finding-id list of one review, which `closure_check.py` reads | A private module inside `check_closure.rs` |
-   | `probe_fragments.py` | The one fragment oracle. It is a LIBRARY and never a check | A private test module inside `tools/xtask/tests/probes.rs` |
-   | `probe_run.py` | Every placement probe but PP25, and six PP27 and PP27b shapes per registered block | `tools/xtask/tests/probes.rs` |
-   | `probe_conversion.py` | CP1 to CP8, each in its own throwaway workspace | `tools/xtask/tests/probes.rs` |
-   | `probe_roster.sh` | PP25 in four shapes, the mixed-impl shape, and six planted gate defects | `tools/xtask/tests/probes.rs` |
-   | `probe_roster_text.py` | The recorded-text compare of the roster run | `tools/xtask/tests/probes.rs` |
-   | `probe_closure.py` | PP32 in fifteen shapes | `tools/xtask/tests/probes.rs` |
-   | `sync_floors.py` | The `rows>=` marker writer, which PG27b reads | `tools/xtask/src/check_placement.rs` |
+   | `probe_fragments.py` | The one fragment oracle. It is a LIBRARY and never a check | A private test module inside `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs` |
+   | `probe_run.py` | Every placement probe but PP25, and six PP27 and PP27b shapes per registered block | `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs` |
+   | `probe_conversion.py` | CP1 to CP8, each in its own throwaway workspace | `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs` |
+   | `probe_roster.sh` | PP25 in four shapes, the mixed-impl shape, and six planted gate defects | `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs` |
+   | `probe_roster_text.py` | The recorded-text compare of the roster run | `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs` |
+   | `probe_closure.py` | PP32 in fifteen shapes | `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs` |
+   | `sync_floors.py` | The `rows>=` marker writer, which PG27b reads | `tools/bc_repo_guard/xtask/lang_rust/src/check_placement.rs` |
    | `run_all_gates.py` | The ordered run of every guard and every harness | The `plan-lint` job of `ci.yml` |
 
    The reviews directory holds twenty-five files. **Nine of them carry a registered closure block**,
    and step 14 names each pair. Report a discrepancy and stop if a file above is absent, because a
    port needs a source and `check-closure` needs its review file.
-2. Confirm the rest of the current state. `crates/duet`, `tools/plan-db`, and `tools/xtask` exist.
+2. Confirm the rest of the current state. `crates/duet`, `tools/bc_plan_store/plan-db/lang_rust`, and `tools/bc_repo_guard/xtask/lang_rust` exist.
    `Cargo.toml` pins `serde`, `serde_json`, `thiserror`, `clap`, and `tracing` already, and pins no
    `smallvec`, no `proptest`, and no `md-5`. `deny.toml` allows MPL-2.0, CC0-1.0, Apache-2.0, and
-   Apache-2.0 WITH LLVM-exception already, and allows no `Unlicense`. `crates/duet-time` does not
+   Apache-2.0 WITH LLVM-exception already, and allows no `Unlicense`. `crates/bc_time/duet-time/lang_rust` does not
    exist. Report a discrepancy and stop if any one of these is false.
 3. Add the three missing pins and the one internal path entry
-   `duet-time = { path = "crates/duet-time" }` (SM1 rule 4) to `[workspace.dependencies]` of the
+   `duet-time = { path = "crates/bc_time/duet-time/lang_rust" }` (SM1 rule 4) to `[workspace.dependencies]` of the
    root `Cargo.toml`. Appendix B.3 gives each version and Appendix B.5 gives the `smallvec`
    feature.
 
@@ -274,33 +274,33 @@ in the same commit as the code that uses them.
 
    Confirm that `serde` keeps `features = ["derive"]` and that `clap` keeps the same (Appendix B.5,
    section 13.1 decision 4). Add no other entry, and edit no other table.
-4. Create `crates/duet-time/Cargo.toml` and `crates/duet-time/src/lib.rs` with the two blocks the
+4. Create `crates/bc_time/duet-time/lang_rust/Cargo.toml` and `crates/bc_time/duet-time/lang_rust/src/lib.rs` with the two blocks the
    section above gives. The `crates/*` member glob picks the crate up, so the `members` array needs
    no edit.
 5. Run `cargo build --workspace`. Expected result: the build succeeds and `Cargo.lock` gains the
    `duet-time` package entry. Commit `Cargo.lock` with the manifests (SM5 rule 3).
-6. Add the `md-5` entry to `tools/xtask/Cargo.toml`, in the same commit as the
-   `tools/xtask/src/check_closure.rs` code that uses it (SM1, critic C21-W5).
+6. Add the `md-5` entry to `tools/bc_repo_guard/xtask/lang_rust/Cargo.toml`, in the same commit as the
+   `tools/bc_repo_guard/xtask/lang_rust/src/check_closure.rs` code that uses it (SM1, critic C21-W5).
 
    ```toml
    md-5 = { workspace = true }
    ```
 
-7. Port `roadmap/duet-v1/tools/conversion_check.py` to `tools/xtask/src/check_conversions.rs`. It
+7. Port `roadmap/duet-v1/tools/conversion_check.py` to `tools/bc_repo_guard/xtask/lang_rust/src/check_conversions.rs`. It
    holds the twelve rules CG1, CG1b, CG2, CG2b, CG3, CG3b, CG4, CG4b, CG5, CG6, CG7, and CG8. It
    takes no path argument, derives its member set from the `members` globs of the root manifest,
    derives its file set from each covered member's own `src/` directory, and prunes only the
    workspace root plus `target` and each member root plus `target` (section 2.3).
-8. Port `roadmap/duet-v1/tools/placement_check.py` to `tools/xtask/src/check_placement.rs`, and
-   `roadmap/duet-v1/tools/closure_check.py` to `tools/xtask/src/check_closure.rs`, and
-   `roadmap/duet-v1/tools/roster_compile.sh` to `tools/xtask/src/check_roster.rs`. The port gives
+8. Port `roadmap/duet-v1/tools/placement_check.py` to `tools/bc_repo_guard/xtask/lang_rust/src/check_placement.rs`, and
+   `roadmap/duet-v1/tools/closure_check.py` to `tools/bc_repo_guard/xtask/lang_rust/src/check_closure.rs`, and
+   `roadmap/duet-v1/tools/roster_compile.sh` to `tools/bc_repo_guard/xtask/lang_rust/src/check_roster.rs`. The port gives
    the placement rules and the roster rules **one Rust module and one block register**, which
    removes the duplicate `DATA_BLOCKS` table that section 1.9 records as a known defect. Port
    `roadmap/duet-v1/tools/review_ids.py` as a private module inside `check_closure.rs`: it generates
    the finding-id list from the review file, and the closure rules read that list rather than a
    typed one. Port `roadmap/duet-v1/tools/sync_floors.py` as a private module inside
    `check_placement.rs`, which is the one register of the `rows>=` markers.
-9. Port `roadmap/duet-v1/tools/plan_graph_check.py` to `tools/xtask/src/check_plan_graph.rs`. It
+9. Port `roadmap/duet-v1/tools/plan_graph_check.py` to `tools/bc_repo_guard/xtask/lang_rust/src/check_plan_graph.rs`. It
    reads every `*.md` file of the plan directory whose front-matter carries `id`, `line`,
    `depends_on`, `write_scope`, `parallelism`, and `completion`, and it holds seven rules, each one
    fail-closed: every id is unique and every `depends_on` id exists; the graph is acyclic; the phase
@@ -310,14 +310,14 @@ in the same commit as the code that uses them.
    file has a row; and every serial link of section 13.4 appears as a `depends_on` edge (SM8).
    `--write-manifest` writes `plan-graph.md` from the front-matter. It exits 0 on success, 1 on a
    finding, and 2 on a read failure, which is the same three-code contract as every other guard.
-10. Write `tools/xtask/src/check_manifests.rs`. It reads every member manifest that
+10. Write `tools/bc_repo_guard/xtask/lang_rust/src/check_manifests.rs`. It reads every member manifest that
     `cargo metadata --no-deps` reports and asserts two conditions: the manifest holds
     `[lints] workspace = true`, and the manifest holds a non-empty `description`.
     `clippy::cargo_common_metadata` cannot fire under `publish = false`, so no lint covers either
     half today (critic C20-W7).
-11. Add the six `mod` lines and the six `Command` arms to `tools/xtask/src/main.rs`, and map each
+11. Add the six `mod` lines and the six `Command` arms to `tools/bc_repo_guard/xtask/lang_rust/src/main.rs`, and map each
     `Outcome` to its exit code.
-12. Port every probe of the section 1.9 table to `tools/xtask/tests/probes.rs`. Each test plants its
+12. Port every probe of the section 1.9 table to `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs`. Each test plants its
     defect in an inline fixture, never in a file under `roadmap/`. Each conversion probe builds a
     throwaway cargo workspace in a per-test temporary directory and changes into it. No probe reads
     this repository. Run `cargo nextest run -p xtask --test probes --no-tests=fail`. Expected result:
@@ -346,7 +346,7 @@ in the same commit as the code that uses them.
 
        **Chunk M93 renames that output to `plan_inputs` and widens the filter**, so a party who
        re-derives this job from this brief reads the M93 body first. M93 sets the output name at
-       every site, and its filter matches `^roadmap/`, `^tools/xtask/`, `^Cargo\.toml$`,
+       every site, and its filter matches `^roadmap/`, `^tools/bc_repo_guard/xtask/`, `^Cargo\.toml$`,
        `^clippy\.toml$`, `^rust-toolchain\.toml$` and `^\.cargo/config\.toml$`, because rule PG25
        reads the last four. This brief keeps the name M0 itself wrote, and this note is the pointer
        to the current one.
@@ -393,7 +393,7 @@ in the same commit as the code that uses them.
     MACOSX_DEPLOYMENT_TARGET = "26.0"
     ```
 
-19. Edit `crates/duet/packaging/macos/Info.plist`. Add the `LSMinimumSystemVersion` key with the
+19. Edit `crates/bc_app/duet/packaging/macos/Info.plist`. Add the `LSMinimumSystemVersion` key with the
     value `26.0` (section 11.4).
 20. Edit `rust-toolchain.toml`. Read the `rust-version` field of every crate this plan pins, and set
     `channel` to the highest of those values, or keep `1.98.1` when no pin asks for more. Record the
@@ -408,12 +408,12 @@ in the same commit as the code that uses them.
     writes no new bytecode into the tree it verifies (critic C20-N7).
 22. Create `NOTICE`. It holds the Apache NOTICE text for the Apache-2.0 crates the workspace ships,
     and the SIL Open Font License 1.1 text for the Bravura font (Appendix B.4).
-23. Add the Bravura font under `crates/duet/assets/fonts/`. Take `Bravura.otf` and
+23. Add the Bravura font under `crates/bc_app/duet/assets/fonts/`. Take `Bravura.otf` and
     `bravura_metadata.json` from the Steinberg Bravura release at
     `https://github.com/steinbergmedia/bravura`, and write the release's `OFL.txt` to
-    `crates/duet/assets/fonts/LICENSE.txt`. A font file is data and not a crate, so it enters no
+    `crates/bc_app/duet/assets/fonts/LICENSE.txt`. A font file is data and not a crate, so it enters no
     `deny.toml` list.
-24. Read `crates/duet/Cargo.toml` and confirm that it holds `[lints] workspace = true` and a
+24. Read `crates/bc_app/duet/lang_rust/Cargo.toml` and confirm that it holds `[lints] workspace = true` and a
     non-empty `description`, which `cargo xtask check-manifests` now asserts. Section 13.1 names the
     path in this write scope and states no other edit for it. Make no other change; report a
     discrepancy to the Architect if the file needs one.
@@ -425,7 +425,7 @@ in the same commit as the code that uses them.
     removed. Run `grep -c "references/gpui/" .claude/skills/gpui-kit/SKILL.md`. Expected result: the
     count equals the number of files that now exist.
 26. Run `cargo xtask check-conversions`. Expected result: exit 0. The current
-    `crates/duet/src/main.rs` opens `use gpui_kit::{` on one line and carries `AppContext as _` on
+    `crates/bc_app/duet/lang_rust/src/main.rs` opens `use gpui_kit::{` on one line and carries `AppContext as _` on
     the next, so CG4 must join a `use` item across lines before CG3 reads the text (critic S10).
 27. Run `cargo xtask check-manifests`. Expected result: exit 0 over `duet`, `duet-time`, `plan-db`,
     and `xtask`.
@@ -439,7 +439,7 @@ in the same commit as the code that uses them.
 
 ## Tests
 
-`tools/xtask/tests/probes.rs` is the one test target this chunk writes. It is an integration target
+`tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs` is the one test target this chunk writes. It is an integration target
 and wraps its tests in a `#[cfg(test)] mod tests` block
 (`clippy::tests_outside_test_module` is denied). Every assert carries a message. Section 14 names
 `probes` in the selected-test table and names M0 as its writer, so SM7 holds. Author guidance: the
@@ -447,12 +447,12 @@ and wraps its tests in a `#[cfg(test)] mod tests` block
 
 | Test group | What each test asserts | Where it lives |
 |---|---|---|
-| `conversion_*` | One test per rule CG1, CG1b, CG2, CG2b, CG3, CG3b, CG4, CG4b, CG5, CG6, CG7, and CG8. Each one builds a throwaway workspace, plants the section 1.9 defect, runs the guard, and asserts the exit code and the printed line the probe row records | `tools/xtask/tests/probes.rs` |
-| `placement_*` | One test per PG rule of the section 1.9 probe table, each with the planted defect and the recorded result that table states | `tools/xtask/tests/probes.rs` |
-| `roster_*` | PP25 in all four shapes, the mixed-impl shape, and the six planted gate defects | `tools/xtask/tests/probes.rs` |
-| `closure_*` | PP32 in all fifteen shapes, over a throwaway review and a throwaway block | `tools/xtask/tests/probes.rs` |
-| `manifests_*` | A member with no `[lints] workspace = true` line gives exit 1 with the member path; a member with an empty `description` gives exit 1 with the member path; a workspace `cargo metadata` refuses gives exit 2 | `tools/xtask/tests/probes.rs` |
-| `plan_graph_*` | One test per rule of `plan_graph_check.py`: an unknown `depends_on` id, a cycle, a backward link, a shared write-scope path inside one phase, two chunks of one line inside one phase, a chunk of section 13.3 with no file, and a section 13.4 link that no `depends_on` carries. Each one gives exit 1 with the named chunk id; a plan directory that does not open gives exit 2 | `tools/xtask/tests/probes.rs` |
+| `conversion_*` | One test per rule CG1, CG1b, CG2, CG2b, CG3, CG3b, CG4, CG4b, CG5, CG6, CG7, and CG8. Each one builds a throwaway workspace, plants the section 1.9 defect, runs the guard, and asserts the exit code and the printed line the probe row records | `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs` |
+| `placement_*` | One test per PG rule of the section 1.9 probe table, each with the planted defect and the recorded result that table states | `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs` |
+| `roster_*` | PP25 in all four shapes, the mixed-impl shape, and the six planted gate defects | `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs` |
+| `closure_*` | PP32 in all fifteen shapes, over a throwaway review and a throwaway block | `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs` |
+| `manifests_*` | A member with no `[lints] workspace = true` line gives exit 1 with the member path; a member with an empty `description` gives exit 1 with the member path; a workspace `cargo metadata` refuses gives exit 2 | `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs` |
+| `plan_graph_*` | One test per rule of `plan_graph_check.py`: an unknown `depends_on` id, a cycle, a backward link, a shared write-scope path inside one phase, two chunks of one line inside one phase, a chunk of section 13.3 with no file, and a section 13.4 link that no `depends_on` carries. Each one gives exit 1 with the named chunk id; a plan directory that does not open gives exit 2 | `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs` |
 
 A probe is correct when the baseline run is green and the planted run is red (DR5). No probe reads
 this repository, and no probe reads a file under `roadmap/`.
@@ -484,7 +484,8 @@ Then commit on a branch named `chunk/m0-manifest-phase-0`. The native git hook r
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

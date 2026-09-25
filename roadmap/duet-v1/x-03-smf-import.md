@@ -3,8 +3,8 @@ id: X3
 line: X
 depends_on: [X2]
 write_scope:
-  - crates/duet-interchange/src/smf.rs
-  - crates/duet-interchange/Cargo.toml
+  - crates/bc_notation/duet-interchange/lang_rust/src/smf.rs
+  - crates/bc_notation/duet-interchange/lang_rust/Cargo.toml
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-interchange -E 'test(smf_import)' --no-tests=fail"
@@ -14,7 +14,7 @@ completion: "cargo nextest run -p duet-interchange -E 'test(smf_import)' --no-te
 
 Verify the current state of the files in the write scope; report a discrepancy and stop, instead of
 proceeding. Phase 6 carries no manifest chunk, so this chunk depends on chunk X2 alone (section
-13.3). Chunk X1 created `crates/duet-interchange/src/smf.rs` as a stub in phase 4, so the file holds
+13.3). Chunk X1 created `crates/bc_notation/duet-interchange/lang_rust/src/smf.rs` as a stub in phase 4, so the file holds
 a `//!` line alone. This chunk fills it. It reads a Standard MIDI File into a `Score` and a
 `TempoMap`, with the quantize option, the part map, and the tempo choice. One function serves the
 command-line interface, the MCP verb, and the menu item (section 8.4). The chunk implements
@@ -22,14 +22,14 @@ architecture sections 8.4 and 15.7, and it carries the product story A-05, "MIDI
 agent", which is a MUST, and the model half of C-12, "MIDI file import in the user interface", which
 is a SHOULD.
 
-This chunk adds one dependency, so SM1 puts `crates/duet-interchange/Cargo.toml` in its write scope
+This chunk adds one dependency, so SM1 puts `crates/bc_notation/duet-interchange/lang_rust/Cargo.toml` in its write scope
 and SM5 rule 2 puts `Cargo.lock` there beside it. Section 13.2 names both files in this chunk's
 Writes cell.
 
 ## Files
 
-- `crates/duet-interchange/src/smf.rs` — modify. The Standard MIDI File reader.
-- `crates/duet-interchange/Cargo.toml` — modify. Add `midly`.
+- `crates/bc_notation/duet-interchange/lang_rust/src/smf.rs` — modify. The Standard MIDI File reader.
+- `crates/bc_notation/duet-interchange/lang_rust/Cargo.toml` — modify. Add `midly`.
 - `Cargo.lock` — modify.
 
 ## Types and signatures
@@ -37,7 +37,7 @@ Writes cell.
 ### Manifest
 
 ```toml
-# crates/duet-interchange/Cargo.toml, [dependencies], added by this chunk
+# crates/bc_notation/duet-interchange/lang_rust/Cargo.toml, [dependencies], added by this chunk
 midly = { workspace = true }
 ```
 
@@ -127,7 +127,7 @@ pub fn read_tempo_map(smf: &midly::Smf<'_>) -> Result<TempoMap, InterchangeError
 
 ## Steps
 
-1. Read `crates/duet-interchange/src/smf.rs`. Confirm that it holds a `//!` line and nothing else.
+1. Read `crates/bc_notation/duet-interchange/lang_rust/src/smf.rs`. Confirm that it holds a `//!` line and nothing else.
    Report a discrepancy and stop if the state differs.
 2. Read the root `Cargo.toml` and `deny.toml`. Confirm that `[workspace.dependencies]` pins `midly`
    and that the `deny.toml` allow list carries `Unlicense`. Report a discrepancy and stop if either
@@ -137,7 +137,7 @@ pub fn read_tempo_map(smf: &midly::Smf<'_>) -> Result<TempoMap, InterchangeError
    chunk lives in this file. Run
    `cargo nextest run -p duet-interchange -E 'test(smf_import)' --no-tests=fail` and confirm that the
    run fails to compile.
-4. Add the `midly` entry to `crates/duet-interchange/Cargo.toml`. Run `cargo build --workspace`,
+4. Add the `midly` entry to `crates/bc_notation/duet-interchange/lang_rust/Cargo.toml`. Run `cargo build --workspace`,
    which settles `Cargo.lock` (SM5 rule 3).
 5. Implement `ticks_per_file_tick`. Refuse an SMPTE division with `InterchangeError::Unsupported`.
    Use `u32::checked_mul` and `u32::checked_div`, because `clippy::integer_division` is denied and
@@ -165,7 +165,7 @@ pub fn read_tempo_map(smf: &midly::Smf<'_>) -> Result<TempoMap, InterchangeError
 
 ## Tests
 
-Every test lives in a `#[cfg(test)] mod tests` in `crates/duet-interchange/src/smf.rs`, because
+Every test lives in a `#[cfg(test)] mod tests` in `crates/bc_notation/duet-interchange/lang_rust/src/smf.rs`, because
 section 13.2 gives this chunk no `tests/` file. Every assert carries a message. Every fixture file is
 built in memory with `midly`, so the crate stays pure and opens no file; section 1.4 names
 `duet-interchange` a pure crate for that reason.
@@ -234,9 +234,10 @@ The work lands as one commit on the branch `chunk/x3-smf-import`, with a convent
   inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are
   required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every
   `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the
   root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no
   pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with
   Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this

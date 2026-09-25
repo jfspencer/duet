@@ -3,10 +3,10 @@ id: D2
 line: D
 depends_on: [M2, D1]
 write_scope:
-  - crates/duet-dsp/src/dynamics/compressor.rs
-  - crates/duet-dsp/src/dynamics/gate.rs
-  - crates/duet-dsp/src/dynamics/deesser.rs
-  - crates/duet-dsp/src/dynamics/limiter.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/dynamics/compressor.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/dynamics/gate.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/dynamics/deesser.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/dynamics/limiter.rs
 parallelism: independent
 completion: "cargo nextest run -p duet-dsp -E 'test(dynamics)' --no-tests=fail"
 ---
@@ -26,24 +26,24 @@ The chunk writes no manifest, so `Cargo.lock` is not in the write scope (SM5 rul
 ## The `PoolSlot` import
 
 `LimiterState` holds `buffer: Option<PoolSlot>` (section 15.2). `PoolSlot` is a `duet-dsp` type that
-section 5.5 declares, and **chunk D1 declares it in `crates/duet-dsp/src/buffer.rs` in phase 1**, one
+section 5.5 declares, and **chunk D1 declares it in `crates/bc_audio/duet-dsp/lang_rust/src/buffer.rs` in phase 1**, one
 phase before this chunk. Import it with `use crate::buffer::PoolSlot;` in `limiter.rs`. Section 13.2
 gave the type to chunk D3, in phase 3, until this revision; the chunk author of line D reported that
 this chunk could not then compile, and the Architect moved the declaration to D1. Chunk D3 still
-builds `BufferPool` itself, in `crates/duet-dsp/src/pool.rs`, in phase 3.
+builds `BufferPool` itself, in `crates/bc_audio/duet-dsp/lang_rust/src/pool.rs`, in phase 3.
 
-Read `crates/duet-dsp/src/buffer.rs` first. **A missing declaration is an SM0 stop**: report the
+Read `crates/bc_audio/duet-dsp/lang_rust/src/buffer.rs` first. **A missing declaration is an SM0 stop**: report the
 discrepancy to the Architect and write nothing. Do not declare `PoolSlot` here. `buffer.rs` is
 outside this chunk's write scope, and a second declaration would break the one-owner rule of
 section 1.5.
 
 ## Files
 
-- `crates/duet-dsp/src/dynamics/compressor.rs` — modify. `CompressorState` and the compressor
+- `crates/bc_audio/duet-dsp/lang_rust/src/dynamics/compressor.rs` — modify. `CompressorState` and the compressor
   kernel.
-- `crates/duet-dsp/src/dynamics/gate.rs` — modify. `GateState` and the gate kernel.
-- `crates/duet-dsp/src/dynamics/deesser.rs` — modify. `DeEsserState` and the de-esser kernel.
-- `crates/duet-dsp/src/dynamics/limiter.rs` — modify. `LimiterState` and the true-peak limiter
+- `crates/bc_audio/duet-dsp/lang_rust/src/dynamics/gate.rs` — modify. `GateState` and the gate kernel.
+- `crates/bc_audio/duet-dsp/lang_rust/src/dynamics/deesser.rs` — modify. `DeEsserState` and the de-esser kernel.
+- `crates/bc_audio/duet-dsp/lang_rust/src/dynamics/limiter.rs` — modify. `LimiterState` and the true-peak limiter
   kernel.
 
 ## Types and signatures
@@ -163,7 +163,7 @@ chain adds no visible latency to a monitor mix.
 
 1. Read the four files. Confirm that each one holds a `//!` line and nothing else. Report a
    discrepancy and stop if the state differs.
-2. Read `crates/duet-dsp/src/buffer.rs` and confirm that it declares `PoolSlot`, which chunk D1
+2. Read `crates/bc_audio/duet-dsp/lang_rust/src/buffer.rs` and confirm that it declares `PoolSlot`, which chunk D1
    wrote in phase 1. Report the discrepancy and stop if the type is absent (SM0).
 3. Write the failing test `dynamics_compressor_reduces_above_the_threshold` in
    `src/dynamics/compressor.rs`, inside a `#[cfg(test)] mod tests`. Run
@@ -203,7 +203,7 @@ Every test lives in a `#[cfg(test)] mod tests` in the same file, and every asser
 Every test name of this chunk starts with `dynamics_`, which is the term the Completion command
 selects and a term chunk D1 produced in no test name (SM3 rule 2).
 
-`crates/duet-dsp/src/dynamics/compressor.rs`
+`crates/bc_audio/duet-dsp/lang_rust/src/dynamics/compressor.rs`
 
 - `dynamics_compressor_reduces_above_the_threshold` — asserts that a block 6 decibels above the
   threshold at a ratio of 2 to 1 leaves the output 3 decibels above it, within 0.2 decibels.
@@ -216,7 +216,7 @@ selects and a term chunk D1 produced in no test name (SM3 rule 2).
 - `dynamics_compressor_reports_its_input_level` — asserts that `SlotMeasure::input` equals the block
   peak on the B106 scale.
 
-`crates/duet-dsp/src/dynamics/gate.rs`
+`crates/bc_audio/duet-dsp/lang_rust/src/dynamics/gate.rs`
 
 - `dynamics_gate_closes_below_the_threshold` — asserts that the output falls to silence after the
   hold time.
@@ -224,13 +224,13 @@ selects and a term chunk D1 produced in no test name (SM3 rule 2).
   `hold_frames` after the last loud sample.
 - `dynamics_gate_refuses_an_offset_past_b96` — asserts `DspError::BlockTooLong` at offset 3.
 
-`crates/duet-dsp/src/dynamics/deesser.rs`
+`crates/bc_audio/duet-dsp/lang_rust/src/dynamics/deesser.rs`
 
 - `dynamics_deesser_cuts_only_the_sibilant_band` — asserts that a two-tone block loses level at the
   sibilant tone and keeps it at the low tone, within 0.2 decibels.
 - `dynamics_deesser_passes_a_clean_block` — asserts no change for a block with no sibilant energy.
 
-`crates/duet-dsp/src/dynamics/limiter.rs`
+`crates/bc_audio/duet-dsp/lang_rust/src/dynamics/limiter.rs`
 
 - `dynamics_limiter_holds_the_ceiling` — asserts that no output sample passes the ceiling for an
   input 12 decibels above it.
@@ -275,9 +275,10 @@ such as `feat(dsp): add the compressor, gate, de-esser, and true-peak limiter`.
   inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are
   required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every
   `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the
   root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no
   pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with
   Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this

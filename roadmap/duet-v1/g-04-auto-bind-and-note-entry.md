@@ -3,8 +3,8 @@ id: G4
 line: G
 depends_on: [G3, M7]
 write_scope:
-  - crates/duet-midi/src/bind.rs
-  - crates/duet-midi/src/entry.rs
+  - crates/bc_midi/duet-midi/lang_rust/src/bind.rs
+  - crates/bc_midi/duet-midi/lang_rust/src/entry.rs
 parallelism: independent
 completion: "cargo nextest run -p duet-midi -E 'test(auto_bind) + test(note_entry)' --no-tests=fail passes; commit SHA on a branch chunk/g4-auto-bind-and-note-entry"
 ---
@@ -15,12 +15,12 @@ Verify the current state of the files in the write scope; report a discrepancy a
 
 **The `MidiMessage::PortGone` arm itself is T4's work.** `MidiMessage` is a `duet-command` type, line G owns `duet-midi`, and link `T4 before G1` already orders the two. This chunk mints the value and never declares the arm.
 
-**This chunk writes no member manifest**, so it names neither `crates/duet-midi/Cargo.toml` nor `Cargo.lock` in its write scope, and its Completion command carries no `--locked` flag (SM3 rule 4, SM5).
+**This chunk writes no member manifest**, so it names neither `crates/bc_midi/duet-midi/lang_rust/Cargo.toml` nor `Cargo.lock` in its write scope, and its Completion command carries no `--locked` flag (SM3 rule 4, SM5).
 
 ## Files
 
-- `crates/duet-midi/src/bind.rs` — modify. Chunk G1 created the stub.
-- `crates/duet-midi/src/entry.rs` — modify.
+- `crates/bc_midi/duet-midi/lang_rust/src/bind.rs` — modify. Chunk G1 created the stub.
+- `crates/bc_midi/duet-midi/lang_rust/src/entry.rs` — modify.
 
 ## Types and signatures
 
@@ -150,7 +150,7 @@ All tests of this chunk are unit tests in a `#[cfg(test)] mod tests` at the bott
 1. `cargo nextest run -p duet-midi -E 'test(auto_bind) + test(note_entry)' --no-tests=fail` passes on macOS and on Linux. It fails before this chunk, because no test of either name exists.
 2. `cargo nextest run -p duet-midi --no-tests=fail` passes on both platforms.
 3. `cargo clippy -p duet-midi --all-targets -- -D warnings` prints nothing on both platforms.
-4. `git status` inside `crates/duet-midi` shows no change to `Cargo.toml` and no change to `Cargo.lock`, because this chunk adds no dependency.
+4. `git status` inside `crates/bc_midi/duet-midi/lang_rust` shows no change to `Cargo.toml` and no change to `Cargo.lock`, because this chunk adds no dependency.
 5. One commit on the branch `chunk/g4-auto-bind-and-note-entry` passes the native git hook.
 
 ## Constraints
@@ -160,7 +160,8 @@ All tests of this chunk are unit tests in a `#[cfg(test)] mod tests` at the bott
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

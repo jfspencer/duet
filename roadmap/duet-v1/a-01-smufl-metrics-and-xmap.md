@@ -3,18 +3,18 @@ id: A1
 line: A
 depends_on: [M2, T2]
 write_scope:
-  - crates/duet-engrave/Cargo.toml
-  - crates/duet-engrave/src/lib.rs
-  - crates/duet-engrave/src/smufl.rs
-  - crates/duet-engrave/src/metrics.rs
-  - crates/duet-engrave/src/placement.rs
-  - crates/duet-engrave/src/map.rs
-  - crates/duet-engrave/src/spacing.rs
-  - crates/duet-engrave/src/system.rs
-  - crates/duet-engrave/src/beam.rs
-  - crates/duet-engrave/src/spanner.rs
-  - crates/duet-engrave/src/lyric.rs
-  - crates/duet-engrave/src/mark.rs
+  - crates/bc_notation/duet-engrave/lang_rust/Cargo.toml
+  - crates/bc_notation/duet-engrave/lang_rust/src/lib.rs
+  - crates/bc_notation/duet-engrave/lang_rust/src/smufl.rs
+  - crates/bc_notation/duet-engrave/lang_rust/src/metrics.rs
+  - crates/bc_notation/duet-engrave/lang_rust/src/placement.rs
+  - crates/bc_notation/duet-engrave/lang_rust/src/map.rs
+  - crates/bc_notation/duet-engrave/lang_rust/src/spacing.rs
+  - crates/bc_notation/duet-engrave/lang_rust/src/system.rs
+  - crates/bc_notation/duet-engrave/lang_rust/src/beam.rs
+  - crates/bc_notation/duet-engrave/lang_rust/src/spanner.rs
+  - crates/bc_notation/duet-engrave/lang_rust/src/lyric.rs
+  - crates/bc_notation/duet-engrave/lang_rust/src/mark.rs
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-engrave -E 'test(xmap)' --no-tests=fail"
@@ -24,7 +24,7 @@ completion: "cargo nextest run -p duet-engrave -E 'test(xmap)' --no-tests=fail"
 
 Verify the current state of the files in the write scope; report a discrepancy and stop, instead of
 proceeding. This chunk opens line A over the crate `duet-engrave`. Chunk M2 creates the crate
-skeleton in phase 2, so `crates/duet-engrave/Cargo.toml` and `crates/duet-engrave/src/lib.rs` exist
+skeleton in phase 2, so `crates/bc_notation/duet-engrave/lang_rust/Cargo.toml` and `crates/bc_notation/duet-engrave/lang_rust/src/lib.rs` exist
 before this chunk starts and this chunk modifies both. Every other file of the write scope does not
 exist yet, and this chunk creates it. The chunk reads the Bravura SMuFL metadata, declares the
 placement value types, and declares `SystemXMap` with its two directions. It implements
@@ -36,19 +36,19 @@ every depth as a stub, so chunks A2, A3, and A4 modify a stub and create no sour
 
 ## Files
 
-- `crates/duet-engrave/Cargo.toml` — modify. Add the `{ workspace = true }` entries this chunk uses.
-- `crates/duet-engrave/src/lib.rs` — modify. Add one `mod` line per module file below.
-- `crates/duet-engrave/src/smufl.rs` — create. The Bravura metadata reader.
-- `crates/duet-engrave/src/metrics.rs` — create. `FontMetrics`, `Symbol`, `SizePx`, `LayoutOptions`.
-- `crates/duet-engrave/src/placement.rs` — create. `QuadPlacement`, `PathPlacement`,
+- `crates/bc_notation/duet-engrave/lang_rust/Cargo.toml` — modify. Add the `{ workspace = true }` entries this chunk uses.
+- `crates/bc_notation/duet-engrave/lang_rust/src/lib.rs` — modify. Add one `mod` line per module file below.
+- `crates/bc_notation/duet-engrave/lang_rust/src/smufl.rs` — create. The Bravura metadata reader.
+- `crates/bc_notation/duet-engrave/lang_rust/src/metrics.rs` — create. `FontMetrics`, `Symbol`, `SizePx`, `LayoutOptions`.
+- `crates/bc_notation/duet-engrave/lang_rust/src/placement.rs` — create. `QuadPlacement`, `PathPlacement`,
   `GlyphPlacement`, `NoteHit`, `SystemPlacement`, `SystemId`, `EngraveError`, `engrave`.
-- `crates/duet-engrave/src/map.rs` — create. `SystemXMap` and `Knot`.
-- `crates/duet-engrave/src/spacing.rs` — create as a stub. Chunk A2 fills it.
-- `crates/duet-engrave/src/system.rs` — create as a stub. Chunk A2 fills it.
-- `crates/duet-engrave/src/beam.rs` — create as a stub. Chunk A3 fills it.
-- `crates/duet-engrave/src/spanner.rs` — create as a stub. Chunk A3 fills it.
-- `crates/duet-engrave/src/lyric.rs` — create as a stub. Chunk A3 fills it.
-- `crates/duet-engrave/src/mark.rs` — create as a stub. Chunk A3 fills it.
+- `crates/bc_notation/duet-engrave/lang_rust/src/map.rs` — create. `SystemXMap` and `Knot`.
+- `crates/bc_notation/duet-engrave/lang_rust/src/spacing.rs` — create as a stub. Chunk A2 fills it.
+- `crates/bc_notation/duet-engrave/lang_rust/src/system.rs` — create as a stub. Chunk A2 fills it.
+- `crates/bc_notation/duet-engrave/lang_rust/src/beam.rs` — create as a stub. Chunk A3 fills it.
+- `crates/bc_notation/duet-engrave/lang_rust/src/spanner.rs` — create as a stub. Chunk A3 fills it.
+- `crates/bc_notation/duet-engrave/lang_rust/src/lyric.rs` — create as a stub. Chunk A3 fills it.
+- `crates/bc_notation/duet-engrave/lang_rust/src/mark.rs` — create as a stub. Chunk A3 fills it.
 - `Cargo.lock` — modify. SM5 rule 2 puts it in the write scope of every chunk that writes a member
   manifest.
 
@@ -63,7 +63,7 @@ skeleton a manifest chunk created (SM1 rule 2). SM4 forbids this chunk to edit t
 a missing entry is a discrepancy that this chunk reports under SM0.
 
 ```toml
-# crates/duet-engrave/Cargo.toml, [dependencies]
+# crates/bc_notation/duet-engrave/lang_rust/Cargo.toml, [dependencies]
 duet-time = { workspace = true }
 duet-score = { workspace = true }
 serde = { workspace = true }
@@ -203,7 +203,7 @@ pub fn read_metadata(bytes: &[u8], staff_space: f32) -> Result<FontMetrics, Engr
 
 ## Steps
 
-1. Read `crates/duet-engrave/Cargo.toml` and `crates/duet-engrave/src/lib.rs`. Confirm that chunk M2
+1. Read `crates/bc_notation/duet-engrave/lang_rust/Cargo.toml` and `crates/bc_notation/duet-engrave/lang_rust/src/lib.rs`. Confirm that chunk M2
    created both, that the manifest carries `[lints] workspace = true`, a `description`, and no
    `[dependencies]` section, and that `lib.rs` carries the `//!` crate documentation and
    `#![forbid(unsafe_code)]`. Report a discrepancy and stop if the state differs.
@@ -217,7 +217,7 @@ pub fn read_metadata(bytes: &[u8], staff_space: f32) -> Result<FontMetrics, Engr
    ```
 4. Add one `mod` line per module file to `src/lib.rs`, in alphabetical order, each with its own
    `///` documentation line. Run `cargo check -p duet-engrave`. Expect a clean build.
-5. Add the five `{ workspace = true }` entries to `crates/duet-engrave/Cargo.toml`. Run
+5. Add the five `{ workspace = true }` entries to `crates/bc_notation/duet-engrave/lang_rust/Cargo.toml`. Run
    `cargo build --workspace`, which settles `Cargo.lock` (SM5 rule 3). Expect a clean build and a
    changed lock file.
 6. Write the failing test `xmap_x_for_beat_interpolates_between_knots` in `src/map.rs`, inside a
@@ -271,7 +271,7 @@ pub fn read_metadata(bytes: &[u8], staff_space: f32) -> Result<FontMetrics, Engr
 
 Every test lives in a `#[cfg(test)] mod tests` in the same file, and every assert carries a message.
 
-`crates/duet-engrave/src/map.rs`
+`crates/bc_notation/duet-engrave/lang_rust/src/map.rs`
 
 - `xmap_x_for_beat_interpolates_between_knots` — builds a map with three knots and asserts that a
   beat position between two knots answers the linear interpolation of the two x values.
@@ -284,7 +284,7 @@ Every test lives in a `#[cfg(test)] mod tests` in the same file, and every asser
 - `xmap_new_refuses_a_repeated_position` — asserts the same refusal for two knots at one `at`,
   because a repeated position makes the inverse ambiguous.
 
-`crates/duet-engrave/src/smufl.rs`
+`crates/bc_notation/duet-engrave/lang_rust/src/smufl.rs`
 
 - `metrics_reader_keeps_every_engraving_default` — reads a fixture document that holds the fourteen
   `engravingDefaults` keys of design contract 2.2 and asserts each value.
@@ -293,7 +293,7 @@ Every test lives in a `#[cfg(test)] mod tests` in the same file, and every asser
 - `metrics_reader_reads_the_stem_anchors` — asserts that `stemUpSE` and `stemDownNW` reach
   `FontMetrics::anchors` for `Symbol::NoteheadBlack`.
 
-`crates/duet-engrave/src/placement.rs`
+`crates/bc_notation/duet-engrave/lang_rust/src/placement.rs`
 
 - `placement_engraves_five_staff_lines_per_staff` — asserts that a one-staff score produces five
   quads whose heights equal `staffLineThickness` times the staff space, and that the line centres
@@ -337,9 +337,10 @@ subject such as `feat(engrave): read SMuFL metrics and map beats to x offsets`.
   inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are
   required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every
   `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the
   root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no
   pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with
   Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this

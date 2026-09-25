@@ -3,62 +3,62 @@ id: K1
 line: K
 depends_on: [I1, J1]
 write_scope:
-  - crates/duet/src/main.rs
-  - crates/duet/src/app.rs
-  - crates/duet/src/element.rs
-  - crates/duet/src/tokens.rs
-  - crates/duet/src/shell.rs
-  - crates/duet/src/compose.rs
-  - crates/duet/src/record.rs
-  - crates/duet/src/mix.rs
-  - crates/duet/src/master.rs
-  - crates/duet/src/element/staff_system.rs
-  - crates/duet/src/element/waveform_lane.rs
-  - crates/duet/src/element/playhead_layer.rs
-  - crates/duet/src/element/punch_range.rs
-  - crates/duet/src/element/level_meter.rs
-  - crates/duet/src/element/fader.rs
-  - crates/duet/src/element/knob.rs
-  - crates/duet/src/element/automation_lane.rs
-  - crates/duet/src/element/stage_curve.rs
-  - crates/duet/src/element/lufs_meter.rs
-  - crates/duet/src/element/toolbar.rs
-  - crates/duet/src/shell/root.rs
-  - crates/duet/src/shell/core_host.rs
-  - crates/duet/src/shell/agent_bridge.rs
-  - crates/duet/src/shell/mode_switcher.rs
-  - crates/duet/src/shell/top_bar.rs
-  - crates/duet/src/shell/transport_bar.rs
-  - crates/duet/src/shell/menu.rs
-  - crates/duet/src/shell/fault_text.rs
-  - crates/duet/src/shell/states.rs
-  - crates/duet/src/shell/title_bar.rs
-  - crates/duet/src/shell/sidebar.rs
-  - crates/duet/src/shell/inspector.rs
-  - crates/duet/src/shell/status_bar.rs
-  - crates/duet/src/shell/history_sheet.rs
-  - crates/duet/src/shell/start.rs
-  - crates/duet/src/shell/view_state.rs
-  - crates/duet/src/shell/toolbar_compose.rs
-  - crates/duet/src/shell/toolbar_record.rs
-  - crates/duet/src/shell/toolbar_mix.rs
-  - crates/duet/src/shell/toolbar_master.rs
-  - crates/duet/src/compose/view.rs
-  - crates/duet/src/compose/caret.rs
-  - crates/duet/src/compose/menu.rs
-  - crates/duet/src/compose/duration.rs
-  - crates/duet/src/record/view.rs
-  - crates/duet/src/record/lane.rs
-  - crates/duet/src/record/cache.rs
-  - crates/duet/src/record/controls.rs
-  - crates/duet/src/mix/view.rs
-  - crates/duet/src/mix/strip.rs
-  - crates/duet/src/mix/meter_layer.rs
-  - crates/duet/src/mix/automation.rs
-  - crates/duet/src/master/view.rs
-  - crates/duet/src/master/export_dialog.rs
-  - crates/duet/src/master/report.rs
-  - crates/duet/Cargo.toml
+  - crates/bc_app/duet/lang_rust/src/main.rs
+  - crates/bc_app/duet/lang_rust/src/app.rs
+  - crates/bc_app/duet/lang_rust/src/element.rs
+  - crates/bc_app/duet/lang_rust/src/tokens.rs
+  - crates/bc_app/duet/lang_rust/src/shell.rs
+  - crates/bc_app/duet/lang_rust/src/compose.rs
+  - crates/bc_app/duet/lang_rust/src/record.rs
+  - crates/bc_app/duet/lang_rust/src/mix.rs
+  - crates/bc_app/duet/lang_rust/src/master.rs
+  - crates/bc_app/duet/lang_rust/src/element/staff_system.rs
+  - crates/bc_app/duet/lang_rust/src/element/waveform_lane.rs
+  - crates/bc_app/duet/lang_rust/src/element/playhead_layer.rs
+  - crates/bc_app/duet/lang_rust/src/element/punch_range.rs
+  - crates/bc_app/duet/lang_rust/src/element/level_meter.rs
+  - crates/bc_app/duet/lang_rust/src/element/fader.rs
+  - crates/bc_app/duet/lang_rust/src/element/knob.rs
+  - crates/bc_app/duet/lang_rust/src/element/automation_lane.rs
+  - crates/bc_app/duet/lang_rust/src/element/stage_curve.rs
+  - crates/bc_app/duet/lang_rust/src/element/lufs_meter.rs
+  - crates/bc_app/duet/lang_rust/src/element/toolbar.rs
+  - crates/bc_app/duet/lang_rust/src/shell/root.rs
+  - crates/bc_app/duet/lang_rust/src/shell/core_host.rs
+  - crates/bc_app/duet/lang_rust/src/shell/agent_bridge.rs
+  - crates/bc_app/duet/lang_rust/src/shell/mode_switcher.rs
+  - crates/bc_app/duet/lang_rust/src/shell/top_bar.rs
+  - crates/bc_app/duet/lang_rust/src/shell/transport_bar.rs
+  - crates/bc_app/duet/lang_rust/src/shell/menu.rs
+  - crates/bc_app/duet/lang_rust/src/shell/fault_text.rs
+  - crates/bc_app/duet/lang_rust/src/shell/states.rs
+  - crates/bc_app/duet/lang_rust/src/shell/title_bar.rs
+  - crates/bc_app/duet/lang_rust/src/shell/sidebar.rs
+  - crates/bc_app/duet/lang_rust/src/shell/inspector.rs
+  - crates/bc_app/duet/lang_rust/src/shell/status_bar.rs
+  - crates/bc_app/duet/lang_rust/src/shell/history_sheet.rs
+  - crates/bc_app/duet/lang_rust/src/shell/start.rs
+  - crates/bc_app/duet/lang_rust/src/shell/view_state.rs
+  - crates/bc_app/duet/lang_rust/src/shell/toolbar_compose.rs
+  - crates/bc_app/duet/lang_rust/src/shell/toolbar_record.rs
+  - crates/bc_app/duet/lang_rust/src/shell/toolbar_mix.rs
+  - crates/bc_app/duet/lang_rust/src/shell/toolbar_master.rs
+  - crates/bc_app/duet/lang_rust/src/compose/view.rs
+  - crates/bc_app/duet/lang_rust/src/compose/caret.rs
+  - crates/bc_app/duet/lang_rust/src/compose/menu.rs
+  - crates/bc_app/duet/lang_rust/src/compose/duration.rs
+  - crates/bc_app/duet/lang_rust/src/record/view.rs
+  - crates/bc_app/duet/lang_rust/src/record/lane.rs
+  - crates/bc_app/duet/lang_rust/src/record/cache.rs
+  - crates/bc_app/duet/lang_rust/src/record/controls.rs
+  - crates/bc_app/duet/lang_rust/src/mix/view.rs
+  - crates/bc_app/duet/lang_rust/src/mix/strip.rs
+  - crates/bc_app/duet/lang_rust/src/mix/meter_layer.rs
+  - crates/bc_app/duet/lang_rust/src/mix/automation.rs
+  - crates/bc_app/duet/lang_rust/src/master/view.rs
+  - crates/bc_app/duet/lang_rust/src/master/export_dialog.rs
+  - crates/bc_app/duet/lang_rust/src/master/report.rs
+  - crates/bc_app/duet/lang_rust/Cargo.toml
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet -E 'test(shell) + test(view_round_trip)' --no-tests=fail passes; cargo clippy -p duet --all-targets -- -D warnings is clean; commit SHA on a branch chunk/k1-application-shell"
@@ -83,7 +83,7 @@ this chunk **removes `src/app.rs`**: `src/shell/root.rs` replaces it.
 
 ## Files
 
-`crates/duet/src/main.rs` — modify. `crates/duet/src/app.rs` — remove. `crates/duet/Cargo.toml` and
+`crates/bc_app/duet/lang_rust/src/main.rs` — modify. `crates/bc_app/duet/lang_rust/src/app.rs` — remove. `crates/bc_app/duet/lang_rust/Cargo.toml` and
 `Cargo.lock` — modify. Every other path of the write scope — create.
 
 **Which files hold code and which hold documentation alone.** SM2 asks for a stub, and section 13.0
@@ -108,13 +108,13 @@ frame drivers must exist at the end of phase 9. They take the seam exception.
 
 ### The current state of the code, which this chunk replaces
 
-`crates/duet/src/main.rs` holds `init_tracing`, `main_window_options`, `open_main_window` and
+`crates/bc_app/duet/lang_rust/src/main.rs` holds `init_tracing`, `main_window_options`, `open_main_window` and
 `main`. `main` calls `gpui_kit::application().with_assets(gpui_kit::assets::Assets)` and then
 `gpui_kit::init(app)` inside `run`, and it spawns `open_main_window` with a detached task.
-`crates/duet/src/app.rs` holds a `DuetApp` with one `clicks: u32` field and a counter button. That
+`crates/bc_app/duet/lang_rust/src/app.rs` holds a `DuetApp` with one `clicks: u32` field and a counter button. That
 `DuetApp` is a skeleton and this chunk replaces it with the declaration below.
 
-### Declared by this chunk, in `crates/duet/src/shell/root.rs`
+### Declared by this chunk, in `crates/bc_app/duet/lang_rust/src/shell/root.rs`
 
 Copied from architecture section 15.16. Every type in `crates/duet` is `pub(crate)`.
 
@@ -166,7 +166,7 @@ a click on one strip's meter share one verb (critic C9). Every transition is leg
 application refuses to leave Record while `RecordState::Recording` holds. The handler shows a
 notification and changes nothing.
 
-### Declared by this chunk, in `crates/duet/src/shell/core_host.rs`
+### Declared by this chunk, in `crates/bc_app/duet/lang_rust/src/shell/core_host.rs`
 
 Copied from architecture section 15.16.
 
@@ -219,7 +219,7 @@ impl CoreHost {
 }
 ```
 
-### Declared by this chunk, in `crates/duet/src/shell/agent_bridge.rs`
+### Declared by this chunk, in `crates/bc_app/duet/lang_rust/src/shell/agent_bridge.rs`
 
 Copied from architecture section 15.16.
 
@@ -265,7 +265,7 @@ pub(crate) struct AgentBridge {
 pub(crate) enum ShutdownError { RuntimeStuck, ReplyTimeout, AlreadyRun }
 ```
 
-### Declared by this chunk, in `crates/duet/src/shell/states.rs`
+### Declared by this chunk, in `crates/bc_app/duet/lang_rust/src/shell/states.rs`
 
 Copied from architecture section 10.2.
 
@@ -281,7 +281,7 @@ pub(crate) enum WorkAreaState {
 }
 ```
 
-### Declared by this chunk, in `crates/duet/src/tokens.rs`
+### Declared by this chunk, in `crates/bc_app/duet/lang_rust/src/tokens.rs`
 
 Copied from architecture section 15.16. The struct declares 27 fields; design contract 7.2 states 29
 token ids, and the remaining two are the derived pair `duet.wave.fill` and `duet.wave.rms`, which
@@ -353,7 +353,7 @@ against the live background and moved by up to twelve lightness points to meet t
 When twelve points are not enough it logs a warning that names the token and uses `foreground` or
 `danger` instead.
 
-### Declared by this chunk, in `crates/duet/src/element/toolbar.rs` and `src/shell/top_bar.rs`
+### Declared by this chunk, in `crates/bc_app/duet/lang_rust/src/element/toolbar.rs` and `src/shell/top_bar.rs`
 
 Copied from architecture section 15.16.
 
@@ -469,7 +469,7 @@ pub(crate) struct MenuPath(Box<str>);
 | `EngineState`, `EngineFault`, `FaultCode`, `FailureSurface`, `UpstreamFailure` | `duet-command` | 12.4, 15.5 |
 | The stdio server and the shutdown choke point | `duet-agent` | 9.2, 9.5 |
 
-### Declared by this chunk, in `crates/duet/src/shell/view_state.rs` support
+### Declared by this chunk, in `crates/bc_app/duet/lang_rust/src/shell/view_state.rs` support
 
 `ProjectView` is the app-side view of the persisted state. Chunk K6 writes `ViewStateStore`; this
 chunk writes `ProjectView` and the round-trip test, which architecture section 10.2 states.
@@ -496,11 +496,11 @@ impl ProjectView {
 
 ## Steps
 
-1. Read `crates/duet/src/main.rs`, `crates/duet/src/app.rs` and `crates/duet/Cargo.toml`. Confirm
+1. Read `crates/bc_app/duet/lang_rust/src/main.rs`, `crates/bc_app/duet/lang_rust/src/app.rs` and `crates/bc_app/duet/lang_rust/Cargo.toml`. Confirm
    that `main.rs` holds the four functions named above and that `app.rs` holds the counter skeleton.
    Confirm that the manifest already carries `gpui-kit`, `tracing` and `tracing-subscriber`, and the
    `gpui-kit` `test-support` dev-dependency. Stop and report a discrepancy.
-2. Add the internal `{ workspace = true }` entries to `crates/duet/Cargo.toml`: `duet-time`,
+2. Add the internal `{ workspace = true }` entries to `crates/bc_app/duet/lang_rust/Cargo.toml`: `duet-time`,
    `duet-dsp`, `duet-score`, `duet-session`, `duet-command`, `duet-engrave`, `duet-analysis`,
    `duet-core`, `duet-agent`. Add the third-party entries this chunk first uses: `clap`,
    `arrayvec`, `async-channel`, `futures`, `tokio`. Architecture section 1.2 lists exactly those for
@@ -568,7 +568,7 @@ impl ProjectView {
     no subcommand opens the window, `duet mcp` and `duet serve` open a bundle with the dummy backend
     and never call `gpui_kit::application()`, and `duet <verb>` takes the writer lock and applies the
     verb to the files. `main` returns `std::process::ExitCode`.
-22. Delete `crates/duet/src/app.rs` and its `mod app;` line.
+22. Delete `crates/bc_app/duet/lang_rust/src/app.rs` and its `mod app;` line.
 23. Write the accessibility work of product story X-14 and design contract section 9: a focus ring on
     every focusable element, a keyboard path to every top-bar group and every overflow item, the
     contrast floor check inside `DuetTokens::resolve`, a `reduce_motion` branch on every animated
@@ -636,7 +636,7 @@ owns items 6 and 12.
 2. `cargo nextest run -p duet --no-tests=fail` passes.
 3. `cargo clippy -p duet --all-targets -- -D warnings` prints no warning.
 4. `cargo build --workspace` leaves `Cargo.lock` unchanged after the commit.
-5. `git status` shows `crates/duet/src/app.rs` as deleted.
+5. `git status` shows `crates/bc_app/duet/lang_rust/src/app.rs` as deleted.
 6. One commit on a branch named `chunk/k1-application-shell`. The native git hook runs
    `scripts/dod.sh`. Quote the command output before any claim of success, per the
    `verification-before-completion` skill.
@@ -648,7 +648,8 @@ owns items 6 and 12.
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

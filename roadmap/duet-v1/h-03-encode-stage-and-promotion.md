@@ -3,10 +3,10 @@ id: H3
 line: H
 depends_on: [H2, N3]
 write_scope:
-  - crates/duet-export/src/encode/wav.rs
-  - crates/duet-export/src/encode/flac.rs
-  - crates/duet-export/src/encode/promote.rs
-  - crates/duet-export/Cargo.toml
+  - crates/bc_audio/duet-export/lang_rust/src/encode/wav.rs
+  - crates/bc_audio/duet-export/lang_rust/src/encode/flac.rs
+  - crates/bc_audio/duet-export/lang_rust/src/encode/promote.rs
+  - crates/bc_audio/duet-export/lang_rust/Cargo.toml
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-export -E 'test(encode_stage)' --no-tests=fail passes; commit SHA on a branch chunk/h3-encode-stage-and-promotion"
@@ -20,10 +20,10 @@ Link `N3 before H3` of section 13.4 states the reason: the encode stage calls th
 
 ## Files
 
-- `crates/duet-export/src/encode/wav.rs` — modify. Chunk H1 created the stub.
-- `crates/duet-export/src/encode/flac.rs` — modify.
-- `crates/duet-export/src/encode/promote.rs` — modify.
-- `crates/duet-export/Cargo.toml` — modify, when this chunk adds an entry the manifest does not hold.
+- `crates/bc_audio/duet-export/lang_rust/src/encode/wav.rs` — modify. Chunk H1 created the stub.
+- `crates/bc_audio/duet-export/lang_rust/src/encode/flac.rs` — modify.
+- `crates/bc_audio/duet-export/lang_rust/src/encode/promote.rs` — modify.
+- `crates/bc_audio/duet-export/lang_rust/Cargo.toml` — modify, when this chunk adds an entry the manifest does not hold.
 - `Cargo.lock` — modify. Commit it in the same commit as the manifest (SM5).
 
 ## Types and signatures
@@ -115,8 +115,8 @@ pub enum ExportError {
 
 ## Steps
 
-1. Read every file of the write scope and `crates/duet-export/Cargo.toml`. Confirm that chunk H1 left each one a stub, that chunk H2 wrote the two passes, and that chunk N3 wrote the FLAC encoder and the decode path. Report a discrepancy and stop.
-2. Confirm that `crates/duet-export/Cargo.toml` already holds the `duet-media` entry chunk H1 added. Add no format crate: `duet-export` names none. When the manifest needs a new entry, add it as `{ workspace = true }`, run `cargo build --workspace`, and keep `Cargo.lock` for the same commit; when it needs none, leave both files unchanged and say so in the commit message.
+1. Read every file of the write scope and `crates/bc_audio/duet-export/lang_rust/Cargo.toml`. Confirm that chunk H1 left each one a stub, that chunk H2 wrote the two passes, and that chunk N3 wrote the FLAC encoder and the decode path. Report a discrepancy and stop.
+2. Confirm that `crates/bc_audio/duet-export/lang_rust/Cargo.toml` already holds the `duet-media` entry chunk H1 added. Add no format crate: `duet-export` names none. When the manifest needs a new entry, add it as `{ workspace = true }`, run `cargo build --workspace`, and keep `Cargo.lock` for the same commit; when it needs none, leave both files unchanged and say so in the commit message.
 3. Write the failing test `encode_stage_writes_a_wav_under_the_limit` in `src/encode/wav.rs`. Run `cargo nextest run -p duet-export -E 'test(encode_stage)' --no-tests=fail` and confirm that it fails to compile.
 4. Write `decide_container` in `src/encode/promote.rs`, with the predicted size `frames * channels * bytes_per_sample + 4096` and the B67 threshold. It runs before the first write. It returns `ExportError::FormatMismatch` for FLAC with `SampleFormat::Float32`.
 5. Write the WAV stage in `src/encode/wav.rs`. It applies the dither step for an integer target, writes through `duet-media`, and uses the container `decide_container` chose. Run the test and confirm that it passes.
@@ -153,7 +153,7 @@ All tests of this chunk are unit tests in a `#[cfg(test)] mod tests` at the bott
 2. `cargo nextest run -p duet-export --no-tests=fail` passes.
 3. `cargo clippy -p duet-export --all-targets -- -D warnings` prints nothing.
 4. `cargo machete` reports no unused dependency of `duet-export`, and the manifest names no audio format crate.
-5. One commit on the branch `chunk/h3-encode-stage-and-promotion` passes the native git hook. When the commit changes `crates/duet-export/Cargo.toml`, it carries `Cargo.lock` with it.
+5. One commit on the branch `chunk/h3-encode-stage-and-promotion` passes the native git hook. When the commit changes `crates/bc_audio/duet-export/lang_rust/Cargo.toml`, it carries `Cargo.lock` with it.
 
 ## Constraints
 
@@ -162,7 +162,8 @@ All tests of this chunk are unit tests in a `#[cfg(test)] mod tests` at the bott
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

@@ -3,21 +3,21 @@ id: T4
 line: trunk
 depends_on: [M3, T2, T3]
 write_scope:
-  - crates/duet-command/Cargo.toml
-  - crates/duet-command/src/lib.rs
-  - crates/duet-command/src/verb.rs
-  - crates/duet-command/src/outcome.rs
-  - crates/duet-command/src/request.rs
-  - crates/duet-command/src/event.rs
-  - crates/duet-command/src/snapshot.rs
-  - crates/duet-command/src/view.rs
-  - crates/duet-command/src/document.rs
-  - crates/duet-command/src/fault.rs
-  - crates/duet-command/src/midi.rs
-  - crates/duet-command/src/recent.rs
-  - crates/duet-command/src/export.rs
-  - crates/duet-command/src/error.rs
-  - crates/duet-command/tests/vocabulary.rs
+  - crates/bc_document/duet-command/lang_rust/Cargo.toml
+  - crates/bc_document/duet-command/lang_rust/src/lib.rs
+  - crates/bc_document/duet-command/lang_rust/src/verb.rs
+  - crates/bc_document/duet-command/lang_rust/src/outcome.rs
+  - crates/bc_document/duet-command/lang_rust/src/request.rs
+  - crates/bc_document/duet-command/lang_rust/src/event.rs
+  - crates/bc_document/duet-command/lang_rust/src/snapshot.rs
+  - crates/bc_document/duet-command/lang_rust/src/view.rs
+  - crates/bc_document/duet-command/lang_rust/src/document.rs
+  - crates/bc_document/duet-command/lang_rust/src/fault.rs
+  - crates/bc_document/duet-command/lang_rust/src/midi.rs
+  - crates/bc_document/duet-command/lang_rust/src/recent.rs
+  - crates/bc_document/duet-command/lang_rust/src/export.rs
+  - crates/bc_document/duet-command/lang_rust/src/error.rs
+  - crates/bc_document/duet-command/lang_rust/tests/vocabulary.rs
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-command --no-tests=fail passes; cargo clippy -p duet-command --all-targets -- -D warnings is clean; commit SHA on a branch chunk/t4-command"
@@ -37,28 +37,28 @@ four impls, and the plain-data assertion. It implements architecture sections 1.
 states the goal, the write scope, and the Completion command.
 
 Section 13.4 puts `T2 and T3 before T4`, because `Verb` wraps `ScoreCommand` and `SessionCommand`.
-Chunk M3 creates the `crates/duet-command` skeleton, so the crate root and the member manifest
+Chunk M3 creates the `crates/bc_document/duet-command/lang_rust` skeleton, so the crate root and the member manifest
 already exist. Dispatch: **Duet Engineer**.
 
 ## Files
 
 | Path | Action |
 |---|---|
-| `crates/duet-command/Cargo.toml` | modify (add `[dependencies]`) |
-| `crates/duet-command/src/lib.rs` | modify (add the `mod` lines, the `pub use` lines, and the plain-data assertion) |
-| `crates/duet-command/src/verb.rs` | create |
-| `crates/duet-command/src/outcome.rs` | create |
-| `crates/duet-command/src/request.rs` | create |
-| `crates/duet-command/src/event.rs` | create |
-| `crates/duet-command/src/snapshot.rs` | create |
-| `crates/duet-command/src/view.rs` | create |
-| `crates/duet-command/src/document.rs` | create |
-| `crates/duet-command/src/fault.rs` | create |
-| `crates/duet-command/src/midi.rs` | create |
-| `crates/duet-command/src/recent.rs` | create |
-| `crates/duet-command/src/export.rs` | create |
-| `crates/duet-command/src/error.rs` | create |
-| `crates/duet-command/tests/vocabulary.rs` | create |
+| `crates/bc_document/duet-command/lang_rust/Cargo.toml` | modify (add `[dependencies]`) |
+| `crates/bc_document/duet-command/lang_rust/src/lib.rs` | modify (add the `mod` lines, the `pub use` lines, and the plain-data assertion) |
+| `crates/bc_document/duet-command/lang_rust/src/verb.rs` | create |
+| `crates/bc_document/duet-command/lang_rust/src/outcome.rs` | create |
+| `crates/bc_document/duet-command/lang_rust/src/request.rs` | create |
+| `crates/bc_document/duet-command/lang_rust/src/event.rs` | create |
+| `crates/bc_document/duet-command/lang_rust/src/snapshot.rs` | create |
+| `crates/bc_document/duet-command/lang_rust/src/view.rs` | create |
+| `crates/bc_document/duet-command/lang_rust/src/document.rs` | create |
+| `crates/bc_document/duet-command/lang_rust/src/fault.rs` | create |
+| `crates/bc_document/duet-command/lang_rust/src/midi.rs` | create |
+| `crates/bc_document/duet-command/lang_rust/src/recent.rs` | create |
+| `crates/bc_document/duet-command/lang_rust/src/export.rs` | create |
+| `crates/bc_document/duet-command/lang_rust/src/error.rs` | create |
+| `crates/bc_document/duet-command/lang_rust/tests/vocabulary.rs` | create |
 | `Cargo.lock` | modify (SM5 rule 2) |
 
 ## Types and signatures
@@ -823,18 +823,18 @@ const _: () = {
 
 ## Steps
 
-1. Read `crates/duet-command/Cargo.toml` and `crates/duet-command/src/lib.rs`. Confirm that M3
+1. Read `crates/bc_document/duet-command/lang_rust/Cargo.toml` and `crates/bc_document/duet-command/lang_rust/src/lib.rs`. Confirm that M3
    created both and that the manifest holds no `[dependencies]` section. Confirm that `duet-score`
    and `duet-session` export every type this chunk names. Report a discrepancy and stop if any one
    is false.
-2. Add the dependency entries to `crates/duet-command/Cargo.toml`. The section 1.2 row for
+2. Add the dependency entries to `crates/bc_document/duet-command/lang_rust/Cargo.toml`. The section 1.2 row for
    `duet-command` names three third-party crates, and section 1.3 gives the three internal edges.
 
    ```toml
    [dependencies]
-   duet-time = { path = "../duet-time" }
-   duet-score = { path = "../duet-score" }
-   duet-session = { path = "../duet-session" }
+   duet-time = { workspace = true }
+   duet-score = { workspace = true }
+   duet-session = { workspace = true }
    serde = { workspace = true }
    serde_json = { workspace = true }
    thiserror = { workspace = true }
@@ -876,7 +876,7 @@ const _: () = {
     `src/outcome.rs` with `VerbOutcome` and `VerbData`. `cost` and `is_user_started` each name every
     arm, because `clippy::wildcard_enum_match_arm` is denied. Add both `mod` lines. Run the same
     command. Expected result: the run passes.
-13. Write the failing `BundleDocument` tests in `crates/duet-command/tests/vocabulary.rs`. They
+13. Write the failing `BundleDocument` tests in `crates/bc_document/duet-command/lang_rust/tests/vocabulary.rs`. They
     assert that `Score`, `Session`, and `MixState` return `true` from `tracked`, that `ViewState`
     returns `false`, that each `paths` list has the same length as its `to_bytes` output, and that
     `from_bytes` of `to_bytes` returns an equal value. Run
@@ -937,7 +937,8 @@ commit lands only when every gate passes.
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

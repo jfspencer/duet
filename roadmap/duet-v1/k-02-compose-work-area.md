@@ -3,12 +3,12 @@ id: K2
 line: K
 depends_on: [K1, A1]
 write_scope:
-  - crates/duet/src/element/staff_system.rs
-  - crates/duet/src/compose/view.rs
-  - crates/duet/src/compose/caret.rs
-  - crates/duet/src/compose/menu.rs
-  - crates/duet/src/compose/duration.rs
-  - crates/duet/src/shell/toolbar_compose.rs
+  - crates/bc_app/duet/lang_rust/src/element/staff_system.rs
+  - crates/bc_app/duet/lang_rust/src/compose/view.rs
+  - crates/bc_app/duet/lang_rust/src/compose/caret.rs
+  - crates/bc_app/duet/lang_rust/src/compose/menu.rs
+  - crates/bc_app/duet/lang_rust/src/compose/duration.rs
+  - crates/bc_app/duet/lang_rust/src/shell/toolbar_compose.rs
 parallelism: independent
 completion: "cargo nextest run -p duet -E 'test(compose)' --no-tests=fail passes; cargo clippy -p duet --all-targets -- -D warnings is clean; commit SHA on a branch chunk/k2-compose-work-area"
 ---
@@ -30,12 +30,12 @@ This chunk modifies six files and creates none. SM2 gave every file to chunk K1.
 
 ## Files
 
-- `crates/duet/src/element/staff_system.rs` — modify. Chunk K1 left a documentation stub.
-- `crates/duet/src/compose/view.rs` — modify. Chunk K1 left a seam view.
-- `crates/duet/src/compose/caret.rs` — modify. Documentation stub.
-- `crates/duet/src/compose/menu.rs` — modify. Documentation stub.
-- `crates/duet/src/compose/duration.rs` — modify. Documentation stub.
-- `crates/duet/src/shell/toolbar_compose.rs` — modify. Chunk K1 left the whole `impl ModeToolbar`
+- `crates/bc_app/duet/lang_rust/src/element/staff_system.rs` — modify. Chunk K1 left a documentation stub.
+- `crates/bc_app/duet/lang_rust/src/compose/view.rs` — modify. Chunk K1 left a seam view.
+- `crates/bc_app/duet/lang_rust/src/compose/caret.rs` — modify. Documentation stub.
+- `crates/bc_app/duet/lang_rust/src/compose/menu.rs` — modify. Documentation stub.
+- `crates/bc_app/duet/lang_rust/src/compose/duration.rs` — modify. Documentation stub.
+- `crates/bc_app/duet/lang_rust/src/shell/toolbar_compose.rs` — modify. Chunk K1 left the whole `impl ModeToolbar`
   block with an empty body. This chunk replaces one `render` body and one `group_count` body, and it
   edits `top_bar.rs` NOT at all.
 
@@ -43,7 +43,7 @@ This chunk writes no member manifest and no lock file.
 
 ## Types and signatures
 
-### Declared by this chunk, in `crates/duet/src/compose/view.rs`
+### Declared by this chunk, in `crates/bc_app/duet/lang_rust/src/compose/view.rs`
 
 Copied from architecture section 15.16.
 
@@ -83,7 +83,7 @@ pub(crate) struct SystemView {
 }
 ```
 
-### Declared by this chunk, in `crates/duet/src/element/staff_system.rs`
+### Declared by this chunk, in `crates/bc_app/duet/lang_rust/src/element/staff_system.rs`
 
 Copied from architecture section 15.16.
 
@@ -93,7 +93,7 @@ Copied from architecture section 15.16.
 pub(crate) struct StaffSystem { placement: Arc<SystemPlacement>, system: SystemId }
 ```
 
-### Declared by this chunk, in `crates/duet/src/compose/duration.rs`
+### Declared by this chunk, in `crates/bc_app/duet/lang_rust/src/compose/duration.rs`
 
 Copied from architecture section 10.6.
 
@@ -286,7 +286,7 @@ A1 and chunk A4 own, and this chunk asserts the plumbing alone (section 10.7 run
    `no tests to run` line.
 2. `cargo nextest run -p duet --no-tests=fail` passes, so chunk K1's tests still pass.
 3. `cargo clippy -p duet --all-targets -- -D warnings` prints no warning.
-4. `git status` shows no change under `crates/duet/src/shell/top_bar.rs`.
+4. `git status` shows no change under `crates/bc_app/duet/lang_rust/src/shell/top_bar.rs`.
 5. One commit on a branch named `chunk/k2-compose-work-area`. The native git hook runs
    `scripts/dod.sh`.
 
@@ -297,7 +297,8 @@ A1 and chunk A4 own, and this chunk asserts the plumbing alone (section 10.7 run
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

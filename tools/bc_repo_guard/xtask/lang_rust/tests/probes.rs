@@ -3584,6 +3584,9 @@ followed by `lang_rust/` or a unit sibling"
         found
     }
 
+    /// The row floor the guard register states for the `rule-blocks` block.
+    const RULE_BLOCK_FLOOR: usize = 34;
+
     /// Every registered block of the fixture, with its two self-describing rows.
     fn placement_register() -> Vec<PlacementBlock> {
         let mut found = placement_blocks_plan();
@@ -3596,7 +3599,7 @@ followed by `lang_rust/` or a unit sibling"
             .collect();
         let ids: Vec<String> = found.iter().map(|entry| entry.id.to_owned()).collect();
         let groups: Vec<String> = ids.chunks(2).map(md_spans).collect();
-        let rows: Vec<String> = (0..33_usize)
+        let rows: Vec<String> = (0..RULE_BLOCK_FLOOR)
             .map(|index| {
                 let cell = groups
                     .get(index)
@@ -3612,7 +3615,7 @@ followed by `lang_rust/` or a unit sibling"
             }
             if entry.id == "rule-blocks" {
                 entry.body = md_table(&["Rule", "Blocks"], rows.clone());
-                entry.minimum = 33;
+                entry.minimum = RULE_BLOCK_FLOOR;
             }
         }
         found
@@ -3994,7 +3997,7 @@ suppressions, four `missing_copy_implementations` expectations, and three \
             "the placement rules find nothing: {report}"
         );
         assert!(
-            report.contains("MEMBER ROWS: 1380     MEMBER BAD: 0"),
+            report.contains("MEMBER ROWS: 1381     MEMBER BAD: 0"),
             "every row of every block names a referent: {report}"
         );
         assert!(

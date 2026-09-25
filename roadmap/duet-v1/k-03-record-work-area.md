@@ -3,14 +3,14 @@ id: K3
 line: K
 depends_on: [K2, A1, C1, C3, D3, E2, I3]
 write_scope:
-  - crates/duet/src/element/waveform_lane.rs
-  - crates/duet/src/element/playhead_layer.rs
-  - crates/duet/src/element/punch_range.rs
-  - crates/duet/src/record/view.rs
-  - crates/duet/src/record/lane.rs
-  - crates/duet/src/record/cache.rs
-  - crates/duet/src/record/controls.rs
-  - crates/duet/src/shell/toolbar_record.rs
+  - crates/bc_app/duet/lang_rust/src/element/waveform_lane.rs
+  - crates/bc_app/duet/lang_rust/src/element/playhead_layer.rs
+  - crates/bc_app/duet/lang_rust/src/element/punch_range.rs
+  - crates/bc_app/duet/lang_rust/src/record/view.rs
+  - crates/bc_app/duet/lang_rust/src/record/lane.rs
+  - crates/bc_app/duet/lang_rust/src/record/cache.rs
+  - crates/bc_app/duet/lang_rust/src/record/controls.rs
+  - crates/bc_app/duet/lang_rust/src/shell/toolbar_record.rs
 parallelism: independent
 completion: "cargo nextest run -p duet -E 'test(record_view) + test(path_cache)' --no-tests=fail passes; cargo clippy -p duet --all-targets -- -D warnings is clean; commit SHA on a branch chunk/k3-record-work-area"
 ---
@@ -30,22 +30,22 @@ This chunk modifies eight files and creates none. SM2 gave every file to chunk K
 
 ## Files
 
-- `crates/duet/src/element/waveform_lane.rs` — modify. Documentation stub.
-- `crates/duet/src/element/playhead_layer.rs` — modify. Chunk K1 left a driver seam.
-- `crates/duet/src/element/punch_range.rs` — modify. Documentation stub.
-- `crates/duet/src/record/view.rs` — modify. Chunk K1 left a seam view.
-- `crates/duet/src/record/lane.rs` — modify. Documentation stub.
-- `crates/duet/src/record/cache.rs` — modify. Documentation stub. `PathCache` is this chunk's file,
+- `crates/bc_app/duet/lang_rust/src/element/waveform_lane.rs` — modify. Documentation stub.
+- `crates/bc_app/duet/lang_rust/src/element/playhead_layer.rs` — modify. Chunk K1 left a driver seam.
+- `crates/bc_app/duet/lang_rust/src/element/punch_range.rs` — modify. Documentation stub.
+- `crates/bc_app/duet/lang_rust/src/record/view.rs` — modify. Chunk K1 left a seam view.
+- `crates/bc_app/duet/lang_rust/src/record/lane.rs` — modify. Documentation stub.
+- `crates/bc_app/duet/lang_rust/src/record/cache.rs` — modify. Documentation stub. `PathCache` is this chunk's file,
   and chunk K5 modifies no file of this chunk (section 10.5).
-- `crates/duet/src/record/controls.rs` — modify. Documentation stub.
-- `crates/duet/src/shell/toolbar_record.rs` — modify. Replace one `render` body and one
+- `crates/bc_app/duet/lang_rust/src/record/controls.rs` — modify. Documentation stub.
+- `crates/bc_app/duet/lang_rust/src/shell/toolbar_record.rs` — modify. Replace one `render` body and one
   `group_count` body. Edit `top_bar.rs` not at all.
 
 This chunk writes no member manifest and no lock file.
 
 ## Types and signatures
 
-### Declared by this chunk, in `crates/duet/src/record/view.rs` and `src/record/lane.rs`
+### Declared by this chunk, in `crates/bc_app/duet/lang_rust/src/record/view.rs` and `src/record/lane.rs`
 
 Copied from architecture section 15.16.
 
@@ -89,7 +89,7 @@ pub(crate) struct LaneView {
 }
 ```
 
-### Declared by this chunk, in `crates/duet/src/record/cache.rs`
+### Declared by this chunk, in `crates/bc_app/duet/lang_rust/src/record/cache.rs`
 
 Copied from architecture section 10.5.
 
@@ -131,7 +131,7 @@ half of B61 would be passed.
 **A miss paints nothing rather than tessellates on the frame path.** A `LaneView` that finds no
 entry draws the lane background and requests the build, and the next frame paints the wave.
 
-### Declared by this chunk, in `crates/duet/src/element/`
+### Declared by this chunk, in `crates/bc_app/duet/lang_rust/src/element/`
 
 Copied from architecture section 15.16.
 
@@ -293,8 +293,8 @@ Architecture section 10.7 rung three items 4, 5 and 7, for the Record work area.
    selects at least one test per term.
 2. `cargo nextest run -p duet --no-tests=fail` passes, so chunk K1 and chunk K2 tests still pass.
 3. `cargo clippy -p duet --all-targets -- -D warnings` prints no warning.
-4. `git status` shows no change under `crates/duet/src/shell/top_bar.rs` and no change under
-   `crates/duet/src/compose/`.
+4. `git status` shows no change under `crates/bc_app/duet/lang_rust/src/shell/top_bar.rs` and no change under
+   `crates/bc_app/duet/lang_rust/src/compose/`.
 5. One commit on a branch named `chunk/k3-record-work-area`. The native git hook runs
    `scripts/dod.sh`.
 
@@ -305,7 +305,8 @@ Architecture section 10.7 rung three items 4, 5 and 7, for the Record work area.
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

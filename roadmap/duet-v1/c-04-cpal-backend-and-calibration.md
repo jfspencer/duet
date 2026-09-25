@@ -3,11 +3,11 @@ id: C4
 line: C
 depends_on: [C3, D1, M7]
 write_scope:
-  - crates/duet-engine/src/cpal/host.rs
-  - crates/duet-engine/src/cpal/stream.rs
-  - crates/duet-engine/src/cpal/calibrate.rs
-  - crates/duet-engine/tests/alignment.rs
-  - crates/duet-engine/Cargo.toml
+  - crates/bc_audio/duet-engine/lang_rust/src/cpal/host.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/cpal/stream.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/cpal/calibrate.rs
+  - crates/bc_audio/duet-engine/lang_rust/tests/alignment.rs
+  - crates/bc_audio/duet-engine/lang_rust/Cargo.toml
   - Cargo.lock
 parallelism: independent
 completion: "macOS, on macos-26: cargo nextest run -p duet-engine -E 'test(calibration_split)' --no-tests=fail passes. Linux, on ubuntu-26.04: cargo nextest run -p duet-engine -E 'test(calibration_split) + test(host_select)' --no-tests=fail passes; commit SHA on a branch chunk/c4-cpal-backend-and-calibration"
@@ -21,11 +21,11 @@ Verify the current state of the files in the write scope; report a discrepancy a
 
 ## Files
 
-- `crates/duet-engine/src/cpal/host.rs` — modify. Chunk C1 created the stub.
-- `crates/duet-engine/src/cpal/stream.rs` — modify.
-- `crates/duet-engine/src/cpal/calibrate.rs` — modify.
-- `crates/duet-engine/tests/alignment.rs` — create. SM2 covers `src/` only, so this chunk creates the integration test file and names it in its own write scope.
-- `crates/duet-engine/Cargo.toml` — modify. Add the `cpal` entry.
+- `crates/bc_audio/duet-engine/lang_rust/src/cpal/host.rs` — modify. Chunk C1 created the stub.
+- `crates/bc_audio/duet-engine/lang_rust/src/cpal/stream.rs` — modify.
+- `crates/bc_audio/duet-engine/lang_rust/src/cpal/calibrate.rs` — modify.
+- `crates/bc_audio/duet-engine/lang_rust/tests/alignment.rs` — create. SM2 covers `src/` only, so this chunk creates the integration test file and names it in its own write scope.
+- `crates/bc_audio/duet-engine/lang_rust/Cargo.toml` — modify. Add the `cpal` entry.
 - `Cargo.lock` — modify. Commit it in the same commit as the manifest (SM5).
 
 ## Types and signatures
@@ -176,8 +176,8 @@ Link `D1 before C4` of section 13.4 states the reason for the `duet-dsp` edge: t
 
 ## Steps
 
-1. Read every file of the write scope and `crates/duet-engine/Cargo.toml`. Confirm the stubs chunk C1 created, the ring types chunk C2 wrote, and the `FaultQueue` and `EngineProcess` chunk C3 wrote. Confirm that chunk M7 has landed. Report a discrepancy and stop.
-2. Add to `crates/duet-engine/Cargo.toml` the entry `cpal = { workspace = true }`. The root pin is `cpal = { version = "0.18.2", default-features = false, features = ["pipewire"] }`, which chunk M4 wrote. Run `cargo build --workspace` on both platforms and keep `Cargo.lock` for the same commit.
+1. Read every file of the write scope and `crates/bc_audio/duet-engine/lang_rust/Cargo.toml`. Confirm the stubs chunk C1 created, the ring types chunk C2 wrote, and the `FaultQueue` and `EngineProcess` chunk C3 wrote. Confirm that chunk M7 has landed. Report a discrepancy and stop.
+2. Add to `crates/bc_audio/duet-engine/lang_rust/Cargo.toml` the entry `cpal = { workspace = true }`. The root pin is `cpal = { version = "0.18.2", default-features = false, features = ["pipewire"] }`, which chunk M4 wrote. Run `cargo build --workspace` on both platforms and keep `Cargo.lock` for the same commit.
 3. Write the failing test `calibration_split_refuses_a_round_trip_below_the_playback_part` in `src/cpal/calibrate.rs`. Run `cargo nextest run -p duet-engine -E 'test(calibration_split)' --no-tests=fail` and confirm that it fails to compile.
 4. Write `split` and `observable_only` in `src/cpal/calibrate.rs`, exactly as the declarations above. Run the test and confirm that it passes.
 5. Write the failing test `calibration_split_returns_the_two_parts`. Run it and confirm that it fails, then implement and confirm that it passes.
@@ -189,7 +189,7 @@ Link `D1 before C4` of section 13.4 states the reason for the `duet-dsp` edge: t
 11. Implement the cpal error callback under TH11: one `basedrop::Shared<FaultQueue>` clone, one `ErrorKind` classification, one `EngineFault` push, and no other value of the engine.
 12. Implement the three PipeWire host answers of the table above, including the `BufferSize::Fixed` fallback with `EngineFault::BlockSizeAdjusted` and the `BackendError::RateUnavailable` refusal.
 13. Write the `pipewire_smoke` test in `src/cpal/stream.rs`, inside a `#[cfg(test)] mod tests`. It carries `#[ignore = "needs a running PipeWire daemon; the audio-smoke.yml workflow runs it"]`. It opens one PipeWire stream through the real backend, runs one cycle, asserts `CycleOutcome::Ran`, and closes the stream. Chunk M8 writes `audio-smoke.yml`, which selects it.
-14. Write `crates/duet-engine/tests/alignment.rs`. The whole file body sits inside `#[cfg(test)] mod tests`. The test runs the dummy backend with a configured `LatencyReport`, records a synthetic impulse, commits the take, and asserts that the region position is inside B71.
+14. Write `crates/bc_audio/duet-engine/lang_rust/tests/alignment.rs`. The whole file body sits inside `#[cfg(test)] mod tests`. The test runs the dummy backend with a configured `LatencyReport`, records a synthetic impulse, commits the take, and asserts that the region position is inside B71.
 15. Run `cargo clippy -p duet-engine --all-targets -- -D warnings` on macOS and on Linux. Fix every finding in the code.
 16. Commit on the branch `chunk/c4-cpal-backend-and-calibration`. The native git hook runs `scripts/dod.sh`.
 
@@ -207,7 +207,7 @@ Link `D1 before C4` of section 13.4 states the reason for the `duet-dsp` edge: t
 | `cpal_bridge_zero_fills_a_short_input_ring` | `src/cpal/stream.rs` | Both | A cycle whose input ring holds fewer frames than `cycle.frames()` zero fills the difference and adds the frames to the shortfall run. Message: "a short input ring is zero filled and counted". |
 | `cpal_block_size_fallback_reports_the_adjustment` | `src/cpal/stream.rs` | Both | An `UnsupportedConfig` on `BufferSize::Fixed` makes the backend fall back to `BufferSize::Default` and emit `EngineFault::BlockSizeAdjusted { requested, actual }`. Message: "a refused block size falls back and reports the adjustment". |
 | `pipewire_smoke` | `src/cpal/stream.rs`, `#[ignore = "needs a running PipeWire daemon; the audio-smoke.yml workflow runs it"]` | Linux | One PipeWire stream opens through the real backend, one cycle returns `CycleOutcome::Ran`, and the stream closes. Message: "one real PipeWire cycle runs and the stream closes". |
-| `alignment` | `crates/duet-engine/tests/alignment.rs`, inside `#[cfg(test)] mod tests` | Both | With a configured dummy latency, a synthetic impulse commits to a region whose position is inside B71 of the expected frame. Message: "the committed region lands inside the B71 tolerance". |
+| `alignment` | `crates/bc_audio/duet-engine/lang_rust/tests/alignment.rs`, inside `#[cfg(test)] mod tests` | Both | With a configured dummy latency, a synthetic impulse commits to a region whose position is inside B71 of the expected frame. Message: "the committed region lands inside the B71 tolerance". |
 
 Every assert carries a message. The `MidiPresence` and `MidiStream` doubles of section 11.6 are not needed here; a test that needs a real device carries `#[ignore]` with a reason string that names the device it needs, and the gate never runs it.
 
@@ -218,7 +218,7 @@ Every assert carries a message. The `MidiPresence` and `MidiStream` doubles of s
 3. `cargo nextest run -p duet-engine --no-tests=fail` passes on both runners, and it runs no ignored test.
 4. `cargo clippy -p duet-engine --all-targets -- -D warnings` prints nothing on both platforms.
 5. `cargo machete` reports no unused dependency of `duet-engine`.
-6. One commit on the branch `chunk/c4-cpal-backend-and-calibration` passes the native git hook. The commit carries `crates/duet-engine/Cargo.toml` and `Cargo.lock` together.
+6. One commit on the branch `chunk/c4-cpal-backend-and-calibration` passes the native git hook. The commit carries `crates/bc_audio/duet-engine/lang_rust/Cargo.toml` and `Cargo.lock` together.
 
 ## Constraints
 
@@ -227,7 +227,8 @@ Every assert carries a message. The `MidiPresence` and `MidiStream` doubles of s
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

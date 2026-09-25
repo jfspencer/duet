@@ -3,12 +3,12 @@ id: X1
 line: X
 depends_on: [M4, T2, T4]
 write_scope:
-  - crates/duet-interchange/Cargo.toml
-  - crates/duet-interchange/src/lib.rs
-  - crates/duet-interchange/src/musicxml.rs
-  - crates/duet-interchange/src/smf.rs
-  - crates/duet-interchange/src/musicxml/read.rs
-  - crates/duet-interchange/src/musicxml/write.rs
+  - crates/bc_notation/duet-interchange/lang_rust/Cargo.toml
+  - crates/bc_notation/duet-interchange/lang_rust/src/lib.rs
+  - crates/bc_notation/duet-interchange/lang_rust/src/musicxml.rs
+  - crates/bc_notation/duet-interchange/lang_rust/src/smf.rs
+  - crates/bc_notation/duet-interchange/lang_rust/src/musicxml/read.rs
+  - crates/bc_notation/duet-interchange/lang_rust/src/musicxml/write.rs
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-interchange -E 'test(read_musicxml)' --no-tests=fail"
@@ -20,7 +20,7 @@ Verify the current state of the files in the write scope; report a discrepancy a
 proceeding. This chunk opens line X over the crate `duet-interchange`. The line was `B` until
 revision 10, and section 13.2 states why it is `X` now: chunk `B1`, `B2`, and `B3` collided with the
 budget ids B1, B2, and B3 of section 1.6. Chunk M4 creates the crate skeleton in phase 4, so
-`crates/duet-interchange/Cargo.toml` and `crates/duet-interchange/src/lib.rs` exist before this chunk
+`crates/bc_notation/duet-interchange/lang_rust/Cargo.toml` and `crates/bc_notation/duet-interchange/lang_rust/src/lib.rs` exist before this chunk
 starts and this chunk modifies both. Every other file of the write scope does not exist yet, and this
 chunk creates it. The chunk declares `MusicXmlImport`, `UnmappedElements`, and `InterchangeError`, and
 it reads a MusicXML document into a `Score`. It implements architecture sections 3.6, 3.7, and 15.7
@@ -35,16 +35,16 @@ canonical model.
 
 ## Files
 
-- `crates/duet-interchange/Cargo.toml` — modify. Add the `{ workspace = true }` entries this chunk
+- `crates/bc_notation/duet-interchange/lang_rust/Cargo.toml` — modify. Add the `{ workspace = true }` entries this chunk
   uses.
-- `crates/duet-interchange/src/lib.rs` — modify. Add the two `mod` lines, `UnmappedElements`, and
+- `crates/bc_notation/duet-interchange/lang_rust/src/lib.rs` — modify. Add the two `mod` lines, `UnmappedElements`, and
   `InterchangeError`.
-- `crates/duet-interchange/src/musicxml.rs` — create. The sibling file of the `musicxml/` directory,
+- `crates/bc_notation/duet-interchange/lang_rust/src/musicxml.rs` — create. The sibling file of the `musicxml/` directory,
   which `clippy::mod_module_files` requires (SM2). It holds the two `mod` lines, `MusicXmlImport`,
   `read_musicxml`, and `write_musicxml`.
-- `crates/duet-interchange/src/smf.rs` — create as a stub. Chunk X3 fills it.
-- `crates/duet-interchange/src/musicxml/read.rs` — create and fill. The streaming reader.
-- `crates/duet-interchange/src/musicxml/write.rs` — create as a stub. Chunk X2 fills it.
+- `crates/bc_notation/duet-interchange/lang_rust/src/smf.rs` — create as a stub. Chunk X3 fills it.
+- `crates/bc_notation/duet-interchange/lang_rust/src/musicxml/read.rs` — create and fill. The streaming reader.
+- `crates/bc_notation/duet-interchange/lang_rust/src/musicxml/write.rs` — create as a stub. Chunk X2 fills it.
 - `Cargo.lock` — modify. SM5 rule 2 puts it in the write scope of every chunk that writes a member
   manifest.
 
@@ -53,7 +53,7 @@ canonical model.
 ### Manifest
 
 ```toml
-# crates/duet-interchange/Cargo.toml, [dependencies]
+# crates/bc_notation/duet-interchange/lang_rust/Cargo.toml, [dependencies]
 duet-time = { workspace = true }
 duet-score = { workspace = true }
 duet-command = { workspace = true }
@@ -188,7 +188,7 @@ Section 3.6 property 4 gives the warning rule: a reader keeps an unknown key in 
 
 ## Steps
 
-1. Read `crates/duet-interchange/Cargo.toml` and `crates/duet-interchange/src/lib.rs`. Confirm that
+1. Read `crates/bc_notation/duet-interchange/lang_rust/Cargo.toml` and `crates/bc_notation/duet-interchange/lang_rust/src/lib.rs`. Confirm that
    chunk M4 created both, that the manifest carries `[lints] workspace = true`, a `description`, and
    no `[dependencies]` section, and that `lib.rs` carries the `//!` crate documentation and
    `#![forbid(unsafe_code)]`. Report a discrepancy and stop if the state differs.
@@ -199,7 +199,7 @@ Section 3.6 property 4 gives the warning rule: a reader keeps an unknown key in 
    `musicxml/write.rs` at one `//!` line each, except for the `write_musicxml` signature, which
    `musicxml.rs` declares and which answers `InterchangeError::Unsupported` until chunk X2.
 4. Add the two `mod` lines to `src/lib.rs` and declare `UnmappedElements` and `InterchangeError`.
-5. Add the five `{ workspace = true }` entries to `crates/duet-interchange/Cargo.toml`. Run
+5. Add the five `{ workspace = true }` entries to `crates/bc_notation/duet-interchange/lang_rust/Cargo.toml`. Run
    `cargo build --workspace`, which settles `Cargo.lock` (SM5 rule 3).
 6. Write the failing test `read_musicxml_builds_a_one_part_score` in `src/musicxml/read.rs`, inside a
    `#[cfg(test)] mod tests`. Section 13.2 gives this chunk no `tests/` file, so every test of this
@@ -229,7 +229,7 @@ chunk no `tests/` file. Every assert carries a message. Every fixture document i
 the test module, so the crate stays pure and opens no file; section 1.4 names `duet-interchange` a
 pure crate for that reason.
 
-`crates/duet-interchange/src/musicxml/read.rs`
+`crates/bc_notation/duet-interchange/lang_rust/src/musicxml/read.rs`
 
 - `read_musicxml_builds_a_one_part_score` — reads a document with one part, one measure, and four
   quarter notes, and asserts one `Part`, one `Staff`, one `Measure`, and four `Note` values.
@@ -290,9 +290,10 @@ such as `feat(interchange): read MusicXML into the score, with a lossless unmapp
   inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are
   required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every
   `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the
   root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no
   pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with
   Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this

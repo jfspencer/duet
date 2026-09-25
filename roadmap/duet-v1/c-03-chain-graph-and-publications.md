@@ -3,16 +3,16 @@ id: C3
 line: C
 depends_on: [C2, D2, D3]
 write_scope:
-  - crates/duet-engine/src/chain/topology.rs
-  - crates/duet-engine/src/chain/state.rs
-  - crates/duet-engine/src/chain/graph.rs
-  - crates/duet-engine/src/chain/migrate.rs
-  - crates/duet-engine/src/chain/configure.rs
-  - crates/duet-engine/src/mix/strip.rs
-  - crates/duet-engine/src/mix/bus.rs
-  - crates/duet-engine/src/mix/solo.rs
-  - crates/duet-engine/tests/soak.rs
-  - crates/duet-engine/Cargo.toml
+  - crates/bc_audio/duet-engine/lang_rust/src/chain/topology.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/chain/state.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/chain/graph.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/chain/migrate.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/chain/configure.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/mix/strip.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/mix/bus.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/mix/solo.rs
+  - crates/bc_audio/duet-engine/lang_rust/tests/soak.rs
+  - crates/bc_audio/duet-engine/lang_rust/Cargo.toml
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-engine -E 'test(chain_migrate) + test(solo_in_place) + test(slot_meters) + test(fault_run) + test(handoff_stop) + test(port_gone_silence)' --no-tests=fail passes; commit SHA on a branch chunk/c3-chain-graph-and-publications"
@@ -24,20 +24,20 @@ Verify the current state of the files in the write scope; report a discrepancy a
 
 **Five selected tests and not two.** This chunk names the most mechanisms of any chunk of the plan, and SM3 asks one command to fail before the chunk and pass after it.
 
-**This chunk owns item 14 of architecture section 10.7 rung three.** Rung three holds fourteen numbered behaviours. Items 1 to 13 are user-interface behaviours and the chunks of line K write them. Item 14 is the generation skew window: it pushes a handoff at generation N plus 1, runs one audio cycle with the published `GraphChain` still at N, and asserts one `EngineFault::HandoffGenerationSkew { published, adopted }` and no panic; it then publishes N plus 1, runs a second cycle, and asserts no second fault and a graph that runs every strip. The mechanism is the engine handoff and no view takes part, so the test lives here, in `crates/duet-engine/src/chain/graph.rs`, and `graph_runner_reports_generation_skew_once` is its name. The count word of rung three said twelve until this revision, and the chunk author of line K reported the difference.
+**This chunk owns item 14 of architecture section 10.7 rung three.** Rung three holds fourteen numbered behaviours. Items 1 to 13 are user-interface behaviours and the chunks of line K write them. Item 14 is the generation skew window: it pushes a handoff at generation N plus 1, runs one audio cycle with the published `GraphChain` still at N, and asserts one `EngineFault::HandoffGenerationSkew { published, adopted }` and no panic; it then publishes N plus 1, runs a second cycle, and asserts no second fault and a graph that runs every strip. The mechanism is the engine handoff and no view takes part, so the test lives here, in `crates/bc_audio/duet-engine/lang_rust/src/chain/graph.rs`, and `graph_runner_reports_generation_skew_once` is its name. The count word of rung three said twelve until this revision, and the chunk author of line K reported the difference.
 
 ## Files
 
-- `crates/duet-engine/src/chain/topology.rs` — modify. Chunk C1 created the stub.
-- `crates/duet-engine/src/chain/state.rs` — modify.
-- `crates/duet-engine/src/chain/graph.rs` — modify.
-- `crates/duet-engine/src/chain/migrate.rs` — modify.
-- `crates/duet-engine/src/chain/configure.rs` — modify.
-- `crates/duet-engine/src/mix/strip.rs` — modify.
-- `crates/duet-engine/src/mix/bus.rs` — modify.
-- `crates/duet-engine/src/mix/solo.rs` — modify.
-- `crates/duet-engine/tests/soak.rs` — create. SM2 covers `src/` only, so the chunk that writes an integration test creates the file and names it in its own write scope.
-- `crates/duet-engine/Cargo.toml` — modify.
+- `crates/bc_audio/duet-engine/lang_rust/src/chain/topology.rs` — modify. Chunk C1 created the stub.
+- `crates/bc_audio/duet-engine/lang_rust/src/chain/state.rs` — modify.
+- `crates/bc_audio/duet-engine/lang_rust/src/chain/graph.rs` — modify.
+- `crates/bc_audio/duet-engine/lang_rust/src/chain/migrate.rs` — modify.
+- `crates/bc_audio/duet-engine/lang_rust/src/chain/configure.rs` — modify.
+- `crates/bc_audio/duet-engine/lang_rust/src/mix/strip.rs` — modify.
+- `crates/bc_audio/duet-engine/lang_rust/src/mix/bus.rs` — modify.
+- `crates/bc_audio/duet-engine/lang_rust/src/mix/solo.rs` — modify.
+- `crates/bc_audio/duet-engine/lang_rust/tests/soak.rs` — create. SM2 covers `src/` only, so the chunk that writes an integration test creates the file and names it in its own write scope.
+- `crates/bc_audio/duet-engine/lang_rust/Cargo.toml` — modify.
 - `Cargo.lock` — modify. Commit it in the same commit as the manifest (SM5).
 
 ## Types and signatures
@@ -418,8 +418,8 @@ pub struct AudibleState { explicit_mute: bool, implicit_mute: bool }
 
 ## Steps
 
-1. Read every file of the write scope and `crates/duet-engine/Cargo.toml`. Confirm the stubs chunk C1 created and the ring and disk types chunk C2 wrote. Report a discrepancy and stop.
-2. Add to `crates/duet-engine/Cargo.toml` any entry this chunk adds that the manifest does not hold, each `{ workspace = true }`. Run `cargo build --workspace` and keep `Cargo.lock` for the same commit.
+1. Read every file of the write scope and `crates/bc_audio/duet-engine/lang_rust/Cargo.toml`. Confirm the stubs chunk C1 created and the ring and disk types chunk C2 wrote. Report a discrepancy and stop.
+2. Add to `crates/bc_audio/duet-engine/lang_rust/Cargo.toml` any entry this chunk adds that the manifest does not hold, each `{ workspace = true }`. Run `cargo build --workspace` and keep `Cargo.lock` for the same commit.
 3. Write the failing test `chain_migrate_keeps_the_state_of_a_kept_chain` in `src/chain/migrate.rs`. Run `cargo nextest run -p duet-engine -E 'test(chain_migrate)' --no-tests=fail` and confirm that it fails to compile.
 4. Write `ChainTopology`, `SlotSpec` and `SendSpec` in `src/chain/topology.rs`, and `ChainState`, `FaultRun`, `ChainIndex`, `ChainSource`, `ChainSlot`, `ChainSetHandle`, `PoolHandle`, `HandoffReader` and `GraphHandoff` in `src/chain/state.rs`, with the declarations above.
 5. Write `migrate_state` in `src/chain/migrate.rs` as the four cases of section 5.5 rules 1 to 4, plus rule 0, the per-position move. For each `Keep(k)` position the audio thread writes `new[i].state = old[k].state.take()`, which MOVES the kept state and leaves `None` behind. Nothing is copied, nothing is allocated, nothing is freed. Run the test and confirm that it passes.
@@ -440,7 +440,7 @@ pub struct AudibleState { explicit_mute: bool, implicit_mute: bool }
 20. Write `MeterSnapshot`, `SlotMeterSnapshot` and `SlotMeterSnapshot::silent` in `src/mix/strip.rs`, and implement the three audio publications: the runner writes `transport_out`, `meters` and `slot_meters` once per cycle through the `triple_buffer::Input` ends `EngineProcess` holds. Every published type is `Copy` plain data with fixed-size fields and no heap field (TH9). Run the test and confirm that it passes.
 21. Write the failing test `solo_in_place_mutes_every_strip_that_feeds_nothing_soloed`. Run `cargo nextest run -p duet-engine -E 'test(solo_in_place)' --no-tests=fail` and confirm that it fails.
 22. Write `AudibleState` in `src/mix/solo.rs` and the three rules of section 7.1, computed once per topology change and off the audio thread. Write the bus runtime in `src/mix/bus.rs`: a bus is a strip with no disk reader and no disk writer, and the master is a bus with a true-peak meter. Run the test and confirm that it passes.
-23. Write `crates/duet-engine/tests/soak.rs`. The whole file body sits inside `#[cfg(test)] mod tests`. The test is named `soak`, it carries `#[ignore = "long run; the nightly soak.yml workflow runs it"]`, and it runs the dummy backend in `Freewheel` for B77 cycles with a varying block size. It asserts zero `PlaybackStarved` and zero `CaptureOverflow` outcomes, and it records the longest media read and the longest media append of the run against B117 and B118.
+23. Write `crates/bc_audio/duet-engine/lang_rust/tests/soak.rs`. The whole file body sits inside `#[cfg(test)] mod tests`. The test is named `soak`, it carries `#[ignore = "long run; the nightly soak.yml workflow runs it"]`, and it runs the dummy backend in `Freewheel` for B77 cycles with a varying block size. It asserts zero `PlaybackStarved` and zero `CaptureOverflow` outcomes, and it records the longest media read and the longest media append of the run against B117 and B118.
 24. Read every `zip` of the crate against the form-1 rule of section 5.11: the form is legal only where a type already proves the two slices equal, and the module that writes it names the proof in a doc comment beside it.
 25. Run `cargo clippy -p duet-engine --all-targets -- -D warnings`. Fix every finding in the code.
 26. Commit on the branch `chunk/c3-chain-graph-and-publications`. The native git hook runs `scripts/dod.sh`.
@@ -463,7 +463,7 @@ pub struct AudibleState { explicit_mute: bool, implicit_mute: bool }
 | `configure_refuses_before_it_allocates` | `src/chain/configure.rs` | A request past B86, past B90, past B57 or past a pool class answers the matching `ConfigError` and `ChainLayout::pairs` does not move. Message: "configure refuses on arithmetic before it allocates a byte". |
 | `port_gone_silence_clears_the_bitset_in_one_cycle` | `src/chain/graph.rs` | A `MidiMessage::PortGone` record on the B32 ring makes the cycle that reads it synthesize a note-off for every set bit of that `BoundPort` and clear the bitset. Message: "a departed port is silent inside one cycle". |
 | `graph_runner_reports_generation_skew_once` | `src/chain/graph.rs` | A handoff adopted against an earlier published topology reports `EngineFault::HandoffGenerationSkew { published, adopted }` once, and the next cycle agrees and runs every strip. **This is item 14 of architecture section 10.7 rung three**, which this chunk owns. Message: "a generation skew costs one cycle and one fault". |
-| `soak` | `crates/duet-engine/tests/soak.rs`, inside `#[cfg(test)] mod tests`, `#[ignore = "long run; the nightly soak.yml workflow runs it"]` | Over B77 cycles of the dummy backend in `Freewheel` with a varying block, zero `PlaybackStarved` and zero `CaptureOverflow` outcomes occur, and the longest media read and append sit inside B117 and B118. Message: "the soak run starves no cycle and overruns no capture". |
+| `soak` | `crates/bc_audio/duet-engine/lang_rust/tests/soak.rs`, inside `#[cfg(test)] mod tests`, `#[ignore = "long run; the nightly soak.yml workflow runs it"]` | Over B77 cycles of the dummy backend in `Freewheel` with a varying block, zero `PlaybackStarved` and zero `CaptureOverflow` outcomes occur, and the longest media read and append sit inside B117 and B118. Message: "the soak run starves no cycle and overruns no capture". |
 
 Every assert carries a message. Every test builds its System Under Test with one `fn sut(...)` that takes the topology, the channel ends and the backend double as explicit arguments. No test shares mutable state, and no test sleeps.
 
@@ -474,7 +474,7 @@ Every assert carries a message. Every test builds its System Under Test with one
 3. `cargo nextest run -p duet-engine --run-ignored ignored-only -E 'test(soak)' --no-tests=fail` passes on a developer machine. The nightly `soak.yml` workflow, which chunk M7 writes, runs the same command.
 4. `cargo clippy -p duet-engine --all-targets -- -D warnings` prints nothing.
 5. `cargo doc -p duet-engine` is clean with `-D warnings`.
-6. One commit on the branch `chunk/c3-chain-graph-and-publications` passes the native git hook. The commit carries `crates/duet-engine/Cargo.toml` and `Cargo.lock` together.
+6. One commit on the branch `chunk/c3-chain-graph-and-publications` passes the native git hook. The commit carries `crates/bc_audio/duet-engine/lang_rust/Cargo.toml` and `Cargo.lock` together.
 
 ## Constraints
 
@@ -483,7 +483,8 @@ Every assert carries a message. Every test builds its System Under Test with one
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

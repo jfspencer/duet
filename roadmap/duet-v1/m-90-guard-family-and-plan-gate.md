@@ -3,13 +3,13 @@ id: M90
 line: M
 depends_on: [M0, T1]
 write_scope:
-  - tools/xtask/src/main.rs
-  - tools/xtask/src/check_plan_graph.rs
-  - tools/xtask/src/check_placement.rs
-  - tools/xtask/src/check_roster.rs
-  - tools/xtask/src/check_conversions.rs
-  - tools/xtask/src/check_closure.rs
-  - tools/xtask/tests/probes.rs
+  - tools/bc_repo_guard/xtask/lang_rust/src/main.rs
+  - tools/bc_repo_guard/xtask/lang_rust/src/check_plan_graph.rs
+  - tools/bc_repo_guard/xtask/lang_rust/src/check_placement.rs
+  - tools/bc_repo_guard/xtask/lang_rust/src/check_roster.rs
+  - tools/bc_repo_guard/xtask/lang_rust/src/check_conversions.rs
+  - tools/bc_repo_guard/xtask/lang_rust/src/check_closure.rs
+  - tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs
   - scripts/dod.sh
   - typos.toml
   - .github/workflows/ci.yml
@@ -34,8 +34,8 @@ bullet, and the `plan-lint` rows), ADR-0009 decisions 2 and 3, and ADR-0010 in f
 
 **This chunk runs AFTER chunk M91 and before every line chunk of phase 1.** Section 13.3 prints the
 order and section 13.0 rule SM1 states the rule. Step 20 below adds rule CG9, which compares each
-Appendix B.1 reason cell with the `reason =` string of `crates/duet-time/src/convert.rs`, and M91 is
-the chunk that repairs those strings. **If `crates/duet-time/src/convert.rs` still holds the scale
+Appendix B.1 reason cell with the `reason =` string of `crates/bc_time/duet-time/lang_rust/src/convert.rs`, and M91 is
+the chunk that repairs those strings. **If `crates/bc_time/duet-time/lang_rust/src/convert.rs` still holds the scale
 factor 2^23 - 1 when this chunk starts, M91 has not landed: report it and stop.**
 
 **The Orchestrator executes this chunk directly.** `scripts/dod.sh`, `typos.toml`, and
@@ -51,7 +51,7 @@ commit (rule 2). `roadmap/duet-v1/architecture.md` and `roadmap/duet-v1/tools/co
 take the registration sub-items b, c, d and e of step 21 alone (rule 4): the `rows>=` marker, the
 guard-block row, the two section 1.7 index cells, and the prototype rule token are each refused on
 their own by PG27, PG27b, PG29 or PG39, and they pass only in the commit that also lands sub-item a,
-which bumps the `DATA_BLOCKS` register of `tools/xtask/src/check_placement.rs`. **The Architect
+which bumps the `DATA_BLOCKS` register of `tools/bc_repo_guard/xtask/lang_rust/src/check_placement.rs`. **The Architect
 wrote every one of those texts; step 21 quotes them character for character.** This chunk edits no
 chunk brief and no other word of `architecture.md`.
 
@@ -59,13 +59,13 @@ chunk brief and no other word of `architecture.md`.
 
 | Path | Action |
 |---|---|
-| `tools/xtask/src/check_plan_graph.rs` | modify (`MANIFEST_NOTE` and the two `collect_chunks` paths) |
-| `tools/xtask/src/check_placement.rs` | modify (the empty-candidate path of `run`) |
-| `tools/xtask/src/check_roster.rs` | modify (three verdict lines and the `--generate-only` half) |
-| `tools/xtask/src/check_conversions.rs` | modify (rule CG9) |
-| `tools/xtask/src/check_closure.rs` | modify (rule CL1d) |
-| `tools/xtask/src/main.rs` | modify (the `CheckRoster` flag and the `CheckConversions` `--appendix` argument) |
-| `tools/xtask/tests/probes.rs` | modify (three vocabulary probes, the roster probe group, the job-line probe, the CG9 probes, the CL1d probes) |
+| `tools/bc_repo_guard/xtask/lang_rust/src/check_plan_graph.rs` | modify (`MANIFEST_NOTE` and the two `collect_chunks` paths) |
+| `tools/bc_repo_guard/xtask/lang_rust/src/check_placement.rs` | modify (the empty-candidate path of `run`) |
+| `tools/bc_repo_guard/xtask/lang_rust/src/check_roster.rs` | modify (three verdict lines and the `--generate-only` half) |
+| `tools/bc_repo_guard/xtask/lang_rust/src/check_conversions.rs` | modify (rule CG9) |
+| `tools/bc_repo_guard/xtask/lang_rust/src/check_closure.rs` | modify (rule CL1d) |
+| `tools/bc_repo_guard/xtask/lang_rust/src/main.rs` | modify (the `CheckRoster` flag and the `CheckConversions` `--appendix` argument) |
+| `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs` | modify (three vocabulary probes, the roster probe group, the job-line probe, the CG9 probes, the CL1d probes) |
 | `scripts/dod.sh` | modify (the `typos` step, the new plan step, and the `--appendix` condition on the `converts` step) |
 | `typos.toml` | **modify.** The file EXISTS at the repository root today, at 244 bytes: TWO comment lines, a `[files] extend-exclude` list of four entries, and a `[default.extend-words]` table that holds `gpui` and `heed`. Step 13 replaces the whole content and keeps both of those entries |
 | `.github/workflows/ci.yml` | modify (the `plan-lint` job) |
@@ -75,7 +75,7 @@ chunk brief and no other word of `architecture.md`.
 
 ## Types and signatures
 
-The chunk adds one field to the roster command of `tools/xtask/src/main.rs`.
+The chunk adds one field to the roster command of `tools/bc_repo_guard/xtask/lang_rust/src/main.rs`.
 
 ```rust
     /// Compile the section 15 roster in a scratch workspace outside the
@@ -105,20 +105,20 @@ pub(crate) fn run(
 ```
 
 Every other signature this chunk touches keeps its current shape. `Outcome` stays the three-arm enum
-of `tools/xtask/src/main.rs`.
+of `tools/bc_repo_guard/xtask/lang_rust/src/main.rs`.
 
 ## Steps
 
-1. Read `tools/xtask/src/check_plan_graph.rs`, `tools/xtask/src/check_placement.rs`,
-   `tools/xtask/src/check_roster.rs`, `tools/xtask/src/check_conversions.rs`,
-   `tools/xtask/src/check_closure.rs`, `scripts/dod.sh`, `typos.toml`,
+1. Read `tools/bc_repo_guard/xtask/lang_rust/src/check_plan_graph.rs`, `tools/bc_repo_guard/xtask/lang_rust/src/check_placement.rs`,
+   `tools/bc_repo_guard/xtask/lang_rust/src/check_roster.rs`, `tools/bc_repo_guard/xtask/lang_rust/src/check_conversions.rs`,
+   `tools/bc_repo_guard/xtask/lang_rust/src/check_closure.rs`, `scripts/dod.sh`, `typos.toml`,
    `.github/workflows/ci.yml`, `roadmap/duet-v1/tools/conversion_check.py`, and
-   `crates/duet-time/src/convert.rs`. Confirm that each file holds the state this chunk describes.
-   **Confirm in particular that `crates/duet-time/src/convert.rs` holds the scale factor
+   `crates/bc_time/duet-time/lang_rust/src/convert.rs`. Confirm that each file holds the state this chunk describes.
+   **Confirm in particular that `crates/bc_time/duet-time/lang_rust/src/convert.rs` holds the scale factor
    `8_388_608.0` for `UNIT_TO_I24_SCALE`**, which means chunk M91 has landed. Report a discrepancy
    and stop.
 
-2. Repair `MANIFEST_NOTE` in `tools/xtask/src/check_plan_graph.rs`. It still credits the Python
+2. Repair `MANIFEST_NOTE` in `tools/bc_repo_guard/xtask/lang_rust/src/check_plan_graph.rs`. It still credits the Python
    prototype, which no longer generates the file (chunk M0 report, R3-N3). The new value is exactly:
 
    ```rust
@@ -127,14 +127,14 @@ of `tools/xtask/src/main.rs`.
    ```
 
 3. Write the failing probe for the duplicate chunk id. Add it to the plan-graph group of
-   `tools/xtask/tests/probes.rs`, beside `plan_graph_unknown_dependency_is_a_finding`. It builds two
+   `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs`, beside `plan_graph_unknown_dependency_is_a_finding`. It builds two
    chunk files that state one id, runs the guard, and asserts exit 1 and a report line that opens
    `FINDING: duplicate chunk id`. Name it
    `plan_graph_vocabulary_duplicate_chunk_id_is_a_finding`. Run
    `cargo nextest run -p xtask --test probes -E 'test(vocabulary)' --no-tests=fail` and confirm that
    it fails.
 
-4. Repair the duplicate-id path of `collect_chunks` in `tools/xtask/src/check_plan_graph.rs`. The
+4. Repair the duplicate-id path of `collect_chunks` in `tools/bc_repo_guard/xtask/lang_rust/src/check_plan_graph.rs`. The
    guard prints `FINDING: duplicate chunk id {id} in {name} and {first}` and returns
    `Outcome::Findings`. The exit code does not change; only the word does. Architecture section 1.9
    states the decision: rule 1 of this guard is that every id is unique, so two files that state one
@@ -157,12 +157,12 @@ of `tools/xtask/src/main.rs`.
    `placement_run` already does, so the probe reads no file of this repository. Run the filter and
    confirm that it fails.
 
-8. Repair the empty-candidate path of `run` in `tools/xtask/src/check_placement.rs`. It returns
+8. Repair the empty-candidate path of `run` in `tools/bc_repo_guard/xtask/lang_rust/src/check_placement.rs`. It returns
    `Outcome::FailClosed` and keeps its line unchanged. The line says the PARSE is broken, so the run
    measured nothing about the document and exit 1 would report a breach it never made. Run the probe
    and confirm that it passes.
 
-9. Repair the three verdict lines of `report` in `tools/xtask/src/check_roster.rs`. Each one keeps
+9. Repair the three verdict lines of `report` in `tools/bc_repo_guard/xtask/lang_rust/src/check_roster.rs`. Each one keeps
    its text after the first word and returns `Outcome::Findings` as it does today. The three are the
    roster below the section 1.5 denominator, the mixed impl block, and the impl count that differs
    from the `impl-sites` block.
@@ -182,17 +182,17 @@ of `tools/xtask/src/main.rs`.
    Architecture section 1.9 records all three, in the PG25 row, with these exact texts. A text that
    differs from the row is a plan defect that returns to the Architect.
 
-10. Add the `--generate-only` flag to `Command::CheckRoster` in `tools/xtask/src/main.rs` and pass
+10. Add the `--generate-only` flag to `Command::CheckRoster` in `tools/bc_repo_guard/xtask/lang_rust/src/main.rs` and pass
     it to `check_roster::run`. The signature block above states the shape.
 
-11. Implement the flag in `tools/xtask/src/check_roster.rs`. With the flag set the guard writes the
+11. Implement the flag in `tools/bc_repo_guard/xtask/lang_rust/src/check_roster.rs`. With the flag set the guard writes the
     scratch workspace, runs no cargo command, prints every `ROSTER ...` counter line it prints
     today, then prints exactly `ROSTER COMPILE:   skipped (--generate-only)`, and returns the
     outcome the parse rules and the count rules decide. Without the flag the guard behaves exactly
     as it does today and prints no such line. Architecture section 1.9 holds the four-part contract,
     and part 4 of it is the safety argument: a skipped run prints a line no full run prints.
 
-12. Write the roster probe group in `tools/xtask/tests/probes.rs`. Each test spawns
+12. Write the roster probe group in `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs`. Each test spawns
     `cargo xtask check-roster <document> <scratch> <repo> --generate-only` over a synthetic
     document in a scratch directory the test owns, exactly as `placement_run` does, so no probe
     reads this repository. Name the group with the prefix `roster_generate_only_`. Section 1.9
@@ -210,7 +210,7 @@ of `tools/xtask/src/main.rs`.
       "Cargo.lock",
       ".hypervisor/",
       "*.svg",
-      "crates/duet/assets/fonts/bravura_metadata.json",
+      "crates/bc_app/duet/assets/fonts/bravura_metadata.json",
       "roadmap/duet-v1/reviews/",
       "roadmap/duet-v1/research/",
     ]
@@ -302,7 +302,7 @@ of `tools/xtask/src/main.rs`.
     C2-1). The `converts` step keeps its place and keeps running on every commit, because CG1 to CG8
     read crate sources and bind nothing in a plan document. It gains one argument under one
     condition. **When the union of step 15 names a path that opens `roadmap/`, or names
-    `crates/duet-time/src/convert.rs`, the step runs**
+    `crates/bc_time/duet-time/lang_rust/src/convert.rs`, the step runs**
 
     ```
     cargo xtask check-conversions --appendix roadmap/duet-v1/architecture.md
@@ -318,17 +318,17 @@ of `tools/xtask/src/main.rs`.
     exactly a commit that can break the binding. Architecture section 2.3 rule CG9 part 6 states the
     rule, what the condition covers, what it does not, and the party that clears a red CG9.
 
-    **Verify both arms.** On a branch whose only commit touches `crates/duet-time/src/convert.rs`,
+    **Verify both arms.** On a branch whose only commit touches `crates/bc_time/duet-time/lang_rust/src/convert.rs`,
     run `bash scripts/dod.sh` and confirm that the `converts` step prints the CG9 counter and no
     skip line. On a branch whose commits touch neither half, confirm that it prints
     `REASON TEXTS:    skipped (no --appendix)`. Record both observations in the chunk report.
 
 16. Amend the `plan-lint` job of `.github/workflows/ci.yml`. Its `changes` filter already matches
-    `roadmap/` and `tools/xtask/`. Add the two `check-plan-graph` lines after the `check-placement`
+    `roadmap/` and `tools/bc_repo_guard/xtask/lang_rust/`. Add the two `check-plan-graph` lines after the `check-placement`
     line. Add the line
     `cargo xtask check-conversions --appendix roadmap/duet-v1/architecture.md`, so the job runs rule
     CG9 always and never under a condition (critic C2-1). **Do not widen the `changes` filter.** A
-    pull request that touches `crates/duet-time/src/convert.rs` and no `roadmap/` or `tools/xtask/`
+    pull request that touches `crates/bc_time/duet-time/lang_rust/src/convert.rs` and no `roadmap/` or `tools/bc_repo_guard/xtask/lang_rust/`
     path therefore runs no CG9 at the merge; the local step of step 15a is the cover, and
     architecture section 2.3 rule CG9 part 6 states that gap and its reason, which is the 4.0 GB
     roster compile this job carries. Leave the `check-roster` line with no `--generate-only` flag, because this job is the one
@@ -345,7 +345,7 @@ of `tools/xtask/src/main.rs`.
     it proves nothing about the repair. Quote the read line in the chunk report.
 
 18. Write the probe that keeps `--generate-only` out of every job (critic C1-8, C2-7). Add it to
-    `tools/xtask/tests/probes.rs`. Write one private helper in the test module,
+    `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs`. Write one private helper in the test module,
     `fn roster_job_line_is_clean(workflow: &str) -> bool`, which returns false when any line of the
     text names `check-roster` and also names `--generate-only`. Then write TWO tests.
 
@@ -370,7 +370,7 @@ of `tools/xtask/src/main.rs`.
     shell variable, and an `env:` entry each defeat it, and review holds those.
 
 19. Write the failing probes for rule CG9 (critic C1-4, C2-4). Add them to
-    `tools/xtask/tests/probes.rs` in the conversion group. Each one builds a throwaway cargo
+    `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs` in the conversion group. Each one builds a throwaway cargo
     workspace in a scratch directory the test owns, with one member whose `src/convert.rs` holds an
     `#[expect]` attribute and a `fn`, and with a synthetic `roadmap/duet-v1/architecture.md` under
     the scratch root that carries a `b1-convert` guard block. Each one passes
@@ -399,8 +399,8 @@ of `tools/xtask/src/main.rs`.
     plants a path that does not exist and CG8 plants a workspace `cargo metadata` refuses; CG9
     plants the same class of shape.
 
-20. Implement rule CG9 in `tools/xtask/src/check_conversions.rs`, and add the `--appendix <path>`
-    argument to the `CheckConversions` command in `tools/xtask/src/main.rs`. Architecture section
+20. Implement rule CG9 in `tools/bc_repo_guard/xtask/lang_rust/src/check_conversions.rs`, and add the `--appendix <path>`
+    argument to the `CheckConversions` command in `tools/bc_repo_guard/xtask/lang_rust/src/main.rs`. Architecture section
     2.3 states the SIX parts and this chunk adds no part of its own. **The rule runs only when the
     caller passes `--appendix <path>`**; with no such argument the guard prints
     `REASON TEXTS:    skipped (no --appendix)` and rules CG1 to CG8 run unchanged (critic C2-1). It
@@ -408,7 +408,7 @@ of `tools/xtask/src/main.rs`.
     line, in the shape CG8 already uses. It takes the site set from the `b1-convert` block, cell
     one for the name and cell three for the
     text between its outer quotation marks. It takes the code set from the one exempt file
-    `crates/duet-time/src/convert.rs`, by reading the attribute run above each `fn` item for an
+    `crates/bc_time/duet-time/lang_rust/src/convert.rs`, by reading the attribute run above each `fn` item for an
     `#[expect(...)]` that carries a `reason =` string. The two sets are one set in both directions,
     and a text that differs is a finding. The compare is exact, character for character. The guard
     prints `REASON TEXTS:    <n>     REASON TEXT BAD: <n>` and one indented line per failure under
@@ -426,7 +426,7 @@ of `tools/xtask/src/main.rs`.
     **Five is the size of this set at every site that names it**, and a site that names only the
     document half names the sub-items b, c, d and e rather than a count (critic C2-6).
 
-    a. In `tools/xtask/src/check_placement.rs`, the `probe-table` entry of `DATA_BLOCKS` takes the
+    a. In `tools/bc_repo_guard/xtask/lang_rust/src/check_placement.rs`, the `probe-table` entry of `DATA_BLOCKS` takes the
        floor 65 in place of 64. Change the one numeric literal and nothing else in that entry.
 
     b. In `roadmap/duet-v1/architecture.md`, the marker line before the probe table becomes exactly:
@@ -467,14 +467,14 @@ of `tools/xtask/src/main.rs`.
     `roadmap/duet-v1/architecture.md` outside sub-items b, c and d.
 
 22. Write the failing probes for rule CL1d, then implement it (critic C1-10). Architecture section
-    1.5 states the rule. In `tools/xtask/src/check_closure.rs`, add a forward cut-off constant
+    1.5 states the rule. In `tools/bc_repo_guard/xtask/lang_rust/src/check_closure.rs`, add a forward cut-off constant
     beside `COUNTS_REQUIRED_FROM`, at revision 24, and a sentence head
     `"The `check-closure` run that verified this block is recorded at plan-store key `"`. For a
     closure section at or above the cut-off the guard reads the key with `db.sh get`, and it fails
     on four shapes: no run-key sentence, a key whose suffix is not `closure-run`, a store that does
     not answer the key, and a body whose `EXIT: ` line states anything but `0`. A section below the
     cut-off prints `RUN KEY: absent`. Add one probe per shape to the closure group of
-    `tools/xtask/tests/probes.rs`, over a throwaway review, a throwaway block, and a throwaway
+    `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs`, over a throwaway review, a throwaway block, and a throwaway
     suffix in the plan store, exactly as the existing closure probes do. Name the group with the
     prefix `closure_run_key_`. Run the group, confirm that each one fails before the
     implementation and passes after it, and confirm that
@@ -486,7 +486,7 @@ of `tools/xtask/src/main.rs`.
 
 ## Tests
 
-Every test lives in `tools/xtask/tests/probes.rs`, inside the existing `#[cfg(test)] mod tests`.
+Every test lives in `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs`, inside the existing `#[cfg(test)] mod tests`.
 Every assert carries a message.
 
 | Test | What it asserts |
@@ -511,7 +511,7 @@ Every assert carries a message.
 | `closure_run_key_failed_run_is_a_finding` | A recorded body whose `EXIT: ` line states anything but `0` is a failure |
 | `closure_run_key_below_the_cut_off_is_clean` | A closure section below revision 24 prints `RUN KEY: absent` and is clean. This is the green control |
 
-No existing probe expectation changes. A scan of `tools/xtask/tests/probes.rs` on 2026-09-22 found
+No existing probe expectation changes. A scan of `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs` on 2026-09-22 found
 no test that reads a duplicate chunk id, an empty plan directory, an empty candidate set, or any
 `check-roster` output, so the four repaired sites are covered by new tests alone. If a scan at
 implementation time finds one, that is a discrepancy: report it and stop.
@@ -555,9 +555,10 @@ a branch `chunk/m90-guard-family-and-plan-gate`.
   inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are
   required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every
   `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the
   root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no
   pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with
   Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this

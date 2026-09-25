@@ -3,12 +3,12 @@ id: I3
 line: I
 depends_on: [I2, C3, D3, G4]
 write_scope:
-  - crates/duet-core/src/snapshot.rs
-  - crates/duet-core/src/job.rs
-  - crates/duet-core/src/midi_entry.rs
-  - crates/duet-core/src/reader.rs
-  - crates/duet-core/benches/
-  - crates/duet-core/Cargo.toml
+  - crates/bc_gateway/duet-core/lang_rust/src/snapshot.rs
+  - crates/bc_gateway/duet-core/lang_rust/src/job.rs
+  - crates/bc_gateway/duet-core/lang_rust/src/midi_entry.rs
+  - crates/bc_gateway/duet-core/lang_rust/src/reader.rs
+  - crates/bc_gateway/duet-core/lang_rust/benches/
+  - crates/bc_gateway/duet-core/lang_rust/Cargo.toml
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-core -E 'test(snapshot) + test(job_registry) + test(playback_plan) + test(slot_measure)' --no-tests=fail passes; cargo clippy -p duet-core --all-targets -- -D warnings is clean; commit SHA on a branch chunk/i3-snapshots-and-readers"
@@ -31,18 +31,18 @@ per phase.
 
 ## Files
 
-- `crates/duet-core/src/snapshot.rs` — modify. Snapshot publication and the version counter read.
-- `crates/duet-core/src/job.rs` — modify. `JobRegistry`, the progress path, and the B127 sweep.
-- `crates/duet-core/src/midi_entry.rs` — modify. One `NoteEntry` to one `ScoreCommand`.
-- `crates/duet-core/src/reader.rs` — modify. `MeterReader` and `TransportReader`.
-- `crates/duet-core/benches/make_mut.rs` — create. The `criterion` bench of section 5.12.
-- `crates/duet-core/Cargo.toml` — modify. The `criterion` dev-dependency, the `triple_buffer` entry
+- `crates/bc_gateway/duet-core/lang_rust/src/snapshot.rs` — modify. Snapshot publication and the version counter read.
+- `crates/bc_gateway/duet-core/lang_rust/src/job.rs` — modify. `JobRegistry`, the progress path, and the B127 sweep.
+- `crates/bc_gateway/duet-core/lang_rust/src/midi_entry.rs` — modify. One `NoteEntry` to one `ScoreCommand`.
+- `crates/bc_gateway/duet-core/lang_rust/src/reader.rs` — modify. `MeterReader` and `TransportReader`.
+- `crates/bc_gateway/duet-core/lang_rust/benches/make_mut.rs` — create. The `criterion` bench of section 5.12.
+- `crates/bc_gateway/duet-core/lang_rust/Cargo.toml` — modify. The `criterion` dev-dependency, the `triple_buffer` entry
   if chunk I1 did not need it, and the `[[bench]]` target with `harness = false`.
 - `Cargo.lock` — modify (SM5 rule 2).
 
 ## Types and signatures
 
-### Declared by this chunk, in `crates/duet-core/src/reader.rs`
+### Declared by this chunk, in `crates/bc_gateway/duet-core/lang_rust/src/reader.rs`
 
 Copied from architecture section 15.14.
 
@@ -114,7 +114,7 @@ stores it. B133 is `MAX_SLOT_METERS` and it is the product of the three bounds.
 | `ScoreCommand::InsertNote`, `Revision` | `duet-score` | 15.3 |
 | `Finite`, `MAX_STRIPS` (B86), `MAX_SLOTS` (B45), `MAX_SLOT_METERS` (B133) | `duet-time` | 1.6, 2.6a |
 
-### The note-entry map, in `crates/duet-core/src/midi_entry.rs`
+### The note-entry map, in `crates/bc_gateway/duet-core/lang_rust/src/midi_entry.rs`
 
 The map names no framework type. Architecture section 13.2 splits the drain across the crate
 boundary: chunk I1 wrote `DuetCore::drain_note_entries`, this chunk writes the map from one
@@ -152,7 +152,7 @@ pub fn note_entry_to_command(entry: NoteEntry, caret: Position, duration: NoteVa
    `StageCurve::measure`.
 8. Implement snapshot publication in `src/snapshot.rs`: each document behind an `Arc`, a snapshot is
    an `Arc::clone`, and an edit applied while a snapshot is outstanding calls `Arc::make_mut`.
-9. Write the `criterion` bench in `crates/duet-core/benches/make_mut.rs`. It measures one
+9. Write the `criterion` bench in `crates/bc_gateway/duet-core/lang_rust/benches/make_mut.rs`. It measures one
    `Arc::make_mut` clone on the B1 fixture and reports against B5.
 10. Implement `JobRegistry` in `src/job.rs`. Mint a `JobId` from `next`, write
     `JobState::Running { done, total }`, and emit `CoreEvent::JobProgress`. A worker that reaches a
@@ -211,7 +211,8 @@ Every test lives in a `#[cfg(test)] mod tests` in the same file. Every assert ca
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

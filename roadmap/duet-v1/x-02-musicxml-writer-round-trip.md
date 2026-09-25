@@ -3,9 +3,9 @@ id: X2
 line: X
 depends_on: [X1]
 write_scope:
-  - crates/duet-interchange/src/musicxml/write.rs
-  - crates/duet-interchange/tests/round_trip.rs
-  - crates/duet-interchange/Cargo.toml
+  - crates/bc_notation/duet-interchange/lang_rust/src/musicxml/write.rs
+  - crates/bc_notation/duet-interchange/lang_rust/tests/round_trip.rs
+  - crates/bc_notation/duet-interchange/lang_rust/Cargo.toml
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-interchange --test round_trip --no-tests=fail"
@@ -15,7 +15,7 @@ completion: "cargo nextest run -p duet-interchange --test round_trip --no-tests=
 
 Verify the current state of the files in the write scope; report a discrepancy and stop, instead of
 proceeding. Phase 5 carries no manifest chunk, so this chunk depends on chunk X1 alone (section
-13.3). Chunk X1 created `crates/duet-interchange/src/musicxml/write.rs` as a stub in phase 4 and
+13.3). Chunk X1 created `crates/bc_notation/duet-interchange/lang_rust/src/musicxml/write.rs` as a stub in phase 4 and
 declared `write_musicxml` with a body that answers `InterchangeError::Unsupported`. This chunk fills
 the module and replaces that body. It writes a score as MusicXML, it returns every unmapped element
 to its place, and it proves the round trip with a property test. It implements architecture sections
@@ -25,22 +25,22 @@ story A-03 and of PR 11 Q9.
 PR 11 Q9 records that Duet does not print and does not write PDF. MusicXML export is the print path,
 and the export surface says so.
 
-This chunk adds one dev-dependency, so SM1 puts `crates/duet-interchange/Cargo.toml` in its write
+This chunk adds one dev-dependency, so SM1 puts `crates/bc_notation/duet-interchange/lang_rust/Cargo.toml` in its write
 scope and SM5 rule 2 puts `Cargo.lock` there beside it. Section 13.2 names both files in this chunk's
 Writes cell.
 
 ## Files
 
-- `crates/duet-interchange/src/musicxml/write.rs` — modify. The streaming writer.
-- `crates/duet-interchange/tests/round_trip.rs` — create. The round-trip property test.
-- `crates/duet-interchange/Cargo.toml` — modify. Add the `proptest` dev-dependency.
+- `crates/bc_notation/duet-interchange/lang_rust/src/musicxml/write.rs` — modify. The streaming writer.
+- `crates/bc_notation/duet-interchange/lang_rust/tests/round_trip.rs` — create. The round-trip property test.
+- `crates/bc_notation/duet-interchange/lang_rust/Cargo.toml` — modify. Add the `proptest` dev-dependency.
 - `Cargo.lock` — modify.
 
 SM2 covers `src/` alone, so an integration test file under `tests/` is its own crate root, needs no
 `mod` line, and is created by the chunk that writes it. Section 13.2 names `tests/round_trip.rs` in
 this chunk's Writes cell for that reason.
 
-`crates/duet-interchange/src/musicxml.rs` is outside this chunk's write scope, so the
+`crates/bc_notation/duet-interchange/lang_rust/src/musicxml.rs` is outside this chunk's write scope, so the
 `write_musicxml` signature that chunk X1 declared stays as it is. This chunk changes the body of
 `crate::musicxml::write` alone, which `write_musicxml` already calls.
 
@@ -49,7 +49,7 @@ this chunk's Writes cell for that reason.
 ### Manifest
 
 ```toml
-# crates/duet-interchange/Cargo.toml, [dev-dependencies], added by this chunk
+# crates/bc_notation/duet-interchange/lang_rust/Cargo.toml, [dev-dependencies], added by this chunk
 proptest = { workspace = true }
 ```
 
@@ -119,17 +119,17 @@ pub fn write_note(
 
 ## Steps
 
-1. Read `crates/duet-interchange/src/musicxml/write.rs` and `crates/duet-interchange/src/musicxml.rs`.
+1. Read `crates/bc_notation/duet-interchange/lang_rust/src/musicxml/write.rs` and `crates/bc_notation/duet-interchange/lang_rust/src/musicxml.rs`.
    Confirm that `write.rs` holds a `//!` line alone and that `write_musicxml` answers
    `InterchangeError::Unsupported`. Report a discrepancy and stop if the state differs.
 2. Read the root `Cargo.toml`. Confirm that `[workspace.dependencies]` pins `proptest` at 1.11.0.
    Report a discrepancy and stop if the pin is absent.
-3. Create `crates/duet-interchange/tests/round_trip.rs` with a `#[cfg(test)] mod tests`, because
+3. Create `crates/bc_notation/duet-interchange/lang_rust/tests/round_trip.rs` with a `#[cfg(test)] mod tests`, because
    `clippy::tests_outside_test_module` is denied. Write the failing test
    `round_trip_keeps_every_modelled_value` inside it. Run
    `cargo nextest run -p duet-interchange --test round_trip --no-tests=fail` and confirm that the run
    fails, because `write_musicxml` answers `InterchangeError::Unsupported`.
-4. Add the `[dev-dependencies]` section to `crates/duet-interchange/Cargo.toml`. Run
+4. Add the `[dev-dependencies]` section to `crates/bc_notation/duet-interchange/lang_rust/Cargo.toml`. Run
    `cargo build --workspace`, which settles `Cargo.lock` (SM5 rule 3).
 5. Implement `write_document` in `src/musicxml/write.rs` over `quick_xml::Writer`. Write
    `part-list`, then one `part` per part, then one `measure` per measure. Write the key signature,
@@ -151,7 +151,7 @@ pub fn write_note(
 
 ## Tests
 
-The tests live in `crates/duet-interchange/tests/round_trip.rs`, wrapped in a
+The tests live in `crates/bc_notation/duet-interchange/lang_rust/tests/round_trip.rs`, wrapped in a
 `#[cfg(test)] mod tests`. Every assert carries a message. The crate stays pure, so every fixture is
 built in memory and no test opens a file.
 
@@ -230,9 +230,10 @@ subject such as `feat(interchange): write MusicXML and prove the round trip`.
   inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are
   required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every
   `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the
   root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no
   pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with
   Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this

@@ -5,10 +5,10 @@ depends_on: [M0, T1]
 write_scope:
   - Cargo.toml
   - Cargo.lock
-  - crates/duet-score/Cargo.toml
-  - crates/duet-score/src/lib.rs
-  - crates/duet-dsp/Cargo.toml
-  - crates/duet-dsp/src/lib.rs
+  - crates/bc_document/duet-score/lang_rust/Cargo.toml
+  - crates/bc_document/duet-score/lang_rust/src/lib.rs
+  - crates/bc_audio/duet-dsp/lang_rust/Cargo.toml
+  - crates/bc_audio/duet-dsp/lang_rust/src/lib.rs
 parallelism: serial-only: SM1 runs the manifest chunk alone before every line chunk of its phase.
 completion: "cargo check -p duet-score -p duet-dsp --locked exits 0; commit SHA on a branch chunk/m1-manifest-phase-1"
 ---
@@ -37,10 +37,10 @@ Orchestrator.
 |---|---|
 | `Cargo.toml` | modify (`[workspace.dependencies]` only) |
 | `Cargo.lock` | modify |
-| `crates/duet-score/Cargo.toml` | create |
-| `crates/duet-score/src/lib.rs` | create |
-| `crates/duet-dsp/Cargo.toml` | create |
-| `crates/duet-dsp/src/lib.rs` | create |
+| `crates/bc_document/duet-score/lang_rust/Cargo.toml` | create |
+| `crates/bc_document/duet-score/lang_rust/src/lib.rs` | create |
+| `crates/bc_audio/duet-dsp/lang_rust/Cargo.toml` | create |
+| `crates/bc_audio/duet-dsp/lang_rust/src/lib.rs` | create |
 
 ## Types and signatures
 
@@ -60,8 +60,8 @@ B.5 row, so both take the default set.
 ### The two internal path entries (SM1 rule 4)
 
 ```toml
-duet-dsp = { path = "crates/duet-dsp" }
-duet-score = { path = "crates/duet-score" }
+duet-dsp = { path = "crates/bc_audio/duet-dsp/lang_rust" }
+duet-score = { path = "crates/bc_document/duet-score/lang_rust" }
 ```
 
 A member crate reaches an internal crate with `duet-<crate> = { workspace = true }`, and that entry
@@ -131,17 +131,17 @@ chunk D1 adds the `duet-dsp` entries, each in the same commit as the code that u
 
 ## Steps
 
-1. Confirm that M0 landed: `crates/duet-time` exists, the root `[workspace.dependencies]` table
+1. Confirm that M0 landed: `crates/bc_time/duet-time/lang_rust` exists, the root `[workspace.dependencies]` table
    holds `smallvec`, `proptest`, and `md-5`, and `scripts/dod.sh` holds the `check-conversions`
    line. Confirm that T1 landed: `cargo nextest run -p duet-time --no-tests=fail` passes. Confirm
-   that `crates/duet-score` and `crates/duet-dsp` do not exist. Report a discrepancy and stop if any
+   that `crates/bc_document/duet-score/lang_rust` and `crates/bc_audio/duet-dsp/lang_rust` do not exist. Report a discrepancy and stop if any
    one is false.
 2. Add the two pins and the two internal path entries `duet-dsp` and `duet-score` (SM1 rule 4) to
    `[workspace.dependencies]` of the root `Cargo.toml`, in alphabetical order with the entries the
    table already holds. Edit no other table (SM4).
-3. Create `crates/duet-score/Cargo.toml` and `crates/duet-score/src/lib.rs` with the two blocks the
+3. Create `crates/bc_document/duet-score/lang_rust/Cargo.toml` and `crates/bc_document/duet-score/lang_rust/src/lib.rs` with the two blocks the
    section above gives.
-4. Create `crates/duet-dsp/Cargo.toml` and `crates/duet-dsp/src/lib.rs` with the two blocks the
+4. Create `crates/bc_audio/duet-dsp/lang_rust/Cargo.toml` and `crates/bc_audio/duet-dsp/lang_rust/src/lib.rs` with the two blocks the
    section above gives.
 5. Run `cargo build --workspace` (SM5 rule 3). Expected result: the build succeeds and `Cargo.lock`
    gains one `[[package]]` entry for each new crate. The two pins add no edge yet, because no member
@@ -155,7 +155,7 @@ chunk D1 adds the `duet-dsp` entries, each in the same commit as the code that u
    chunk.** Step 5 states the reason: the two pins add no edge yet, because no member declares
    either one, so `cargo tree` exits 101 and prints `error: package ID specification` with the crate
    name. **Chunk D1 records the resolved tree of both crates**, because D1 adds both
-   `{ workspace = true }` entries to `crates/duet-dsp/Cargo.toml`. Appendix B.5 states the rule.
+   `{ workspace = true }` entries to `crates/bc_audio/duet-dsp/lang_rust/Cargo.toml`. Appendix B.5 states the rule.
 8. Run the Completion command: `cargo check -p duet-score -p duet-dsp --locked`. Expected result:
    exit 0. The command fails before this chunk, because neither package exists.
 9. `git add` the write scope and `git commit`. The native hook runs `scripts/dod.sh`.
@@ -190,7 +190,8 @@ Then commit on a branch named `chunk/m1-manifest-phase-1`. The native git hook r
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

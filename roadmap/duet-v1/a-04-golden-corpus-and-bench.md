@@ -3,11 +3,11 @@ id: A4
 line: A
 depends_on: [A3]
 write_scope:
-  - crates/duet-engrave/tests/golden.rs
-  - crates/duet-engrave/tests/golden/
-  - crates/duet-engrave/benches/
-  - crates/duet-engrave/benches/layout.rs
-  - crates/duet-engrave/Cargo.toml
+  - crates/bc_notation/duet-engrave/lang_rust/tests/golden.rs
+  - crates/bc_notation/duet-engrave/lang_rust/tests/golden/
+  - crates/bc_notation/duet-engrave/lang_rust/benches/
+  - crates/bc_notation/duet-engrave/lang_rust/benches/layout.rs
+  - crates/bc_notation/duet-engrave/lang_rust/Cargo.toml
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-engrave --test golden --no-tests=fail"
@@ -28,13 +28,13 @@ writes it. This chunk therefore creates `tests/golden.rs` although chunk A1 crea
 
 ## Files
 
-- `crates/duet-engrave/tests/golden.rs` — create. The comparator and the twelve corpus cases.
-- `crates/duet-engrave/tests/golden/` — create. Twelve input scores and twelve expected placement
+- `crates/bc_notation/duet-engrave/lang_rust/tests/golden.rs` — create. The comparator and the twelve corpus cases.
+- `crates/bc_notation/duet-engrave/lang_rust/tests/golden/` — create. Twelve input scores and twelve expected placement
   documents, as JSON. The file names are `case-01.score.json` to `case-12.score.json` and
   `case-01.expected.json` to `case-12.expected.json`.
-- `crates/duet-engrave/benches/` — create. The bench directory.
-- `crates/duet-engrave/benches/layout.rs` — create. The criterion bench over `engrave`.
-- `crates/duet-engrave/Cargo.toml` — modify. Add the `criterion` dev-dependency and the `[[bench]]`
+- `crates/bc_notation/duet-engrave/lang_rust/benches/` — create. The bench directory.
+- `crates/bc_notation/duet-engrave/lang_rust/benches/layout.rs` — create. The criterion bench over `engrave`.
+- `crates/bc_notation/duet-engrave/lang_rust/Cargo.toml` — modify. Add the `criterion` dev-dependency and the `[[bench]]`
   target.
 - `Cargo.lock` — modify. SM5 rule 2 puts it in the write scope of every chunk that writes a member
   manifest.
@@ -44,7 +44,7 @@ writes it. This chunk therefore creates `tests/golden.rs` although chunk A1 crea
 ### Manifest
 
 ```toml
-# crates/duet-engrave/Cargo.toml
+# crates/bc_notation/duet-engrave/lang_rust/Cargo.toml
 [dev-dependencies]
 criterion = { workspace = true }
 
@@ -66,9 +66,9 @@ under SM0.
 | `Score` | `duet-score`, path `duet_score::Score` |
 | `TempoMap`, `Ticks` | `duet-time`, paths `duet_time::TempoMap`, `duet_time::Ticks` |
 
-### The comparator, in `crates/duet-engrave/tests/golden.rs`
+### The comparator, in `crates/bc_notation/duet-engrave/lang_rust/tests/golden.rs`
 
-Section 10.7 states the rule: the golden corpus B79 lives in `crates/duet-engrave/tests/golden/`,
+Section 10.7 states the rule: the golden corpus B79 lives in `crates/bc_notation/duet-engrave/lang_rust/tests/golden/`,
 and a comparator checks every field with a stated tolerance.
 
 ```rust
@@ -91,7 +91,7 @@ fn compare_system(case: &str, index: usize, got: &SystemPlacement, want: &System
 is read into a plain mirror struct of the test module and the comparator reads the accessors of the
 real type. The mirror is a test type and it never leaves `tests/golden.rs`.
 
-### The bench, in `crates/duet-engrave/benches/layout.rs`
+### The bench, in `crates/bc_notation/duet-engrave/lang_rust/benches/layout.rs`
 
 Section 14 states that `cargo bench -p duet-engrave` reports the layout cost at B1 against B4, and
 section 10.7 states that the bench covers the layout pass and the peak path build, against B3 and
@@ -114,12 +114,12 @@ because a bench is not stable enough to gate a merge.
 
 ## Steps
 
-1. Read `crates/duet-engrave/Cargo.toml`. Confirm that chunks A1 to A3 left it with the five
+1. Read `crates/bc_notation/duet-engrave/lang_rust/Cargo.toml`. Confirm that chunks A1 to A3 left it with the five
    `{ workspace = true }` entries and no `[dev-dependencies]` section. Report a discrepancy and stop
    if the state differs.
 2. Read the root `Cargo.toml`. Confirm that `[workspace.dependencies]` pins `criterion` at 0.7.0
    with the feature set Appendix B.5 states. Report a discrepancy and stop if the pin is absent.
-3. Create `crates/duet-engrave/tests/golden/` and write the twelve input scores. Each one covers one
+3. Create `crates/bc_notation/duet-engrave/lang_rust/tests/golden/` and write the twelve input scores. Each one covers one
    notation case, and the twelve together cover the whole engraver. The cases are:
    1. one treble staff, four quarter notes;
    2. a grand staff with a brace;
@@ -133,7 +133,7 @@ because a bench is not stable enough to gate a merge.
    10. a slur over six notes with a hairpin under it;
    11. two verses of lyrics;
    12. a repeat barline pair and a rehearsal mark.
-4. Write `crates/duet-engrave/tests/golden.rs` with a `#[cfg(test)] mod tests`, because
+4. Write `crates/bc_notation/duet-engrave/lang_rust/tests/golden.rs` with a `#[cfg(test)] mod tests`, because
    `clippy::tests_outside_test_module` is denied. Write the twelve test functions and the comparator
    first, with no expected document on disk. Run
    `cargo nextest run -p duet-engrave --test golden --no-tests=fail` and confirm that every case
@@ -144,8 +144,8 @@ because a bench is not stable enough to gate a merge.
 6. Run `cargo nextest run -p duet-engrave --test golden --no-tests=fail` and confirm that every case
    passes.
 7. Add the `[dev-dependencies]` section and the `[[bench]]` target to
-   `crates/duet-engrave/Cargo.toml`.
-8. Write `crates/duet-engrave/benches/layout.rs` with the two bench functions above.
+   `crates/bc_notation/duet-engrave/lang_rust/Cargo.toml`.
+8. Write `crates/bc_notation/duet-engrave/lang_rust/benches/layout.rs` with the two bench functions above.
 9. Run `cargo build --workspace`, which settles `Cargo.lock` (SM5 rule 3). Expect a clean build and
    a changed lock file.
 10. Run `cargo bench -p duet-engrave` once and record the two reported times in the commit body,
@@ -158,7 +158,7 @@ because a bench is not stable enough to gate a merge.
 
 ## Tests
 
-The twelve cases live in `crates/duet-engrave/tests/golden.rs`, inside a `#[cfg(test)] mod tests`.
+The twelve cases live in `crates/bc_notation/duet-engrave/lang_rust/tests/golden.rs`, inside a `#[cfg(test)] mod tests`.
 Every assert carries a message that names the case, the system, the list, and the entry.
 
 - `golden_single_staff_quarter_notes`
@@ -228,9 +228,10 @@ subject such as `test(engrave): add the golden corpus, the comparator, and the l
   inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are
   required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every
   `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the
   root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no
   pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with
   Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this

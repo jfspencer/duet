@@ -3,10 +3,10 @@ id: C2
 line: C
 depends_on: [C1, N1]
 write_scope:
-  - crates/duet-engine/src/disk/reader.rs
-  - crates/duet-engine/src/disk/writer.rs
-  - crates/duet-engine/src/disk/ring.rs
-  - crates/duet-engine/Cargo.toml
+  - crates/bc_audio/duet-engine/lang_rust/src/disk/reader.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/disk/writer.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/disk/ring.rs
+  - crates/bc_audio/duet-engine/lang_rust/Cargo.toml
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-engine -E 'test(disk_ring) + test(capture_done)' --no-tests=fail passes; commit SHA on a branch chunk/c2-disk-thread-and-rings"
@@ -20,10 +20,10 @@ Verify the current state of the files in the write scope; report a discrepancy a
 
 ## Files
 
-- `crates/duet-engine/src/disk/reader.rs` — modify. Chunk C1 created the stub.
-- `crates/duet-engine/src/disk/writer.rs` — modify.
-- `crates/duet-engine/src/disk/ring.rs` — modify.
-- `crates/duet-engine/Cargo.toml` — modify. Add the `rtrb`, `triple_buffer`, `basedrop`, and `async-channel` entries.
+- `crates/bc_audio/duet-engine/lang_rust/src/disk/reader.rs` — modify. Chunk C1 created the stub.
+- `crates/bc_audio/duet-engine/lang_rust/src/disk/writer.rs` — modify.
+- `crates/bc_audio/duet-engine/lang_rust/src/disk/ring.rs` — modify.
+- `crates/bc_audio/duet-engine/lang_rust/Cargo.toml` — modify. Add the `rtrb`, `triple_buffer`, `basedrop`, and `async-channel` entries.
 - `Cargo.lock` — modify. Commit it in the same commit as the manifest (SM5).
 
 ## Types and signatures
@@ -202,8 +202,8 @@ Declare the whole enum here, with `ConfigError` declared as the section 15.10 sh
 
 ## Steps
 
-1. Read every file of the write scope. Confirm that chunk C1 left each one a stub with a `//!` line and nothing else, and that `crates/duet-engine/Cargo.toml` holds the entries C1 added. Report a discrepancy and stop.
-2. Add to `crates/duet-engine/Cargo.toml` the entries `rtrb`, `triple_buffer`, `basedrop`, `async-channel` and `crossbeam-queue`, each `{ workspace = true }`. Run `cargo build --workspace` and keep `Cargo.lock` for the same commit.
+1. Read every file of the write scope. Confirm that chunk C1 left each one a stub with a `//!` line and nothing else, and that `crates/bc_audio/duet-engine/lang_rust/Cargo.toml` holds the entries C1 added. Report a discrepancy and stop.
+2. Add to `crates/bc_audio/duet-engine/lang_rust/Cargo.toml` the entries `rtrb`, `triple_buffer`, `basedrop`, `async-channel` and `crossbeam-queue`, each `{ workspace = true }`. Run `cargo build --workspace` and keep `Cargo.lock` for the same commit.
 3. Write the failing test `disk_ring_refill_reads_the_span_the_plan_names` in `src/disk/ring.rs`. Run `cargo nextest run -p duet-engine -E 'test(disk_ring)' --no-tests=fail` and confirm that it fails to compile.
 4. Write `RefillRequest`, `PlaybackSpan`, `TrackPlayback`, `PlaybackPlan`, `DiskReader`, `DiskWriter`, `EngineLink` and `EngineEvent` in `src/disk/ring.rs`, with the declarations above and the hand-written `Debug` impls. Run the test and confirm that it passes.
 5. Write the failing test `disk_ring_holds_no_bare_ring_end`. It is a type-level test: a `compile_fail` doctest on `DiskReader` that shows a bare `rtrb::Consumer<f32>` field is refused by PG26. Run `cargo test -p duet-engine --doc` and confirm the expected result.
@@ -241,7 +241,7 @@ Every test builds its System Under Test with one `fn sut(...)` that takes the pl
 3. `cargo test -p duet-engine --doc` passes, and the `compile_fail` doctest fails to compile as it must.
 4. `cargo clippy -p duet-engine --all-targets -- -D warnings` prints nothing.
 5. `cargo machete` reports no unused dependency of `duet-engine`.
-6. One commit on the branch `chunk/c2-disk-thread-and-rings` passes the native git hook. The commit carries `crates/duet-engine/Cargo.toml` and `Cargo.lock` together.
+6. One commit on the branch `chunk/c2-disk-thread-and-rings` passes the native git hook. The commit carries `crates/bc_audio/duet-engine/lang_rust/Cargo.toml` and `Cargo.lock` together.
 
 ## Constraints
 
@@ -250,7 +250,8 @@ Every test builds its System Under Test with one `fn sut(...)` that takes the pl
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

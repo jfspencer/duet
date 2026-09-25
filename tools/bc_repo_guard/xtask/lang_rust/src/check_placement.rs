@@ -1931,7 +1931,7 @@ const DATA_BLOCKS: &[BlockSpec] = &[
         "rule-blocks",
         "Which rule reads which block",
         BlockKind::Table,
-        33,
+        34,
     ),
     block(
         "closure-r16",

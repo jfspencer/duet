@@ -3,9 +3,9 @@ id: E2
 line: E
 depends_on: [M3, E1]
 write_scope:
-  - crates/duet-analysis/src/pyin/candidates.rs
-  - crates/duet-analysis/src/pyin/decode.rs
-  - crates/duet-analysis/Cargo.toml
+  - crates/bc_audio/duet-analysis/lang_rust/src/pyin/candidates.rs
+  - crates/bc_audio/duet-analysis/lang_rust/src/pyin/decode.rs
+  - crates/bc_audio/duet-analysis/lang_rust/Cargo.toml
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-analysis -E 'test(pyin)' --no-tests=fail"
@@ -28,21 +28,21 @@ The chunk writes the member manifest, so `Cargo.lock` is in the write scope (SM5
 `PitchTrack` names the `SourceHash` it measured (section 15.8), which is the `duet-analysis ->
 duet-session` edge of section 1.3. Section 13.0, block `phase-pair-exempt`, states that chunk "E2
 adds that entry one phase later for `SourceHash`". **This chunk adds
-`duet-session = { workspace = true }` to `crates/duet-analysis/Cargo.toml`** (SM1), and `Cargo.lock`
+`duet-session = { workspace = true }` to `crates/bc_audio/duet-analysis/lang_rust/Cargo.toml`** (SM1), and `Cargo.lock`
 goes in the same commit (SM5 rule 2). Architecture section 13.2 names all four paths in the E2 Writes
 cell. The cell named the two source files alone until this revision, against section 13.0's own
 sentence; the chunk author of line E reported it and the Architect corrected the cell.
 
 Chunk T3 created `duet-session` in phase 2, so the internal root entry
-`duet-session = { path = "crates/duet-session" }` already exists (SM1 rule 4, written by chunk M2).
+`duet-session = { path = "crates/bc_document/duet-session/lang_rust" }` already exists (SM1 rule 4, written by chunk M2).
 Read the root `Cargo.toml` first and report a discrepancy if that entry is absent, because SM4
 forbids this chunk to edit the root manifest.
 
 ## Files
 
-- `crates/duet-analysis/src/pyin/candidates.rs` — modify. The per-frame candidate set.
-- `crates/duet-analysis/src/pyin/decode.rs` — modify. `PitchTrack` and the path decode.
-- `crates/duet-analysis/Cargo.toml` — modify. Add the `duet-session = { workspace = true }` entry.
+- `crates/bc_audio/duet-analysis/lang_rust/src/pyin/candidates.rs` — modify. The per-frame candidate set.
+- `crates/bc_audio/duet-analysis/lang_rust/src/pyin/decode.rs` — modify. `PitchTrack` and the path decode.
+- `crates/bc_audio/duet-analysis/lang_rust/Cargo.toml` — modify. Add the `duet-session = { workspace = true }` entry.
 - `Cargo.lock` — modify. `cargo build --workspace` settles it (SM5 rule 3).
 
 ## Types and signatures
@@ -167,9 +167,9 @@ pub fn frames_off_pitch(track: &PitchTrack, expected_hz: Finite) -> Vec<u32>;
 1. Read both files. Confirm that each one holds a `//!` line and nothing else. Report a discrepancy
    and stop if the state differs.
 2. Read the root `Cargo.toml`. Confirm that `[workspace.dependencies]` carries
-   `duet-session = { path = "crates/duet-session" }`, which chunk M2 wrote in phase 2. Report a
+   `duet-session = { path = "crates/bc_document/duet-session/lang_rust" }`, which chunk M2 wrote in phase 2. Report a
    discrepancy and stop if the entry is absent. Add `duet-session = { workspace = true }` to
-   `crates/duet-analysis/Cargo.toml` and run `cargo build --workspace`, which settles `Cargo.lock`
+   `crates/bc_audio/duet-analysis/lang_rust/Cargo.toml` and run `cargo build --workspace`, which settles `Cargo.lock`
    (SM5 rule 3).
 3. Write the failing test `pyin_candidates_find_a_pure_tone` in `src/pyin/candidates.rs`, inside a
    `#[cfg(test)] mod tests`. Run
@@ -203,7 +203,7 @@ Every test lives in a `#[cfg(test)] mod tests` in the same file, and every asser
 A test double implements `duet_dsp::SampleSource` over a generated tone, so the crate stays pure and
 opens no file.
 
-`crates/duet-analysis/src/pyin/candidates.rs`
+`crates/bc_audio/duet-analysis/lang_rust/src/pyin/candidates.rs`
 
 - `pyin_candidates_find_a_pure_tone` — feeds a 220 Hz sine at 48 kHz and asserts that the largest
   probability sits within 1 cent of 220 Hz.
@@ -216,7 +216,7 @@ opens no file.
   one array and asserts that the array length never changes, which is the property the fixed
   candidate count exists for.
 
-`crates/duet-analysis/src/pyin/decode.rs`
+`crates/bc_audio/duet-analysis/lang_rust/src/pyin/decode.rs`
 
 - `pyin_decode_follows_a_glide` — feeds a tone that rises from 200 Hz to 400 Hz over one second and
   asserts that the decoded track rises with no step larger than 60 cents between two frames.
@@ -268,9 +268,10 @@ such as `feat(analysis): measure pitch with in-house pYIN`.
   inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are
   required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every
   `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the
   root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no
   pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with
   Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this

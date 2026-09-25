@@ -21,7 +21,7 @@ that states the roster trigger gap). It writes one policy file and no crate sour
 compile copies the repository's own `[workspace.lints]` table, `.cargo/config.toml`, `clippy.toml`,
 `rust-toolchain.toml` and `Cargo.lock` into the scratch workspace, then runs
 `cargo clippy --workspace --all-targets -- -D warnings` over the generated roster.
-`tools/xtask/src/check_roster.rs` states the list in its own crate doc, lines 6 to 10; lines 2934 to
+`tools/bc_repo_guard/xtask/lang_rust/src/check_roster.rs` states the list in its own crate doc, lines 6 to 10; lines 2934 to
 2937 name the four files it copies; and `lint_table` at line 2767 reads the `[workspace.lints]` table
 of the root `Cargo.toml` and fails closed when it is absent. A change to any one of the five changes
 what PG25 decides.
@@ -29,7 +29,7 @@ what PG25 decides.
 **`cargo xtask check-roster` runs in exactly one place**, the `plan-lint` job of
 `.github/workflows/ci.yml`, and it runs in no gate: section 14 states the reason, which is a measured
 4.0 GB of build output and several minutes. The `changes` job gates `plan-lint` on a pattern that
-matches `^roadmap/` and `^tools/xtask/` alone. **A commit that edits the root `Cargo.toml`,
+matches `^roadmap/` and `^tools/bc_repo_guard/xtask/` alone. **A commit that edits the root `Cargo.toml`,
 `clippy.toml`, `rust-toolchain.toml` or `.cargo/config.toml` therefore runs no roster in the gate and
 none in CI.**
 
@@ -57,7 +57,7 @@ This chunk declares no Rust type and changes no Rust file. It edits one workflow
 
 1. Read `.github/workflows/ci.yml`. Confirm that the `changes` job declares the output `roadmap` at
    line 60, that the filter step holds
-   `if printf '%s\n' "$changed" | grep -qE '^roadmap/|^tools/xtask/'; then`, that the two `echo`
+   `if printf '%s\n' "$changed" | grep -qE '^roadmap/|^tools/bc_repo_guard/xtask/'; then`, that the two `echo`
    lines write `roadmap=true` and `roadmap=false`, and that the `plan-lint` job carries
    `if: needs.changes.outputs.roadmap == 'true'`. Report a discrepancy and stop.
 
@@ -86,7 +86,7 @@ This chunk declares no Rust type and changes no Rust file. It edits one workflow
    is the whole new pattern and nothing else:
 
    ```
-   '^roadmap/|^tools/xtask/|^Cargo\.toml$|^clippy\.toml$|^rust-toolchain\.toml$|^\.cargo/config\.toml$'
+   '^roadmap/|^tools/bc_repo_guard/xtask/|^Cargo\.toml$|^clippy\.toml$|^rust-toolchain\.toml$|^\.cargo/config\.toml$'
    ```
 
    **Do NOT retype the whole line from a rendered block.** That line carries ten leading spaces
@@ -96,8 +96,8 @@ This chunk declares no Rust type and changes no Rust file. It edits one workflow
    the line keeps the indentation chunk M0 gave it.
 
    The four new alternatives are ANCHORED at both ends. `^Cargo\.toml$` matches the root manifest and
-   no member manifest, because every member manifest is `crates/<name>/Cargo.toml` or
-   `tools/<name>/Cargo.toml`. `^clippy\.toml$` and `^rust-toolchain\.toml$` each match the one file
+   no member manifest, because every member manifest is `crates/bc_<context>/<name>/lang_rust/Cargo.toml` or
+   `tools/bc_<context>/<name>/lang_rust/Cargo.toml`. `^clippy\.toml$` and `^rust-toolchain\.toml$` each match the one file
    of that name at the repository root. `^\.cargo/config\.toml$` matches the one cargo config, and
    the leading dot is escaped like every other. The dot is escaped in each alternative, so no pattern
    matches a path such as `CargoXtoml`. **`Cargo.lock` is NOT in the pattern**, and the heading
@@ -154,7 +154,7 @@ This chunk declares no Rust type and changes no Rust file. It edits one workflow
       a skipped job is the state step 2 records before the repair. Record the run id in the chunk
       report. **`^Cargo\.toml$` is the alternative under
       test**, and it is the only one that can have matched: the changed set holds one path, and that
-      path opens with neither `roadmap/` nor `tools/xtask/` and is neither `clippy.toml`,
+      path opens with neither `roadmap/` nor `tools/bc_repo_guard/xtask/lang_rust/` and is neither `clippy.toml`,
       `rust-toolchain.toml` nor `.cargo/config.toml`.
    5. Close the scratch pull request without a merge and delete the scratch branch.
 
@@ -239,9 +239,10 @@ close without a merge, so neither scratch commit lands and neither is a write th
   inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are
   required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every
   `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the
   root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no
   pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with
   Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this

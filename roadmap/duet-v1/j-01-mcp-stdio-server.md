@@ -3,14 +3,14 @@ id: J1
 line: J
 depends_on: [M8, I1]
 write_scope:
-  - crates/duet-agent/Cargo.toml
-  - crates/duet-agent/src/lib.rs
-  - crates/duet-agent/src/stdio.rs
-  - crates/duet-agent/src/shutdown.rs
-  - crates/duet-agent/src/socket.rs
-  - crates/duet-agent/src/path.rs
-  - crates/duet-agent/src/lock.rs
-  - crates/duet-agent/tests/end_to_end.rs
+  - crates/bc_gateway/duet-agent/lang_rust/Cargo.toml
+  - crates/bc_gateway/duet-agent/lang_rust/src/lib.rs
+  - crates/bc_gateway/duet-agent/lang_rust/src/stdio.rs
+  - crates/bc_gateway/duet-agent/lang_rust/src/shutdown.rs
+  - crates/bc_gateway/duet-agent/lang_rust/src/socket.rs
+  - crates/bc_gateway/duet-agent/lang_rust/src/path.rs
+  - crates/bc_gateway/duet-agent/lang_rust/src/lock.rs
+  - crates/bc_gateway/duet-agent/lang_rust/tests/end_to_end.rs
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-agent -E 'test(stdio) + test(shutdown)' --no-tests=fail passes; cargo clippy -p duet-agent --all-targets -- -D warnings is clean; commit SHA on a branch chunk/j1-mcp-stdio-server"
@@ -35,21 +35,21 @@ need. Chunk J2 fills `socket.rs`, `path.rs` and `lock.rs`.
 
 ## Files
 
-- `crates/duet-agent/Cargo.toml` — modify. M8 created the skeleton with no `[dependencies]` section.
-- `crates/duet-agent/src/lib.rs` — modify. M8 wrote the `//!` crate doc and
+- `crates/bc_gateway/duet-agent/lang_rust/Cargo.toml` — modify. M8 created the skeleton with no `[dependencies]` section.
+- `crates/bc_gateway/duet-agent/lang_rust/src/lib.rs` — modify. M8 wrote the `//!` crate doc and
   `#![forbid(unsafe_code)]`. Add one `mod` line per file below.
-- `crates/duet-agent/src/stdio.rs` — create. The `rmcp` server over standard input and output.
-- `crates/duet-agent/src/shutdown.rs` — create. The signal handler and the idempotent choke point.
-- `crates/duet-agent/src/socket.rs` — create. Documentation stub; chunk J2 fills it.
-- `crates/duet-agent/src/path.rs` — create. Documentation stub; chunk J2 fills it.
-- `crates/duet-agent/src/lock.rs` — create. Documentation stub; chunk J2 fills it.
-- `crates/duet-agent/tests/end_to_end.rs` — create. SM2 covers `src/` only, so an integration test
+- `crates/bc_gateway/duet-agent/lang_rust/src/stdio.rs` — create. The `rmcp` server over standard input and output.
+- `crates/bc_gateway/duet-agent/lang_rust/src/shutdown.rs` — create. The signal handler and the idempotent choke point.
+- `crates/bc_gateway/duet-agent/lang_rust/src/socket.rs` — create. Documentation stub; chunk J2 fills it.
+- `crates/bc_gateway/duet-agent/lang_rust/src/path.rs` — create. Documentation stub; chunk J2 fills it.
+- `crates/bc_gateway/duet-agent/lang_rust/src/lock.rs` — create. Documentation stub; chunk J2 fills it.
+- `crates/bc_gateway/duet-agent/lang_rust/tests/end_to_end.rs` — create. SM2 covers `src/` only, so an integration test
   needs no `mod` line and this chunk creates the file in its own write scope.
 - `Cargo.lock` — modify (SM5 rule 2).
 
 ## Types and signatures
 
-### Declared by this chunk, in `crates/duet-agent/src/lib.rs`
+### Declared by this chunk, in `crates/bc_gateway/duet-agent/lang_rust/src/lib.rs`
 
 Copied from architecture section 15.15.
 
@@ -96,7 +96,7 @@ K1 writes in `crates/duet`.
 
 ## Steps
 
-1. Read `crates/duet-agent/Cargo.toml` and `crates/duet-agent/src/lib.rs`. Confirm that M8 wrote the
+1. Read `crates/bc_gateway/duet-agent/lang_rust/Cargo.toml` and `crates/bc_gateway/duet-agent/lang_rust/src/lib.rs`. Confirm that M8 wrote the
    package fields, `description`, `[lints] workspace = true`, the `//!` crate doc and
    `#![forbid(unsafe_code)]`, and that no `[dependencies]` section exists. Stop and report a
    discrepancy.
@@ -125,7 +125,7 @@ K1 writes in `crates/duet`.
 12. Implement `src/shutdown.rs`: the idempotent choke point over an `AtomicBool`, the `SIGINT` and
     `SIGTERM` handler thread, and the `Drop` path that absorbs every failure through a
     `tracing::warn!`.
-13. Write `crates/duet-agent/tests/end_to_end.rs`, wrapped in a `#[cfg(test)] mod tests` because
+13. Write `crates/bc_gateway/duet-agent/lang_rust/tests/end_to_end.rs`, wrapped in a `#[cfg(test)] mod tests` because
     `clippy::tests_outside_test_module` is denied. Architecture section 13.2 states its whole
     assertion set, and this test asserts what phase 8 delivers and nothing more:
     `ProjectCreate` with the SATB template, `TrackAdd`, `TrackSetInput`, `TrackSetArmed`, a MIDI
@@ -142,7 +142,7 @@ K1 writes in `crates/duet`.
 ## Tests
 
 Every unit test lives in a `#[cfg(test)] mod tests` in the same file. The integration test lives in
-`crates/duet-agent/tests/end_to_end.rs`, wrapped in a `#[cfg(test)] mod tests`. Every assert carries
+`crates/bc_gateway/duet-agent/lang_rust/tests/end_to_end.rs`, wrapped in a `#[cfg(test)] mod tests`. Every assert carries
 a message.
 
 | Test | File | What it asserts |
@@ -155,7 +155,7 @@ a message.
 | `shutdown_is_idempotent` | `src/shutdown.rs` | A second call answers `AlreadyRun` and performs no work. |
 | `shutdown_absorbs_every_failure_in_drop` | `src/shutdown.rs` | The `Drop` path discards a refusal through a warning and returns, and it holds no `?`, no `unwrap` and no `expect`. |
 | `shutdown_runs_from_a_signal` | `src/shutdown.rs` | A simulated `SIGTERM` reaches the choke point exactly once. |
-| `end_to_end` (module `tests`) | `crates/duet-agent/tests/end_to_end.rs` | The thirteen steps of architecture section 13.2, in order, with a byte compare of the score after the checkout and an equal `ViewState` after the `ViewSet` and `ViewGet` round trip. |
+| `end_to_end` (module `tests`) | `crates/bc_gateway/duet-agent/lang_rust/tests/end_to_end.rs` | The thirteen steps of architecture section 13.2, in order, with a byte compare of the score after the checkout and an equal `ViewState` after the `ViewSet` and `ViewGet` round trip. |
 
 **The headless product path is TWO tests, and the phase numbers are the reason** (critic C16-9). The
 export half needs chunk I4 in phase 10, chunk H3 in phase 9 and chunk H4 in phase 10. A single test
@@ -179,7 +179,8 @@ would fail every commit of phases 8 and 9, and CLAUDE.md forbids `--no-verify`. 
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

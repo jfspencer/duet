@@ -4,7 +4,7 @@ Author: Product Manager. Date: 2026-09-20. Plan: `roadmap/duet-v1`.
 
 Sources read: the shared brief, `roadmap/duet-v1/research/gpui-kit-audit.md` (sections 4, 5, 9),
 `roadmap/duet-v1/research/ardour-concepts.md` (sections 3, 4, 11), `roadmap/duet-v1/research/crate-survey.md`,
-and the current application skeleton `crates/duet/src/main.rs` and `crates/duet/src/app.rs`.
+and the current application skeleton `crates/bc_app/duet/lang_rust/src/main.rs` and `crates/bc_app/duet/lang_rust/src/app.rs`.
 
 Code check: the application today opens one window and draws one counter button. No score, no audio,
 no timeline, and no menu exists. Every requirement below is new work. No requirement contradicts

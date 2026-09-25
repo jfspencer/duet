@@ -3,8 +3,8 @@ id: E3
 line: E
 depends_on: [M4, E2]
 write_scope:
-  - crates/duet-analysis/src/loudness.rs
-  - crates/duet-analysis/Cargo.toml
+  - crates/bc_audio/duet-analysis/lang_rust/src/loudness.rs
+  - crates/bc_audio/duet-analysis/lang_rust/Cargo.toml
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-analysis -E 'test(loudness_read)' --no-tests=fail"
@@ -13,21 +13,21 @@ completion: "cargo nextest run -p duet-analysis -E 'test(loudness_read)' --no-te
 # E3: The loudness reader over ebur128
 
 Verify the current state of the files in the write scope; report a discrepancy and stop, instead of
-proceeding. Chunk E1 created `crates/duet-analysis/src/loudness.rs` as a stub in phase 2, so the file
+proceeding. Chunk E1 created `crates/bc_audio/duet-analysis/lang_rust/src/loudness.rs` as a stub in phase 2, so the file
 holds a `//!` line alone. This chunk fills it. It measures the integrated loudness, the short-term
 loudness, the momentary loudness, the true peak, and the loudness range of one source, and it answers
 one `LoudnessReport`. Chunk H2 then builds the two-pass loudness graph on it, which section 13.4
 states as the link "E3 before H2". The chunk implements architecture sections 1.2, 1.3, 7.4, and
 15.5, and it carries the measurement half of the product stories MA-01 and MA-03.
 
-This chunk adds two dependencies, so SM1 puts `crates/duet-analysis/Cargo.toml` in its write scope
+This chunk adds two dependencies, so SM1 puts `crates/bc_audio/duet-analysis/lang_rust/Cargo.toml` in its write scope
 and SM5 rule 2 puts `Cargo.lock` there beside it. Section 13.2 names both files in this chunk's
 Writes cell.
 
 ## Files
 
-- `crates/duet-analysis/src/loudness.rs` — modify. The loudness reader.
-- `crates/duet-analysis/Cargo.toml` — modify. Add `ebur128` and `duet-command`.
+- `crates/bc_audio/duet-analysis/lang_rust/src/loudness.rs` — modify. The loudness reader.
+- `crates/bc_audio/duet-analysis/lang_rust/Cargo.toml` — modify. Add `ebur128` and `duet-command`.
 - `Cargo.lock` — modify.
 
 ## Types and signatures
@@ -35,7 +35,7 @@ Writes cell.
 ### Manifest
 
 ```toml
-# crates/duet-analysis/Cargo.toml, [dependencies], added by this chunk
+# crates/bc_audio/duet-analysis/lang_rust/Cargo.toml, [dependencies], added by this chunk
 duet-command = { workspace = true }
 ebur128 = { workspace = true }
 ```
@@ -120,9 +120,9 @@ module carries no target of its own.
 
 ## Steps
 
-1. Read `crates/duet-analysis/src/loudness.rs`. Confirm that it holds a `//!` line and nothing else.
+1. Read `crates/bc_audio/duet-analysis/lang_rust/src/loudness.rs`. Confirm that it holds a `//!` line and nothing else.
    Report a discrepancy and stop if the state differs.
-2. Read `crates/duet-analysis/Cargo.toml`. Confirm that chunks E1 and E2 left it with the entries
+2. Read `crates/bc_audio/duet-analysis/lang_rust/Cargo.toml`. Confirm that chunks E1 and E2 left it with the entries
    those chunks added and with no `ebur128` entry. Report a discrepancy and stop if the state
    differs.
 3. Read the root `Cargo.toml`. Confirm that `[workspace.dependencies]` pins `ebur128` and carries the
@@ -131,7 +131,7 @@ module carries no target of its own.
    `#[cfg(test)] mod tests`. Run
    `cargo nextest run -p duet-analysis -E 'test(loudness_read)' --no-tests=fail` and confirm that the
    run fails to compile.
-5. Add the two `{ workspace = true }` entries to `crates/duet-analysis/Cargo.toml`. Run
+5. Add the two `{ workspace = true }` entries to `crates/bc_audio/duet-analysis/lang_rust/Cargo.toml`. Run
    `cargo build --workspace`, which settles `Cargo.lock` (SM5 rule 3).
 6. Implement `measure`. Build one `ebur128::EbuR128` with the integrated, the short-term, the
    momentary, the true-peak, and the loudness-range modes. Read `MEASURE_BLOCK_FRAMES` frames at a
@@ -158,7 +158,7 @@ Every test lives in a `#[cfg(test)] mod tests` in the same file, and every asser
 A test double implements `duet_dsp::SampleSource` over a generated signal, so the crate stays pure
 and opens no file; section 1.4 names `duet-analysis` a pure crate for that reason.
 
-`crates/duet-analysis/src/loudness.rs`
+`crates/bc_audio/duet-analysis/lang_rust/src/loudness.rs`
 
 - `loudness_read_measures_a_known_tone` — feeds a 1 kHz sine at minus 20 dBFS for ten seconds and
   asserts an integrated loudness of minus 20.0 LUFS within 0.2 LU, which is B76.
@@ -216,9 +216,10 @@ such as `feat(analysis): measure loudness and true peak over ebur128`.
   inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are
   required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every
   `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the
   root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no
   pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with
   Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this

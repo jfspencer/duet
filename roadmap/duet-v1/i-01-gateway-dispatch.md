@@ -3,21 +3,21 @@ id: I1
 line: I
 depends_on: [M7, C1, F1, F3]
 write_scope:
-  - crates/duet-core/Cargo.toml
-  - crates/duet-core/src/lib.rs
-  - crates/duet-core/src/gateway.rs
-  - crates/duet-core/src/aggregate.rs
-  - crates/duet-core/src/undo.rs
-  - crates/duet-core/src/job_runner.rs
-  - crates/duet-core/src/channel.rs
-  - crates/duet-core/src/channel/input.rs
-  - crates/duet-core/src/channel/event.rs
-  - crates/duet-core/src/channel/resync.rs
-  - crates/duet-core/src/snapshot.rs
-  - crates/duet-core/src/job.rs
-  - crates/duet-core/src/midi_entry.rs
-  - crates/duet-core/src/reader.rs
-  - crates/duet-core/src/quit.rs
+  - crates/bc_gateway/duet-core/lang_rust/Cargo.toml
+  - crates/bc_gateway/duet-core/lang_rust/src/lib.rs
+  - crates/bc_gateway/duet-core/lang_rust/src/gateway.rs
+  - crates/bc_gateway/duet-core/lang_rust/src/aggregate.rs
+  - crates/bc_gateway/duet-core/lang_rust/src/undo.rs
+  - crates/bc_gateway/duet-core/lang_rust/src/job_runner.rs
+  - crates/bc_gateway/duet-core/lang_rust/src/channel.rs
+  - crates/bc_gateway/duet-core/lang_rust/src/channel/input.rs
+  - crates/bc_gateway/duet-core/lang_rust/src/channel/event.rs
+  - crates/bc_gateway/duet-core/lang_rust/src/channel/resync.rs
+  - crates/bc_gateway/duet-core/lang_rust/src/snapshot.rs
+  - crates/bc_gateway/duet-core/lang_rust/src/job.rs
+  - crates/bc_gateway/duet-core/lang_rust/src/midi_entry.rs
+  - crates/bc_gateway/duet-core/lang_rust/src/reader.rs
+  - crates/bc_gateway/duet-core/lang_rust/src/quit.rs
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-core -E 'test(dispatch)' --no-tests=fail passes; cargo clippy -p duet-core --all-targets -- -D warnings is clean; commit SHA on a branch chunk/i1-gateway-dispatch"
@@ -41,26 +41,26 @@ each one.
 
 ## Files
 
-- `crates/duet-core/Cargo.toml` — modify. M7 created the skeleton with no `[dependencies]` section.
+- `crates/bc_gateway/duet-core/lang_rust/Cargo.toml` — modify. M7 created the skeleton with no `[dependencies]` section.
   **This chunk adds every `{ workspace = true }` entry the crate needs, including `async-channel`,
   `futures`, `crossbeam-queue` and `arrayvec`** (SM1): architecture section 15.14 declares `DuetCore`
   as ONE struct whose fields name all four, and section 13.2 gives this chunk the file that holds the
   struct. Appendix B.3 names I1 in its "Chunk that needs it" column for all four rows; it named I2
   until this revision, and the chunk author of line I reported it.
-- `crates/duet-core/src/lib.rs` — modify. M7 wrote the `//!` crate doc and `#![forbid(unsafe_code)]`.
-- `crates/duet-core/src/gateway.rs` — create. `Gateway::call` and every dispatch arm.
-- `crates/duet-core/src/aggregate.rs` — create. `DuetCore`, its documents, `drain_note_entries`.
-- `crates/duet-core/src/undo.rs` — create. `Transaction` and `UndoStack`.
-- `crates/duet-core/src/job_runner.rs` — create. `JobRunner` and `JobWorker`.
-- `crates/duet-core/src/channel.rs` — create. The `mod` lines of the `channel` directory.
-- `crates/duet-core/src/channel/input.rs` — create. `CoreLink` and `CoreReceiver`.
-- `crates/duet-core/src/channel/event.rs` — create. `ClientLink` and `CoreClient`.
-- `crates/duet-core/src/channel/resync.rs` — create. Stub.
-- `crates/duet-core/src/snapshot.rs` — create. Stub.
-- `crates/duet-core/src/job.rs` — create. `JobRegistry` and `JobState` handling.
-- `crates/duet-core/src/midi_entry.rs` — create. Stub.
-- `crates/duet-core/src/reader.rs` — create. Stub.
-- `crates/duet-core/src/quit.rs` — create. Stub.
+- `crates/bc_gateway/duet-core/lang_rust/src/lib.rs` — modify. M7 wrote the `//!` crate doc and `#![forbid(unsafe_code)]`.
+- `crates/bc_gateway/duet-core/lang_rust/src/gateway.rs` — create. `Gateway::call` and every dispatch arm.
+- `crates/bc_gateway/duet-core/lang_rust/src/aggregate.rs` — create. `DuetCore`, its documents, `drain_note_entries`.
+- `crates/bc_gateway/duet-core/lang_rust/src/undo.rs` — create. `Transaction` and `UndoStack`.
+- `crates/bc_gateway/duet-core/lang_rust/src/job_runner.rs` — create. `JobRunner` and `JobWorker`.
+- `crates/bc_gateway/duet-core/lang_rust/src/channel.rs` — create. The `mod` lines of the `channel` directory.
+- `crates/bc_gateway/duet-core/lang_rust/src/channel/input.rs` — create. `CoreLink` and `CoreReceiver`.
+- `crates/bc_gateway/duet-core/lang_rust/src/channel/event.rs` — create. `ClientLink` and `CoreClient`.
+- `crates/bc_gateway/duet-core/lang_rust/src/channel/resync.rs` — create. Stub.
+- `crates/bc_gateway/duet-core/lang_rust/src/snapshot.rs` — create. Stub.
+- `crates/bc_gateway/duet-core/lang_rust/src/job.rs` — create. `JobRegistry` and `JobState` handling.
+- `crates/bc_gateway/duet-core/lang_rust/src/midi_entry.rs` — create. Stub.
+- `crates/bc_gateway/duet-core/lang_rust/src/reader.rs` — create. Stub.
+- `crates/bc_gateway/duet-core/lang_rust/src/quit.rs` — create. Stub.
 - `Cargo.lock` — modify. SM5 rule 2 binds every chunk that writes a member manifest.
 
 **Which files hold code and which hold documentation alone.** SM2 asks for a stub, and section 13.0
@@ -79,7 +79,7 @@ because section 15.14 declares `DuetCore` as ONE struct and chunk I2 cannot edit
 
 ## Types and signatures
 
-### Declared by this chunk, in `crates/duet-core/src/aggregate.rs`
+### Declared by this chunk, in `crates/bc_gateway/duet-core/lang_rust/src/aggregate.rs`
 
 Copied from architecture section 15.14. Every field keeps its declared name and its declared type.
 
@@ -131,7 +131,7 @@ impl DuetCore {
 }
 ```
 
-### Declared by this chunk, in `crates/duet-core/src/undo.rs`
+### Declared by this chunk, in `crates/bc_gateway/duet-core/lang_rust/src/undo.rs`
 
 Copied from architecture section 4.9.
 
@@ -160,7 +160,7 @@ B65 and the `CoreEvent::UndoHorizonMoved { dropped, oldest_name }` report.
 pub struct TransactionName(Box<str>);
 ```
 
-### Declared by this chunk, in `crates/duet-core/src/job_runner.rs` and `src/job.rs`
+### Declared by this chunk, in `crates/bc_gateway/duet-core/lang_rust/src/job_runner.rs` and `src/job.rs`
 
 Copied from architecture section 9.6.
 
@@ -192,7 +192,7 @@ pub struct JobRegistry {
 }
 ```
 
-### Declared by this chunk, in `crates/duet-core/src/channel/input.rs` and `src/channel/event.rs`
+### Declared by this chunk, in `crates/bc_gateway/duet-core/lang_rust/src/channel/input.rs` and `src/channel/event.rs`
 
 Copied from architecture section 15.14.
 
@@ -234,7 +234,7 @@ impl DuetCore {
 `CoreReceiver<T>` is this crate's name for the read end of an `async_channel` at the bounds B28,
 B29, B30, B36 and B138 that architecture section 5.8 states. Declare it in `src/channel/input.rs`.
 
-### Declared by this chunk, in `crates/duet-core/src/gateway.rs`
+### Declared by this chunk, in `crates/bc_gateway/duet-core/lang_rust/src/gateway.rs`
 
 Copied from architecture section 15.14.
 
@@ -264,16 +264,16 @@ pub enum CoreError { Gateway(GatewayError), NothingToUndo, NothingToRedo, Channe
 
 ## Steps
 
-1. Read `crates/duet-core/Cargo.toml` and `crates/duet-core/src/lib.rs`. Confirm that M7 wrote the
+1. Read `crates/bc_gateway/duet-core/lang_rust/Cargo.toml` and `crates/bc_gateway/duet-core/lang_rust/src/lib.rs`. Confirm that M7 wrote the
    package fields, `description`, `[lints] workspace = true`, the `//!` crate doc and
    `#![forbid(unsafe_code)]`, and that no `[dependencies]` section exists. Read the root
    `Cargo.toml` and confirm that `[workspace.dependencies]` carries one
-   `duet-<crate> = { path = "crates/duet-<crate>" }` entry per internal crate step 2 names, which
+   `duet-<crate> = { path = "crates/bc_<context>/duet-<crate>/lang_rust" }` entry per internal crate step 2 names, which
    the manifest chunk of each crate's phase wrote (SM1 rule 4), and that it pins `async-channel`,
    `futures`, `crossbeam-queue` and `arrayvec`. Stop and report if the crate is absent, if it
    already holds code, or if a root entry is missing; SM4 forbids this chunk to edit the root
    manifest.
-2. Add the `[dependencies]` section to `crates/duet-core/Cargo.toml`. Add one
+2. Add the `[dependencies]` section to `crates/bc_gateway/duet-core/lang_rust/Cargo.toml`. Add one
    `{ workspace = true }` entry per crate this chunk names: the internal crates `duet-time`,
    `duet-dsp`, `duet-score`, `duet-session`, `duet-command`, `duet-interchange`, `duet-project`,
    `duet-engine`, `duet-midi`, `duet-analysis`, `duet-media`, and the third-party crates
@@ -356,7 +356,8 @@ arm stays declared.
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

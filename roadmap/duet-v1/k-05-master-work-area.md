@@ -3,13 +3,13 @@ id: K5
 line: K
 depends_on: [K4, D2, H1]
 write_scope:
-  - crates/duet/src/element/lufs_meter.rs
-  - crates/duet/src/master/view.rs
-  - crates/duet/src/master/export_dialog.rs
-  - crates/duet/src/master/report.rs
-  - crates/duet/src/shell/toolbar_master.rs
-  - crates/duet/benches/
-  - crates/duet/Cargo.toml
+  - crates/bc_app/duet/lang_rust/src/element/lufs_meter.rs
+  - crates/bc_app/duet/lang_rust/src/master/view.rs
+  - crates/bc_app/duet/lang_rust/src/master/export_dialog.rs
+  - crates/bc_app/duet/lang_rust/src/master/report.rs
+  - crates/bc_app/duet/lang_rust/src/shell/toolbar_master.rs
+  - crates/bc_app/duet/lang_rust/benches/
+  - crates/bc_app/duet/lang_rust/Cargo.toml
   - Cargo.lock
 parallelism: "serial-only: phase 13 holds one chunk, because line K has six chunks and no cross-line dependency exists after phase 11 (section 13.3)"
 completion: "cargo nextest run -p duet -E 'test(master_view) + test(export_dialog)' --no-tests=fail passes; cargo clippy -p duet --all-targets -- -D warnings is clean; commit SHA on a branch chunk/k5-master-work-area"
@@ -40,14 +40,14 @@ precomputation:
 
 ## Files
 
-- `crates/duet/src/element/lufs_meter.rs` — modify. Documentation stub.
-- `crates/duet/src/master/view.rs` — modify. Chunk K1 left a seam view.
-- `crates/duet/src/master/export_dialog.rs` — modify. Documentation stub.
-- `crates/duet/src/master/report.rs` — modify. Documentation stub.
-- `crates/duet/src/shell/toolbar_master.rs` — modify. Replace one `render` body and one
+- `crates/bc_app/duet/lang_rust/src/element/lufs_meter.rs` — modify. Documentation stub.
+- `crates/bc_app/duet/lang_rust/src/master/view.rs` — modify. Chunk K1 left a seam view.
+- `crates/bc_app/duet/lang_rust/src/master/export_dialog.rs` — modify. Documentation stub.
+- `crates/bc_app/duet/lang_rust/src/master/report.rs` — modify. Documentation stub.
+- `crates/bc_app/duet/lang_rust/src/shell/toolbar_master.rs` — modify. Replace one `render` body and one
   `group_count` body. Edit `top_bar.rs` not at all.
-- `crates/duet/benches/master_frame.rs` — create.
-- `crates/duet/Cargo.toml` — modify. The second `[[bench]]` target with `harness = false`.
+- `crates/bc_app/duet/lang_rust/benches/master_frame.rs` — create.
+- `crates/bc_app/duet/lang_rust/Cargo.toml` — modify. The second `[[bench]]` target with `harness = false`.
 - `Cargo.lock` — modify (SM5 rule 2).
 
 **This chunk modifies no file of chunk K3.** `PathCache` is chunk K3's file; this chunk names the
@@ -55,7 +55,7 @@ type and fills its own `MasterView::cache` field (section 10.5).
 
 ## Types and signatures
 
-### Declared by this chunk, in `crates/duet/src/master/view.rs`
+### Declared by this chunk, in `crates/bc_app/duet/lang_rust/src/master/view.rs`
 
 Copied from architecture section 15.16.
 
@@ -94,7 +94,7 @@ pub(crate) struct MasterMeterLayer {
 `MasterMeterLayer` carries the same start and stop conditions `MeterLayer` states, it reads the same
 `CoreHost::frame_demand`, and `MasterView` restarts it with the same `cx.notify`.
 
-### Declared by this chunk, in `crates/duet/src/element/lufs_meter.rs`
+### Declared by this chunk, in `crates/bc_app/duet/lang_rust/src/element/lufs_meter.rs`
 
 Copied from architecture section 15.16.
 
@@ -167,7 +167,7 @@ list, so the dialog offers WAV, RF64 and FLAC and reports the difference to the 
 ## Steps
 
 1. Read every file of the write scope. Confirm that chunk K1 created each one and that
-   `crates/duet/benches/mix_frame.rs` exists from chunk K4. Stop and report a discrepancy.
+   `crates/bc_app/duet/lang_rust/benches/mix_frame.rs` exists from chunk K4. Stop and report a discrepancy.
 2. Add the second `[[bench]]` target with `harness = false` and `name = "master_frame"`. Run
    `cargo build --workspace` and commit the `Cargo.lock` it produces.
 3. Write the failing test `master_view_draws_one_box_per_stage_arm` in `src/master/view.rs`, as a
@@ -202,7 +202,7 @@ list, so the dialog offers WAV, RF64 and FLAC and reports the difference to the 
 13. Write `src/shell/toolbar_master.rs`. Replace `group_count` and `render`. Contract 5.4 names the
     `Export…` primary Button in the Master top bar, and product stories MA-01 and MA-04 name the
     preset control and the measure action.
-14. Write the `criterion` bench in `crates/duet/benches/master_frame.rs`. It measures one Master
+14. Write the `criterion` bench in `crates/bc_app/duet/lang_rust/benches/master_frame.rs`. It measures one Master
     frame at B1 and reports against B4.
 15. Write every test of the Tests section.
 16. Run the Completion command and confirm that it passes.
@@ -259,8 +259,8 @@ Architecture section 10.7 rung three item 7, for the Master work area.
 2. `cargo nextest run -p duet --no-tests=fail` passes.
 3. `cargo bench -p duet --bench master_frame -- --test` builds and runs one iteration.
 4. `cargo clippy -p duet --all-targets -- -D warnings` prints no warning.
-5. `git status` shows no change under `crates/duet/src/record/`, `crates/duet/src/mix/` or
-   `crates/duet/src/shell/top_bar.rs`.
+5. `git status` shows no change under `crates/bc_app/duet/lang_rust/src/record/`, `crates/bc_app/duet/lang_rust/src/mix/` or
+   `crates/bc_app/duet/lang_rust/src/shell/top_bar.rs`.
 6. One commit on a branch named `chunk/k5-master-work-area`. The native git hook runs
    `scripts/dod.sh`.
 
@@ -271,7 +271,8 @@ Architecture section 10.7 rung three item 7, for the Master work area.
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

@@ -142,12 +142,20 @@ premise-review finding.
    document, because a hub crate defeats the bounded contexts and serializes the build
    (critic 8.2).
 
+6. **Group the crates into eight bounded contexts, and put the context in the path** (ADR 0011).
+   The repository adopts the ultravisor DDD path grammar: a crate lives at
+   `crates/bc_<context>/<crate>/lang_rust/`. The crate names, the `use` paths, and every `-p`
+   command stay the same. Section 1.2 gives the context map, and the map is acyclic over the
+   section 1.3 edge list.
+
 `crates/duet` stays the only binary. It opens a window, or serves the Model Context Protocol, or
-applies one verb (PR 11 Q2).
+applies one verb (PR 11 Q2). **In this document `crates/duet` is the NAME of the application crate
+row, which the guards read, and not a path.** Its path is `crates/bc_app/duet/lang_rust/`.
 
 ### 1.2 The crate table
 
-Each crate names the one invariant it protects (critic 8.6). Every crate goes under `crates/`. Every
+Each crate names the one invariant it protects (critic 8.6). Every crate goes under
+`crates/bc_<context>/<crate>/lang_rust/`, and the bounded context map below names its context. Every
 crate declares `[lints] workspace = true` and fills `description` in `[package]`, because the denied
 `cargo` lint group contains `clippy::cargo_common_metadata`.
 
@@ -262,6 +270,60 @@ encoder.
 counts written bytes. At the promotion threshold B67 it closes the WAV, reopens the take as RF64
 through `bwavfile`, and copies the written frames. A take that starts above the limit opens as RF64
 at once. `ManifestEntry::container` records which one.
+
+#### The bounded context map
+
+**The path carries the bounded context, and nothing else of the design** (ADR 0011). The ultravisor
+DDD path grammar (`.ddd/grammar.toml`) reads `bc_<context>` and `lang_rust` from a path. The DDD
+layer, the tactical pattern, and the tags of a file go in its front matter, which chunk M94 adds.
+A crate lives at `crates/bc_<context>/<crate>/lang_rust/`. `Cargo.toml`, `src/`, `tests/`, and
+`benches/` sit in `lang_rust/`. A unit file that is not Rust, such as the Bravura font or the macOS
+`Info.plist`, sits in the unit directory beside `lang_rust/`, because the grammar refuses a file at
+the `lang_rust/` root that no shell declares.
+
+| Context | Crates | Subdomain | Role toward the other contexts |
+|---|---|---|---|
+| `bc_time` | `duet-time` | generic | Shared kernel. Every context reads it, and it reads none. |
+| `bc_document` | `duet-score`, `duet-session`, `duet-command` | core | The two document aggregates and the published language (`Verb`, `DomainEvent`, `BundleDocument`) that every downstream context conforms to. |
+| `bc_notation` | `duet-engrave`, `duet-interchange` | core | Engraving of the score, and the anticorruption layer to MusicXML and SMF. |
+| `bc_audio` | `duet-dsp`, `duet-media`, `duet-analysis`, `duet-engine`, `duet-export` | core | Signal blocks, source files, measurement, the real-time engine, and the offline render. |
+| `bc_midi` | `duet-midi` | supporting | Device presence and streams. Conformist to the document language. |
+| `bc_project` | `duet-project` | supporting | The bundle, the content store, the history over gix, and the watch. |
+| `bc_gateway` | `duet-core`, `duet-agent` | supporting | The one writer (application service) and the Model Context Protocol host (open host service). |
+| `bc_app` | `duet` | supporting | Presentation only. |
+
+**The context graph is acyclic, and the order is its proof.** Collapse every edge of section 1.3
+onto the contexts above and the order `time`, `document`, `notation` and `audio`, `midi`,
+`project`, `gateway`, `app` holds with every edge pointing to an earlier context. `bc_project`
+reads `bc_audio` through `duet-media`; no other pair of the same rank has an edge. A crate that
+joins a context keeps this order, and a new context is an ADR.
+
+**The unit segment between `bc_<context>` and `lang_rust` is the Cargo package name, verbatim.** A
+package name therefore never holds `_`, because the grammar reads `x_y` there as a structural kind
+and refuses it. The segment exists in a one-crate context too, so a context gains a crate with no
+file move.
+
+PG40 reads this block. Every crate of the crate table appears once.
+
+<!-- GUARD BLOCK id=context-map rows>=16 -->
+```text
+duet-time        time
+duet-score       document
+duet-session     document
+duet-command     document
+duet-engrave     notation
+duet-interchange notation
+duet-dsp         audio
+duet-media       audio
+duet-analysis    audio
+duet-engine      audio
+duet-export      audio
+duet-midi        midi
+duet-project     project
+duet-core        gateway
+duet-agent       gateway
+duet             app
+```
 
 ### 1.3 The dependency graph
 
@@ -489,7 +551,7 @@ Ten placements changed in revision 10, and PG19 or PG20 proved every one of them
 
 `cargo xtask check-placement <document>` reads this document and fails on a placement defect. The
 prototype is `roadmap/duet-v1/tools/placement_check.py`, and chunk M0 ports it to
-`tools/xtask/src/check_placement.rs`.
+`tools/bc_repo_guard/xtask/lang_rust/src/check_placement.rs`.
 
 **The guard is not in `scripts/dod.sh`.** It runs as the `plan-lint` job of
 `.github/workflows/ci.yml`, on a change under `roadmap/` (section 14). Revision 5 put it in the gate,
@@ -724,7 +786,7 @@ the section 1.9 pin block, and the repository's own `[workspace.lints]` table,
 `cargo clippy --workspace --all-targets -- -D warnings`. A cycle in section 1.3 and a missing edge
 each fail at `cargo`, because a crate imports a name from a direct edge and from nothing else. The
 prototype is `roadmap/duet-v1/tools/roster_compile.sh`, and chunk M0 ports it to
-`tools/xtask/src/check_roster.rs`.
+`tools/bc_repo_guard/xtask/lang_rust/src/check_roster.rs`.
 
 **The stated profile, which is the only thing PG25 relaxes.** Seven lints, each with its reason.
 `missing_docs` and `clippy::missing_docs_in_private_items`, because the roster carries declarations
@@ -1042,7 +1104,7 @@ false.** `roadmap/duet-v1/reviews/` is a tracked plan record and it already hold
 review; every review this appendix records was read from it, and CL5 computes the md5 of a file in
 that directory on every run. A rule whose input is a tracked file needs no new write scope, so the
 decision the sentence routed away was a decision this document could make and had already made in
-practice. Chunk M0's write scope therefore holds `tools/xtask/src/check_closure.rs`, and the
+practice. Chunk M0's write scope therefore holds `tools/bc_repo_guard/xtask/lang_rust/src/check_closure.rs`, and the
 `plan-lint` job of `.github/workflows/ci.yml` holds one `cargo xtask check-closure` line per closure
 block. `plan-lint` runs only on a change under `roadmap/`, so the cost stays off every commit
 exactly as `check-placement`'s does.
@@ -1062,7 +1124,13 @@ on the Writes columns, and no rule held a chunk's write scope to the crate its l
 could take a path inside a crate another line is building in the same phase and every guard stayed
 green (N19-4, recorded as debt for three revisions). The `line-map` block is the data that debt row
 named. The rule takes the line of each chunk id, takes that line's crate from the block, and fails
-on a `crates/<name>/` path in the chunk's row whose `<name>` is not that crate.
+on a `crates/bc_<context>/<name>/` path in the chunk's row whose `<name>` is not that crate.
+**It fails closed on the path shape** (ADR 0011). Every `crates/` token of every chunk row, M rows
+included, must parse as `crates/bc_<context>/<name>/`, the `context-map` block must place `<name>`
+in `<context>`, and that block must list every crate of the crate table once. A row that still
+names a path of the old `crates/<name>/` form is a finding, and a run that parses no path at all is
+a finding. The move to the path grammar showed why: the old pattern stops at the `_` of `bc_audio`,
+so it matched nothing and every row passed.
 
 **The rule's own limits, stated here.** The M chunks are outside it, because SM1 makes a manifest
 chunk create the skeleton of every crate whose first chunk runs in its phase, so a manifest row names
@@ -1129,7 +1197,7 @@ unescaped `|` inside a backtick span truncates the row a reader sees while the s
 the text. Revision 21 carried two, and neither was visible to any rule (critic C21-5). Chunk M0's
 section 13.1 row parsed to seven cells under a five-column header, which dropped `scripts/bootstrap.sh`,
 `deny.toml`, `.cargo/config.toml`, `.github/workflows/ci.yml`, `clippy.toml`, `.gitignore`,
-`.claude/skills/gpui-kit/SKILL.md`, `crates/duet/Cargo.toml`, `Info.plist`, `assets/fonts/` and
+`.claude/skills/gpui-kit/SKILL.md`, `crates/bc_app/duet/lang_rust/Cargo.toml`, `Info.plist`, `assets/fonts/` and
 `NOTICE` from the write scope, together with the Completion command; those are the SM4 policy set,
 and SM4 is the rule that keeps a policy edit out of an implementation chunk. The C20-W6 closure row
 parsed to six cells under four. Section 13.1 is not a registered block, so DR7 gives it no marker,
@@ -1226,7 +1294,7 @@ section (critic R10). One guard run refreshes them all. PG12 sees a derive name 
 implementation, so a dependency a crate needs only inside a function body is outside its reach;
 `cargo machete` and the compiler are the backstop, and this guard is the early warning.
 
-**One test in `tools/xtask` holds each rule, and section 1.9's table is the count (DR5).** PG25 is the one rule
+**One test in `tools/bc_repo_guard/xtask/lang_rust` holds each rule, and section 1.9's table is the count (DR5).** PG25 is the one rule
 whose test builds a workspace rather than a document fixture, and section 1.9 states that limit at
 its own site. Section 1.9 pairs each rule
 with its probe and records the result. **Each test builds its own fixture document as an inline
@@ -1235,7 +1303,7 @@ small: the framework block, the candidate drop list, the name map, a five-row ow
 edge list, a 5.8 high-rate table, a selected-test table, a justified-unknown table, an
 external-verdict table with its trait column, a B.1 expectation table, a VR1 derive-use table, and
 the two Rust blocks the rule under test needs. `scripts/dod.sh`
-runs `cargo nextest run --workspace`, and `tools/xtask` is a workspace member, so a test that read
+runs `cargo nextest run --workspace`, and `tools/bc_repo_guard/xtask/lang_rust` is a workspace member, so a test that read
 this document would put the gate back on a roadmap markdown file, which is the coupling that moving
 the guard to `plan-lint` removed (critic N4, S11).
 
@@ -1581,7 +1649,7 @@ constant that is not finite fails the build rather than the run (section 2.6a). 
 none either: `FIRST_OPEN_ZOOM` is an integer step and `FIRST_OPEN_SCROLL` is `Finite::ZERO`. The
 four `duet-dsp` meter constants take the same compile-time check. Chunk K1 substitutes `FIRST_OPEN_WIDTH`,
 `FIRST_OPEN_HEIGHT`, and `FIRST_OPEN_ORIGIN` for the three literals that
-`crates/duet/src/main.rs` carries today in `main_window_options`; that function carries no sidebar
+`crates/bc_app/duet/lang_rust/src/main.rs` carries today in `main_window_options`; that function carries no sidebar
 width and no split, because a window-options function is not where either one could live.
 
 **A limit that more than one crate enforces sits in the one crate every enforcer reaches, and PG28
@@ -1722,7 +1790,7 @@ zero-denominator shape CG1b exists to refuse.
 
 Each harness plants the defect, runs the guard, and prints the exit code and the lines the probe's
 row records. Each one exits 0 only when every planted shape is red. Chunk M0 ports each probe to one
-test in `tools/xtask`, and each test plants the same defect in an inline fixture rather than in this
+test in `tools/bc_repo_guard/xtask/lang_rust`, and each test plants the same defect in an inline fixture rather than in this
 file (section 1.5). A probe is correct when the baseline run is green and the planted run is red
 (DR5).
 
@@ -1731,7 +1799,7 @@ file (section 1.5). A probe is correct when the baseline run is green and the pl
 whose minimum changes must be edited in both and a guard run that passes proves nothing about the
 other. Revision 20 found it by changing one minimum and watching the second guard refuse the
 document (critic C19-1, found while the eight C.22 rows were closed). **Chunk M0 removes the
-duplicate**, because the port to `tools/xtask` gives both rules one Rust module and one register;
+duplicate**, because the port to `tools/bc_repo_guard/xtask/lang_rust` gives both rules one Rust module and one register;
 until then the rule is that an edit to a `rows>=` marker edits both files, and a reviewer who runs
 one guard has not run the other.
 
@@ -1746,7 +1814,7 @@ three arguments; it refuses a scratch directory inside the repository and it is 
 input failure.
 
 **`roadmap/duet-v1/tools/plan_graph_check.py` is a fifth prototype and PG29 does not read it.** It
-carries the seven chunk-graph checks of `tools/xtask/src/check_plan_graph.rs` and it carries no rule
+carries the seven chunk-graph checks of `tools/bc_repo_guard/xtask/lang_rust/src/check_plan_graph.rs` and it carries no rule
 id of its own, so the PG29 set stays at the four files above. **It writes no file.** This act
 removed its manifest-write path: a run with `--write-manifest` now prints one line that names
 `cargo xtask check-plan-graph <plan-dir> --write-manifest` and changes nothing on disk. Before the
@@ -1776,7 +1844,7 @@ of a rule the guard measures about the DOCUMENT it judges. Exit 2 is a failure o
 input: its register, its parse, or the transform table it applies before it measures anything. A
 guard whose own input is broken has measured nothing, so it may not report a breach it never made.
 
-**Two counts, measured and not estimated** (critic C1-11). `tools/xtask/src/` holds 49 `"FAIL:`
+**Two counts, measured and not estimated** (critic C1-11). `tools/bc_repo_guard/xtask/lang_rust/src/` holds 49 `"FAIL:`
 string sites: 5 in `check_closure.rs`, 8 in `check_conversions.rs`, 3 in `check_manifests.rs`, 11 in
 `check_placement.rs`, 4 in `check_plan_graph.rs`, 17 in `check_roster.rs`, and 1 in `main.rs`. **Five
 of the 49 reach exit 1 and the other 44 are fail-closed.** Revision 24 wrote "a fail-closed state on
@@ -1828,7 +1896,7 @@ cargo xtask check-roster <document> <scratch> <repo> [--generate-only]
    line that names itself.
 3. **A gate never takes the flag, and a PROBE holds that rule** (critic C1-8). The `plan-lint` job
    of `.github/workflows/ci.yml` runs the full command, and section 14 records that.
-   `tools/xtask/tests/probes.rs` takes the flag and holds the cheap shapes: the roster below the
+   `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs` takes the flag and holds the cheap shapes: the roster below the
    section 1.5 denominator, the mixed impl block, and the impl count that differs from the
    `impl-sites` block. **One further probe reads EVERY file under `.github/workflows/` and fails
    when a `check-roster` line in any of them carries `--generate-only`** (critic C2-7). It reads the
@@ -1865,7 +1933,7 @@ of its own. Revision 24
 left that rule as prose, which is exactly how `--no-store` reached a job in the first place.
 
 **The prototypes under `roadmap/duet-v1/tools/` keep their historical text, and this document states
-the divergence.** The Rust ports in `tools/xtask` are the rules of record from chunk M0 onward, and
+the divergence.** The Rust ports in `tools/bc_repo_guard/xtask/lang_rust` are the rules of record from chunk M0 onward, and
 PG29 reads the prototypes for rule IDS alone and never for message text. The precedent is R3-W1 of
 the chunk M0 report: `roster_compile.sh` defines exit 1 for a class where the port returns 2, the
 port is right, and the record now says so. A second stated divergence is cheaper than fourteen
@@ -1946,7 +2014,7 @@ PG29 reads this table. Every row names one rule id, one probe id, and a recorded
 an exit code.
 
 **Chunk M90 adds ONE row to this block, for rule CG9, and the row is atomic with a register bump**
-(critic C1-4, rule SM9 part 4). The `DATA_BLOCKS` register of `tools/xtask/src/check_placement.rs`
+(critic C1-4, rule SM9 part 4). The `DATA_BLOCKS` register of `tools/bc_repo_guard/xtask/lang_rust/src/check_placement.rs`
 states the floor of this block, PG27 refuses a marker that differs from the register, and PG27b
 refuses a block that holds more rows than its floor, so the document edit and the Rust edit are one
 commit and the Architect alone cannot make it. **The chunk body of M90 carries FIVE registration
@@ -2008,12 +2076,12 @@ itself.
 | PG29 | A probe table that is not one set with the implemented rules | PP29 | Two shapes, each in its own run: the `PG13` rule id renamed to `PG43`, and the `PP11` cell of the `PG11` row renamed to `PP45` | `exit 1` both times; `PROBE:      PG13: the probe table carries no row` and `PROBE:      PG11: the row names probe PP45 and PP11 is required` |
 | PG37 | A budget VALUE that the DECLARATION LINE citing it refutes | PP37 | Two shapes, each in its own run: the B113 row changed from `13 elements` to `12 elements`, with `SmallVec<[Ticks; 13]>` left where it is, which is the shape the nineteenth Critic planted against every guard with a green run (critic C19-W9); and the B120 row changed from `9 slots` to `8 slots`, which is the value of `DELAY_SLOTS` two lines above `LIMITER_SLOTS` in the same block, and which revision 21's own block-wide oracle answered GREEN (critic C21I-W1) | `exit 1` both times; ``VALUE:      B113: the row states 12 and the declaration line that cites it writes 13``; then ``VALUE:      B120: the row states 8 and the declaration line that cites it writes 9``. **The oracle is the citing line and its ONE adjacent declaration** (critic C21-W2). A `///` doc comment reads DOWN to the first line that is not a comment and a `//` trailing comment reads UP to the first one, so each citation resolves to exactly one declaration and never to a neighbour of it. Revision 21 read both neighbours at once, and the line above the doc comment of `LIMITER_SLOTS` is `pub const REVERB_SLOTS: usize = 4;`, so a planted `4 slots` for B120 was green while the rule's own text and its code comment both claimed it was red. The oracle for B120 is `9` alone now. **The rule also carries a FLOOR**: it decides ten budget rows and prints `VALUE SKIPPED` for the rest, so a silent shrink of the decided set would look exactly like a clean run, and the run prints `VALUE FLOOR` beside `VALUE ROWS` (critic N21-3). **The scope is the citing DECLARATION and not the wording of the value cell** (critic C21I-W2): a row whose value opens with an integer and whose citing line declares a `const ... : usize`, an `ArrayVec` capacity, or a `[T; n]` length is in scope, whatever the cell calls it, which brought B47, B86 and six others in. The run prints `VALUE ROWS` and `VALUE SKIPPED`, so both the denominator and the remainder are readable; B34 is a skipped row, because a queue length is a number no declaration of this document spells as a fixed capacity |
 | PG41 | A cross-thread carrier with no declared end, a declared end with no carrier row, an end that holds no carrier, and a row whose two ends sit on the wrong sides | PP41 | Four shapes, each in its own run: the thread cell of the `EngineEvent` carrier row renamed to `Engine handoffs`, which is no row of the section 5.7 thread table; a second `Input<TempoMap>` field added to `DuetCore`, which is a declared write end that no carrier row names; **a Sender cell that names a real field which holds no carrier end**; and **the Sender cell and the Receiver cell of one row swapped**. The last two are the shapes the twenty-third Critic planted against revision 23's first form of this rule, which read the two cells and never held either one against the declared end set, so both were green (critic C23I-W1) | `exit 1` all four times; ``CARRIER:    EngineEvent: `Engine handoffs` is no thread of the section 5.7 table``; then ``CARRIER:    DuetCore.probe: the field holds a carrier end, `Input<TempoMap>`, and no row of the carrier table names it (TH13)``; then ``CARRIER:    TempoMap: `DuetCore.version` holds no carrier end, so it cannot be the write end of this row``; then ``CARRIER:    ParamSnapshot: `EngineProcess.params` is a read end, `Owned<Output<ParamSnapshot>>`, and this cell is the write end``. **A carrier ROW that is deleted is red at PG27 and not here**, because the `rows>=` floor of DR7 answers first; the PG27 row records that line and this one does not repeat it (DR3) |
-| PG40 | A chunk row that writes under a crate its own LINE does not own | PP40 | Three shapes, each in its own run: chunk A2's Writes cell moved from `crates/duet-engrave/` to `crates/duet-dsp/`, which is a chunk of line A writing into the crate line D owns; the `A duet-engrave` row of the `line-map` block renamed, which moves the owner instead of the path; and one ADDED chunk row whose line prefix the `line-map` block does not carry, which is the shape revision 22 skipped in silence (critic C22I-W3). **The rule reads 50 chunk rows and finds no violation today**, which is why N19-4 stood as debt for three revisions: the data was already correct and no rule held it. **The M chunks are outside it**, because SM1 makes a manifest chunk create the skeleton of every crate whose first chunk runs in its phase, and the rule names that exemption rather than skipping every unmapped id. **It also carries a FLOOR**, which the run prints as `LINE CHUNK FLOOR` beside `LINE CHUNKS` | `exit 1` all three times; ``CHUNK CRATE:A2: the row writes under `crates/duet-dsp/` and line `A` owns `duet-engrave` (PG40)``; then ``CHUNK CRATE:A1: the row writes under `crates/duet-engrave/` and line `A` owns `duet-engravex` (PG40)``; then ``CHUNK CRATE:Z9: the `line-map` block carries no line for this chunk id, so no crate owns its write scope (PG40)`` |
+| PG40 | A chunk row that writes under a crate its own LINE does not own, or names a `crates/` path outside the `crates/bc_<context>/<crate>/` shape or under the wrong context | PP40 | Seven shapes, each in its own probe in `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs`: a clean baseline; a chunk of one line that writes into the crate another line owns; a path of the old `crates/<crate>/src/` form; a path under a context the `context-map` block does not give its crate; a `context-map` block that omits a crate of the crate table; a document whose chunk rows hold no `crates/` path, which is the zero denominator; and one ADDED chunk row whose line prefix the `line-map` block does not carry (critic C22I-W3). **The M chunks are outside the owner half and inside the shape half**, because a manifest row names several crates by design and a missed rewrite in it is still a defect (ADR 0011). The run prints `CHUNK PATHS` beside `LINE CHUNKS`, and `LINE CHUNK FLOOR` | `exit 1` for each red shape; ``the row writes into crate `<crate>` and line `<line>` owns `<owner>` (PG40)``; ``the row names `<path>`, a path outside the `crates/bc_<context>/<crate>/` shape (PG40)``; ``the row names `<path>` under context `bc_<x>` and the `context-map` block puts `<crate>` in `bc_<y>` (PG40)``; and the zero-denominator line ``the rule scanned <n> chunk rows and parsed no `crates/` path; a rule with no path to decide is a silent pass (PG40)`` |
 | PG38 | A markdown table row whose cell count differs from its own header, anywhere in this document | PP38 | Two shapes, each in its own run: the two escaped pipes of chunk M0's section 13.1 write scope unescaped, which is the exact revision-21 shape and which dropped eleven policy files and the Completion command from a rendered row (critic C21-5); and one cell deleted from a closure row of Appendix C, which is the C20-W6 shape. **The rule reads every table of this document and not the section 13 tables alone**: not one row was ragged when the rule was written, so the wide scope costs nothing and a narrow one would have left the next such defect to the next reviewer. The run prints `TABLE ROWS` and `RAGGED ROWS`, so the denominator is a measurement and no sentence here counts it (DR3 exemption 4). **The rule's own limit**: it decides a row's cell COUNT and never a cell's content | `exit 1` both times; ``RAGGED:     M0: the row holds 7 cells and its header holds 5; a renderer drops the extra cells and truncates the row (PG38)``; then ``RAGGED:     N21I-1: the row holds 3 cells and its header holds 4; a renderer drops the extra cells and truncates the row (PG38)``. **A finding names the ROW and never a line number**, because a line number in a recorded cell goes stale on every edit above it |
 | PG39 | A section 1.7 rule-index range that the live rule set and the probe table refute, in either direction | PP39 | Two shapes, each in its own run: the placement-guard range cut back to `PG1 to PG36`, which is the revision-21 index and which omitted PG37 and the two rules this revision added; and `PG44` added to the same cell, which names a rule no prototype implements | `exit 1` both times; ``INDEX:      PG37: the rule set holds it and section 1.7 omits it``; then ``INDEX:      PG44: section 1.7 names it and the rule set holds no such id``. **The rule declines the DR, PL, VR, TH and SM families**, because no machine holds those ids, and the run prints `INDEX IDS` |
 | PG30 | A `B` citation and the section 1.6 `Used by` column that are not one set | PP30 | Two shapes, each in its own run: `10.2` removed from the `Used by` cell of B99, and `9.9` added to the same cell | `exit 1` both times; `USED BY:    B99: section 10.2 cites it and the `Used by` cell omits it` and `USED BY:    B99: the `Used by` cell names section 9.9 and it cites nothing` |
 | CG1 | A cast outside `src/`, a file the directory walk hid, or a path argument | CP1 | Four shapes, each in its own run: `let n = x as u32;` in a `benches/` file; the same cast in `m/src/target/inner.rs`; the same cast in `m/src/Other.RS`; and one path argument | `exit 1`; `CAST: m/benches/bench.rs: line 5` with `MEMBERS: 1   FILES: 2   FINDINGS: 1`; `exit 1`; `CAST: m/src/target/inner.rs: line 5` with `MEMBERS: 1   FILES: 3   FINDINGS: 1`; `exit 1`; `CAST: m/src/Other.RS: line 5` with `MEMBERS: 1   FILES: 2   FINDINGS: 1`; and `exit 2`; `usage: conversion_check.py` |
-| CG1b | A scan that misses a member the tree holds, a member whose directory name opens with a dot, a sibling of a member listed by full path, a sibling of a member listed with NO slash, a source file a scanned member holds, or a scan with a zero denominator | CP1b | **Eight shapes**, with the ids `CP1b-exclude`, `CP1b-empty`, `CP1b-file`, `CP1b-target`, `CP1b-dot`, `CP1b-deep`, `CP1b-top`, and the green control `CP1b-nested`, each in its own throwaway workspace (critic C19-W21, which found two of those ids recorded nowhere): **the Critic's own shape**, five crates under `crates/` with `exclude = ["crates/duet-dsp"]` and a real cast in the excluded crate, which revision 16 answered with `exit 0` at its production default floors (critic C16-2); a workspace with no member at all; and a member under `crates/` whose one target sits outside `src/` with a cast in `src/hidden.rs` | `exit 2` every time, at the production defaults and with no environment variable set: ``FAIL: crates/duet-dsp holds a Cargo.toml and the scan does not cover it; the guard is fail-closed.``, then ``FAIL: the scan covers 0 members and 0 files; a zero denominator is not a clean run and the guard is fail-closed.``, then ``FAIL: crates/duet-e/src/hidden.rs sits under a scanned member's src and the scan does not hold it; the guard is fail-closed.``; then **the Critic's dot shape**, a member at `crates/.fixture` with a real cast, which Python's own `glob` cannot see and Cargo can, ``FAIL: crates/.fixture holds a Cargo.toml and the scan does not cover it; the guard is fail-closed.``; then **the deep-sibling shape**, a member listed by full path whose excluded sibling one level up holds a real cast, ``FAIL: crates/standalone holds a Cargo.toml and the scan does not cover it; the guard is fail-closed.``; then **the top-level shape**, `members = ["alpha"]` with `exclude = ["beta"]` and a real cast in `beta`, which revision 19 answered with `MEMBERS: 1 FILES: 1 FINDINGS: 0` and exit 0 because `sibling_patterns` yielded no pattern at depth zero (critic C19-W10), ``FAIL: beta holds a Cargo.toml and the scan does not cover it; the guard is fail-closed.`` |
+| CG1b | A scan that misses a member the tree holds, a member whose directory name opens with a dot, a sibling of a member listed by full path, a sibling of a member listed with NO slash, a source file a scanned member holds, or a scan with a zero denominator | CP1b | **Eight shapes**, with the ids `CP1b-exclude`, `CP1b-empty`, `CP1b-file`, `CP1b-target`, `CP1b-dot`, `CP1b-deep`, `CP1b-top`, and the green control `CP1b-nested`, each in its own throwaway workspace (critic C19-W21, which found two of those ids recorded nowhere): **the Critic's own shape**, five crates under `crates/` with `exclude = ["crates/bc_audio/duet-dsp/lang_rust"]` and a real cast in the excluded crate, which revision 16 answered with `exit 0` at its production default floors (critic C16-2); a workspace with no member at all; and a member under `crates/` whose one target sits outside `src/` with a cast in `src/hidden.rs` | `exit 2` every time, at the production defaults and with no environment variable set: ``FAIL: crates/bc_audio/duet-dsp/lang_rust holds a Cargo.toml and the scan does not cover it; the guard is fail-closed.``, then ``FAIL: the scan covers 0 members and 0 files; a zero denominator is not a clean run and the guard is fail-closed.``, then ``FAIL: crates/duet-e/src/hidden.rs sits under a scanned member's src and the scan does not hold it; the guard is fail-closed.``; then **the Critic's dot shape**, a member at `crates/.fixture` with a real cast, which Python's own `glob` cannot see and Cargo can, ``FAIL: crates/.fixture holds a Cargo.toml and the scan does not cover it; the guard is fail-closed.``; then **the deep-sibling shape**, a member listed by full path whose excluded sibling one level up holds a real cast, ``FAIL: crates/standalone holds a Cargo.toml and the scan does not cover it; the guard is fail-closed.``; then **the top-level shape**, `members = ["alpha"]` with `exclude = ["beta"]` and a real cast in `beta`, which revision 19 answered with `MEMBERS: 1 FILES: 1 FINDINGS: 0` and exit 0 because `sibling_patterns` yielded no pattern at depth zero (critic C19-W10), ``FAIL: beta holds a Cargo.toml and the scan does not cover it; the guard is fail-closed.`` |
 | CG2 | A false hit inside a comment, a string, or a character literal | CP2 | ` as ` in a doc comment, a block comment, a nested block comment, a plain string, the nested raw string `r##"say "as" here and x as u32"##`, and a character literal beside a lifetime | `exit 0`; `MEMBERS: 1   FILES: 1   FINDINGS: 0` |
 | CG2b | A comment token inside a literal that hides a cast, and a prefixed raw string that hides one | CP2b | Five shapes, each in its own run: a pair of strings that spell `/*` and `*/`, a string that spells a line comment, and `br#"a " b"#`, `cr#"a " b"#`, and `rb#"a " b"#`, each one before a real cast | `exit 1` every time; `CAST: m/src/lib.rs: line 4` and `MEMBERS: 1   FILES: 1   FINDINGS: 1` on each run |
 | CG3 | A bare cast | CP3 | `let n = x as u32;` in `src/lib.rs` | `exit 1`; `CAST: m/src/lib.rs: line 5` with `MEMBERS: 1   FILES: 1   FINDINGS: 1` |
@@ -2022,7 +2090,7 @@ itself.
 | CG4b | A `use` item with no terminating `;` | CP4b | A trailing `use core::fmt::Write` with no semicolon, after a real cast | ``exit 2``; ``FAIL: m/src/lib.rs: a `use` at line 12 has no `;`; the guard is fail-closed.`` |
 | CG5 | A false hit on qualified path syntax | CP5 | `<i64 as TryFrom<i128>>::try_from` and `<u32 as Default>::default` | `exit 0`; `MEMBERS: 1   FILES: 1   FINDINGS: 0` |
 | CG6 | A suppression outside the one conversion file, in every attribute form Rust writes | CP6 | Five forms in one file: one space after `(`, a line break, a `cfg_attr` wrapper, the `allow` spelling, and the inner `#![allow]` form | `exit 1`; `SUPPRESSION: m/src/lib.rs: line 1` first, and `MEMBERS: 1   FILES: 1   FINDINGS: 5` |
-| CG7 | An exemption that a symbolic link defeats, in either direction | CP7 | Two shapes, each in its own run: the sanctioned cast inside `crates/duet-time/src/convert.rs`, and that same path made a symbolic link to a second member's live module that holds a bare cast | `exit 0`; `MEMBERS: 2   FILES: 3   FINDINGS: 0` for the first, and `exit 1`; `CAST: n/src/hot.rs: line 5` with `MEMBERS: 3   FILES: 4   FINDINGS: 1` for the second |
+| CG7 | An exemption that a symbolic link defeats, in either direction | CP7 | Two shapes, each in its own run: the sanctioned cast inside `crates/bc_time/duet-time/lang_rust/src/convert.rs`, and that same path made a symbolic link to a second member's live module that holds a bare cast | `exit 0`; `MEMBERS: 2   FILES: 3   FINDINGS: 0` for the first, and `exit 1`; `CAST: n/src/hot.rs: line 5` with `MEMBERS: 3   FILES: 4   FINDINGS: 1` for the second |
 | CG8 | A workspace `cargo metadata` refuses, a member file that is not UTF-8, or a member file the guard cannot open | CP8 | Three shapes, each in its own run: a `Cargo.toml` that does not parse, the byte pair `C3 28` in a member file beside a real cast, and a member file at mode 000 beside a real cast | `exit 2` every time; ``FAIL: `cargo metadata --no-deps` refused ...; the guard is fail-closed.``, `FAIL: m/src/other.rs: the bytes are not UTF-8; the guard is fail-closed.`, and `FAIL: m/src/locked.rs: the file does not open; the guard is fail-closed.` |
 | CG9 | An Appendix B.1 `b1-convert` reason cell and the `reason =` string of that function in the one exempt file that are not one text, and an `--appendix` document the guard cannot open | CP9 | Five shapes, each in its own throwaway workspace: a reason string that differs from its cell by one character; a `b1-convert` row whose site the exempt file does not declare; a function whose `#[expect]` carries a `reason =` string that no `b1-convert` row names; an `--appendix` argument that names an absent `roadmap/duet-v1/architecture.md`, which is the fail-closed shape; and a matching pair, which is the green control | `exit 1` on the first three, `exit 2` on the fourth, and `exit 0` on the control; the first prints `REASON TEXTS:    1     REASON TEXT BAD: 1` and one line that opens ``  REASON TEXT: `` and names the site, the cell text and the code text; the second and the third print the same counter shape with the same tag; the fourth prints the one named line CG9 part 1 mandates and no counter |
 
@@ -2239,7 +2307,7 @@ probe table and the rule set are one set under PG29. Every block id below is the
 line states. **No `CG` rule has a row**, because the conversion guard reads no block of this
 document (section 2.3).
 
-<!-- GUARD BLOCK id=rule-blocks rows>=33 -->
+<!-- GUARD BLOCK id=rule-blocks rows>=34 -->
 | Rule | Blocks it reads |
 |---|---|
 | PG4 | `drop-list`, `primitive-traits`, `primitive-sizes` |
@@ -2263,6 +2331,7 @@ document (section 2.3).
 | PG26e | `audio-owned`, `audio-reachable-leaf` |
 | PG26f | `audio-owned`, `audio-asserted` |
 | PG31, PG31b | `phase-table`, `line-map`, `edge-list`, `phase-pair-exempt` |
+| PG40 | `line-map`, `context-map`, `crate-table` |
 | PG32 | `closure-r16`, `closure-r17`, `closure-r18`, `closure-r19`, `closure-r20`, `closure-r21-inner`, `closure-r21`, `closure-r22-inner`, `closure-r23-inner` |
 | PG33 | `b1-convert`, `ownership-table` |
 | PG34 | `phase-table` |
@@ -2308,7 +2377,7 @@ already uses for the audio-exempt block (TH13, PG41). `sub-id` reads the id shap
 substitution row is the roster compile's own list, which PG25 holds to this block in both
 directions and refuses to run on a difference.
 
-<!-- GUARD BLOCK id=block-members rows>=51 -->
+<!-- GUARD BLOCK id=block-members rows>=52 -->
 ```text
 crate-table         crate-name
 carrier-table       carrier-end
@@ -2353,6 +2422,7 @@ closure-r21 review-id
 closure-r22-inner review-id
 closure-r23-inner review-id
 line-map            line-owner
+context-map         crate-name
 phase-pair-exempt   chunk-pair
 b1-convert          cited-elsewhere
 b1-complexity       site-crate
@@ -3174,7 +3244,7 @@ Required tests in `duet-time`:
 
 #### The conversion guard
 
-The guard is a subcommand of `tools/xtask`, not a test.
+The guard is a subcommand of `tools/bc_repo_guard/xtask/lang_rust`, not a test.
 
 ```
 cargo xtask check-conversions
@@ -3182,7 +3252,7 @@ cargo xtask check-conversions
 
 Its contract has twelve rules, and DR5 gives each one exactly one probe (section 1.9). The prototype
 is `roadmap/duet-v1/tools/conversion_check.py`, and chunk M0 ports it to
-`tools/xtask/src/check_conversions.rs`.
+`tools/bc_repo_guard/xtask/lang_rust/src/check_conversions.rs`.
 
 **What the guard adds over clippy, stated first.** The root `Cargo.toml` sets
 `as_conversions = "deny"`, and `scripts/dod.sh` runs
@@ -3210,7 +3280,7 @@ removes any member and the remaining count still clears the floor, and nothing i
 the floor.
 
 The rule now has three parts and no constant. Chunk M0 ports all three to
-`tools/xtask/src/check_conversions.rs`.
+`tools/bc_repo_guard/xtask/lang_rust/src/check_conversions.rs`.
 
 1. **The zero test.** Zero members or zero files is exit 2. It is the fail-closed-on-zero rule PG12
    already states for a denominator, and it needs no number.
@@ -3352,7 +3422,7 @@ silence, and clippy is the only thing left. The guard takes the loud answer.
 stands in statement position: the text before it on its line is empty, is `pub`, or ends with `;`,
 `{`, or `}`. A `use` token anywhere else, such as one inside a `macro_rules!` pattern, is not an
 item and blanks nothing. The guard joins the text from the `use` keyword to its terminating `;`,
-**across lines**, and removes that span before CG3 runs. `crates/duet/src/main.rs` opens `use gpui_kit::{` on one line and carries `AppContext as _` on
+**across lines**, and removes that span before CG3 runs. `crates/bc_app/duet/lang_rust/src/main.rs` opens `use gpui_kit::{` on one line and carries `AppContext as _` on
 the next. A line-oriented reading would therefore fail on the tree that chunk M0 leaves (critic
 S10).
 
@@ -3382,7 +3452,7 @@ the rule clippy cannot carry.
 
 **CG7. The one exempt file is matched by canonical path.** The guard resolves every symbolic link in
 the workspace root and in each candidate path before it compares, so a workspace reached through a
-symbolic link still exempts `crates/duet-time/src/convert.rs`. Revision 7 compared a relative path
+symbolic link still exempts `crates/bc_time/duet-time/lang_rust/src/convert.rs`. Revision 7 compared a relative path
 against a literal, and `cargo metadata` returns a resolved path, so a macOS temporary directory
 reported the sanctioned cast and the sanctioned suppression as failures (critic Q17).
 
@@ -3407,7 +3477,7 @@ whole revision**: the appendix stated one scale factor, the code carried another
 green. Revision 24 repaired the value and left the mechanism, so this rule repairs the mechanism.
 
 The rule joins `check-conversions`, because that guard already resolves the workspace through
-`cargo metadata` and already owns `crates/duet-time/src/convert.rs` as its one exempt file. It has
+`cargo metadata` and already owns `crates/bc_time/duet-time/lang_rust/src/convert.rs` as its one exempt file. It has
 SIX parts.
 
 1. **It reads the document the `--appendix <path>` argument names**, and it reads no document when
@@ -3432,7 +3502,7 @@ SIX parts.
    either convention today.
 6. **CG9 is PATH CONDITIONAL, and the caller turns it on** (critic C2-1). `scripts/dod.sh` passes
    `--appendix roadmap/duet-v1/architecture.md` only when the change under test names a path that
-   opens `roadmap/` OR names `crates/duet-time/src/convert.rs`. It passes no argument otherwise, and
+   opens `roadmap/` OR names `crates/bc_time/duet-time/lang_rust/src/convert.rs`. It passes no argument otherwise, and
    the guard then prints `REASON TEXTS:    skipped (no --appendix)` while CG1 to CG8 run unchanged.
    A skip PRINTS; it is never silent. The `plan-lint` job of `.github/workflows/ci.yml` passes the
    argument always.
@@ -3459,14 +3529,14 @@ that can break the binding.
 change to either half, on the machine that makes it. It does NOT cover the two residual limits that
 clause 3 carries, which section 14 states: a force update that moves the remote ref backward, and a
 long-lived branch that already pushed the change. It also does not cover a pull request that touches
-`crates/duet-time/src/convert.rs` and no `roadmap/` or `tools/xtask/` path, because the `plan-lint`
+`crates/bc_time/duet-time/lang_rust/src/convert.rs` and no `roadmap/` or `tools/bc_repo_guard/xtask/lang_rust/` path, because the `plan-lint`
 job filter names neither path and the roster compile in that job costs 4.0 GB and several minutes,
 which section 14 states as the reason the job is narrow. **The local step is the cover for that
 case**, and its two residual limits are the whole gap.
 
 **Who clears a red CG9.** The red is local and path conditional, so it blocks the author who created
 the divergence and nobody else. The Architect owns `architecture.md` under SM9 part 1, and only a
-chunk that holds `crates/duet-time/src/convert.rs` in its write scope may change the code. **The
+chunk that holds `crates/bc_time/duet-time/lang_rust/src/convert.rs` in its write scope may change the code. **The
 Orchestrator adjudicates** and takes one of two paths under SM9: it dispatches a repair chunk that
 lands the code half, or it reverts the appendix edit until such a chunk exists. **No engineer may
 clear a red CG9 by editing the appendix**, and no party may clear it by removing the row: the marker
@@ -3494,13 +3564,13 @@ its probe CP9, the `b1-convert` half of the contract, and nothing wider.
 It also protected nothing that CG1 and CG8 do not already protect. A file set drawn from
 `cargo metadata` is empty only when the workspace is empty, and CG8 fails first.
 
-**Twelve tests in `tools/xtask` cover it, one per rule (DR5), and chunk M90 makes them thirteen.** Revision 16 said eleven against a twelve-rule contract, and the rule most likely to be dropped in the port was CG1b, which is the rule the last two revisions added (critic C16-W14, C17-W1). Section 1.9 names the probe of each
+**Twelve tests in `tools/bc_repo_guard/xtask/lang_rust` cover it, one per rule (DR5), and chunk M90 makes them thirteen.** Revision 16 said eleven against a twelve-rule contract, and the rule most likely to be dropped in the port was CG1b, which is the rule the last two revisions added (critic C16-W14, C17-W1). Section 1.9 names the probe of each
 rule and records the result. Each test builds a throwaway cargo workspace with one member in a
 temporary directory; no conversion test reads this repository and none reads any file under
 `roadmap/`.
 
-Chunk M0 writes `tools/xtask/src/check_conversions.rs`, adds the `mod` line and the subcommand arm
-to `tools/xtask/src/main.rs`, and adds the line to `scripts/dod.sh`.
+Chunk M0 writes `tools/bc_repo_guard/xtask/lang_rust/src/check_conversions.rs`, adds the `mod` line and the subcommand arm
+to `tools/bc_repo_guard/xtask/lang_rust/src/main.rs`, and adds the line to `scripts/dod.sh`.
 
 ### 2.4 The tuplet rounding rule
 
@@ -7128,14 +7198,14 @@ that states how many such paths exist**, and no sentence here states a count (cr
 revision 22 added `SlotMeterSnapshot` and six sites went on saying two, so a reader who applied TH9
 as written left the third publication outside the rule. Section 5.9 declares each
 published type with fixed-size fields, PG13 checks the derive, and
-`crates/duet-engine/src/audio/README.md` carries TH9 in its forbidden-call list.
+`crates/bc_audio/duet-engine/lang_rust/src/audio/README.md` carries TH9 in its forbidden-call list.
 
 **Verification of TH1 has no mechanical guard.** `GlobalAlloc` is an unsafe trait, `unsafe_code` is
 denied at the workspace level, and every member crate inherits the policy. An allocator guard
 therefore cannot exist in this repository (critic 5.4). Three means do exist, and the specification
 claims no more.
 
-1. **A written forbidden-call list** in `crates/duet-engine/src/audio/README.md`, checked at review
+1. **A written forbidden-call list** in `crates/bc_audio/duet-engine/lang_rust/src/audio/README.md`, checked at review
    of every diff in that directory.
 2. **A soak test.** It runs the dummy backend in `Freewheel` for B77 with a varying block size, and
    it asserts zero `PlaybackStarved` and zero `CaptureOverflow` outcomes.
@@ -10230,7 +10300,7 @@ pub(crate) enum WorkAreaState {
 }
 ```
 
-`crates/duet/src/shell/states.rs` holds it, chunk K1 writes it, and `ComposeView`, `RecordView`,
+`crates/bc_app/duet/lang_rust/src/shell/states.rs` holds it, chunk K1 writes it, and `ComposeView`, `RecordView`,
 `MixView`, and `MasterView` each render it above their own content.
 
 #### The start surface and the menus
@@ -10271,18 +10341,18 @@ settled and nothing is outstanding.
 
 | Element | Purpose | File | Chunk |
 |---|---|---|---|
-| `SystemXMap` | Pure map from a beat position to an x offset. Not a GPUI element | `crates/duet-engrave/src/map.rs` | A1 |
-| `StaffSystem` | Paints one system: lines, glyphs, stems, beams, ties | `crates/duet/src/element/staff_system.rs` | K2 |
-| `WaveformLane` | Paints one audio lane from cached peak paths | `crates/duet/src/element/waveform_lane.rs` | K3 |
-| `PlayheadLayer` | Paints the playhead only, in its own small view | `crates/duet/src/element/playhead_layer.rs` | K3 |
-| `PunchRange` | The punch band and its two drag handles | `crates/duet/src/element/punch_range.rs` | K3 |
-| `LevelMeter` | One meter bar, stateless, painted from the reading and the resolved over mark its parent hands it. `MeterLayer` paints the mixer strip row and every numeric readout | `crates/duet/src/element/level_meter.rs` | K4 |
-| `Fader` | Channel fader with a dB taper and detents | `crates/duet/src/element/fader.rs` | K4 |
-| `Knob` | Radial control with an arc and a pointer line | `crates/duet/src/element/knob.rs` | K4 |
-| `AutomationLane` | Polyline and handles over a linear time axis | `crates/duet/src/element/automation_lane.rs` | K4 |
-| `StageCurve` | One processor's response curve: an equalizer response, a compressor transfer curve with a live dot, a limiter gain-reduction bar | `crates/duet/src/element/stage_curve.rs` | K4 |
-| `LufsMeter` | Momentary, short term, integrated, target, tolerance | `crates/duet/src/element/lufs_meter.rs` | K5 |
-| `Toolbar` | The top bar container with the overflow rule | `crates/duet/src/element/toolbar.rs` | K1 |
+| `SystemXMap` | Pure map from a beat position to an x offset. Not a GPUI element | `crates/bc_notation/duet-engrave/lang_rust/src/map.rs` | A1 |
+| `StaffSystem` | Paints one system: lines, glyphs, stems, beams, ties | `crates/bc_app/duet/lang_rust/src/element/staff_system.rs` | K2 |
+| `WaveformLane` | Paints one audio lane from cached peak paths | `crates/bc_app/duet/lang_rust/src/element/waveform_lane.rs` | K3 |
+| `PlayheadLayer` | Paints the playhead only, in its own small view | `crates/bc_app/duet/lang_rust/src/element/playhead_layer.rs` | K3 |
+| `PunchRange` | The punch band and its two drag handles | `crates/bc_app/duet/lang_rust/src/element/punch_range.rs` | K3 |
+| `LevelMeter` | One meter bar, stateless, painted from the reading and the resolved over mark its parent hands it. `MeterLayer` paints the mixer strip row and every numeric readout | `crates/bc_app/duet/lang_rust/src/element/level_meter.rs` | K4 |
+| `Fader` | Channel fader with a dB taper and detents | `crates/bc_app/duet/lang_rust/src/element/fader.rs` | K4 |
+| `Knob` | Radial control with an arc and a pointer line | `crates/bc_app/duet/lang_rust/src/element/knob.rs` | K4 |
+| `AutomationLane` | Polyline and handles over a linear time axis | `crates/bc_app/duet/lang_rust/src/element/automation_lane.rs` | K4 |
+| `StageCurve` | One processor's response curve: an equalizer response, a compressor transfer curve with a live dot, a limiter gain-reduction bar | `crates/bc_app/duet/lang_rust/src/element/stage_curve.rs` | K4 |
+| `LufsMeter` | Momentary, short term, integrated, target, tolerance | `crates/bc_app/duet/lang_rust/src/element/lufs_meter.rs` | K5 |
+| `Toolbar` | The top bar container with the overflow rule | `crates/bc_app/duet/lang_rust/src/element/toolbar.rs` | K1 |
 
 `SystemXMap` is the one item that is not a GPUI element. It lives in `duet-engrave`, because it is a
 pure function and a test must reach it without a window.
@@ -10329,7 +10399,7 @@ their own.
 two are one name: contract `duet.meter.peak_cap` is the `meter_peak_cap` field of `DuetTokens`. A
 Rust field cannot carry a dot, and a contract row reads better with one.
 
-`crates/duet/src/element.rs` holds one `mod` line per file above. **Chunk K1 writes `element.rs`
+`crates/bc_app/duet/lang_rust/src/element.rs` holds one `mod` line per file above. **Chunk K1 writes `element.rs`
 with all eleven `mod` lines, creates all eleven element files as stubs, and fills `toolbar.rs`**
 (SM2). K2, K3, K4, and K5 each modify a stub and create no file, so the crate compiles at the end of
 every phase. K6 writes no element file at all.
@@ -10358,8 +10428,8 @@ Four facts settle it.
 3. **The identity is `SystemId`**, never the list index, which rule 2 of Appendix A requires and
    test 5 of section 10.7 asserts.
 4. **The chunks are K2 and K3.** K2 writes the Compose list inside
-   `crates/duet/src/compose/view.rs` and K3 writes the Record list inside
-   `crates/duet/src/record/view.rs`, both of which those chunks already own (section 13.2). Test 4
+   `crates/bc_app/duet/lang_rust/src/compose/view.rs` and K3 writes the Record list inside
+   `crates/bc_app/duet/lang_rust/src/record/view.rs`, both of which those chunks already own (section 13.2). Test 4
    of section 10.7 asserts that the correct systems render at a given scroll offset, and SM7 binds
    it to those two chunks.
 
@@ -10622,7 +10692,7 @@ Path output and glyph output are not assertable. The audit states it plainly: th
 `painted_paths()` and no `painted_glyphs()` (audit 12).
 
 **Rung one: the pure crates hold the assertions.** `duet-engrave` is tested with `cargo test` on
-`SystemPlacement` values. The golden corpus B79 lives in `crates/duet-engrave/tests/golden/`, and a
+`SystemPlacement` values. The golden corpus B79 lives in `crates/bc_notation/duet-engrave/lang_rust/tests/golden/`, and a
 comparator checks every field with a stated tolerance.
 
 **Rung two: the element is tested for plumbing only.** A `#[gpui_kit::test]` renders `StaffSystem`
@@ -10694,7 +10764,7 @@ they placed the items across the K chunks.
     start half, so an armed input meter froze (critic CR-21).
 
 14. **The generation skew window is real, and this test opens it.** Chunk C3 writes it, in
-    `crates/duet-engine/src/chain/graph.rs`. The test pushes a handoff at
+    `crates/bc_audio/duet-engine/lang_rust/src/chain/graph.rs`. The test pushes a handoff at
     generation N plus 1, runs one audio cycle with the published `GraphChain` still at N, and
     asserts one `EngineFault::HandoffGenerationSkew { published, adopted }` and no panic. It then
     publishes N plus 1, runs a second cycle, and asserts no second fault and a graph that runs every
@@ -10737,7 +10807,7 @@ hosts behind one API. The host **selection** differs by platform and is data, no
 `pipewire` does not build on macOS, and `coremidi` does not build on Linux. A plain dependency on
 either would stop the workspace from building on both platforms.
 
-**The declaration lives in `crates/duet-midi/Cargo.toml`, not in a consumer manifest.**
+**The declaration lives in `crates/bc_midi/duet-midi/lang_rust/Cargo.toml`, not in a consumer manifest.**
 
 ```toml
 [dependencies]
@@ -10793,7 +10863,7 @@ release that exposes the feature turns this into a one-line manifest change.
 
 | File | Key | Value |
 |---|---|---|
-| `crates/duet/packaging/macos/Info.plist` | `LSMinimumSystemVersion` | `26.0` |
+| `crates/bc_app/duet/packaging/macos/Info.plist` | `LSMinimumSystemVersion` | `26.0` |
 | `.cargo/config.toml` | `[env] MACOSX_DEPLOYMENT_TARGET` | `26.0` |
 
 `Info.plist` today carries no `LSMinimumSystemVersion`, so an older macOS would launch the bundle and
@@ -10886,7 +10956,7 @@ client reads. **`GatewayError` names no crate above `duet-command`.** Four of it
 `duet-command`, so each arm was a Cargo cycle (critic S2). One arm, `Upstream(UpstreamFailure)`,
 carries a plain-data mirror instead, and each upper crate converts its own error into it with
 `From` at its own boundary (section 15.5). `anyhow` appears only in
-`tools/xtask` (CLAUDE.md).
+`tools/bc_repo_guard/xtask/lang_rust` (CLAUDE.md).
 
 ### 12.2 No `#[non_exhaustive]` on an internal error enum
 
@@ -11132,7 +11202,7 @@ The three engine-state rows that revision 5 collapsed now read apart.
 | `NoDevice` | `The audio server offered no device. Connect an interface, then choose it in the status bar.` |
 | `RateUnavailable { project, device }` | `This project is at <p> Hz and the audio server runs at <d> Hz. Change the server rate, or convert the project.` |
 
-`crates/duet/src/shell/fault_text.rs` fixes the user message for each variant of each of the four
+`crates/bc_app/duet/lang_rust/src/shell/fault_text.rs` fixes the user message for each variant of each of the four
 keys. The wording is reviewed once and not written at each site.
 Chunk K1 writes it. The refusal table carries a row for `StripBudgetExceeded`,
 `ParamBudgetExceeded`, `BusRoleReserved`, and `Upstream`; the CONFIGURE table carries those first two
@@ -11209,7 +11279,7 @@ against the gate.
 
 **SM0: every chunk verifies before it writes.** Every chunk body opens with the same sentence:
 *verify the current state of the files in the write scope; report a discrepancy and stop, instead of
-proceeding*. The repository already holds `crates/duet`, `tools/plan-db`, and `tools/xtask`.
+proceeding*. The repository already holds `crates/duet`, `tools/bc_plan_store/plan-db/lang_rust`, and `tools/bc_repo_guard/xtask/lang_rust`.
 
 **SM1: the manifest seam.** The `M<phase>` chunk of a phase does exactly four things.
 
@@ -11226,7 +11296,7 @@ proceeding*. The repository already holds `crates/duet`, `tools/plan-db`, and `t
 3. It writes the repository files its phase needs that are not crate source, which section 13.1
    names per phase.
 4. **It adds the root `[workspace.dependencies]` entry of every skeleton it creates**, in the form
-   `duet-<crate> = { path = "crates/duet-<crate>" }`. A member crate reaches an internal crate with
+   `duet-<crate> = { path = "crates/bc_<context>/duet-<crate>/lang_rust" }`. A member crate reaches an internal crate with
    `duet-<crate> = { workspace = true }`, and that entry resolves only when the root table already
    carries the path entry. SM4 puts the root manifest outside every line chunk's reach, so the chunk
    that creates the skeleton is the one chunk that can add it. Revision 23 gave the internal entries
@@ -11268,17 +11338,17 @@ that exists.
 **The order inside one phase is the order the section 13.3 row prints, left to right.** For phase 1
 that is **M1, then M91, then M90, then M92, then every line chunk of the phase**. M91 precedes M90
 because M90 adds rule CG9, which compares the Appendix B.1 reason cells with the `reason =` strings
-of `crates/duet-time/src/convert.rs`, and M91 is the chunk that repairs those strings. A run of M90
+of `crates/bc_time/duet-time/lang_rust/src/convert.rs`, and M91 is the chunk that repairs those strings. A run of M90
 before M91 would be red on its own gate. M92 follows both, because it asserts in
-`crates/duet-time/tests/proptest_large.rs` the exact equality that the M91 scale factors make true.
+`crates/bc_time/duet-time/lang_rust/tests/proptest_large.rs` the exact equality that the M91 scale factors make true.
 **A SAME-PHASE `depends_on` edge is legal when the dependency is an `M` chunk, and this is what the
-guard implements.** `tools/xtask/src/check_plan_graph.rs` reports a finding only when
+guard implements.** `tools/bc_repo_guard/xtask/lang_rust/src/check_plan_graph.rs` reports a finding only when
 `there == here && !dep.starts_with('M')`, so a chunk may name a manifest chunk or a repair chunk of
 its own phase and the run stays clean. The guard's own module doc states the rule more narrowly, as
 a link from the opening manifest chunk alone; the code is the source of truth and this document
 follows the code. **Chunk M92 therefore ENCODES the M91 edge**: its `depends_on` is
 `[M0, T1, M91]`, and both `cargo xtask check-plan-graph roadmap/duet-v1` and the prototype exit 0.
-Chunk M92 step 1 also reads `crates/duet-time/src/convert.rs` and stops when `UNIT_TO_I24_SCALE` is
+Chunk M92 step 1 also reads `crates/bc_time/duet-time/lang_rust/src/convert.rs` and stops when `UNIT_TO_I24_SCALE` is
 not `8_388_608.0`; that check BACKS UP the encoded edge rather than standing in for a missing one,
 because it catches a tree that carries the edge and not the code.
 
@@ -11286,7 +11356,9 @@ because it catches a tree that carries the edge and not the code.
 M90 has LANDED, so its front matter is the record of work already done and this revision does not
 rewrite it. A same-phase pair that a later revision creates encodes the edge in `depends_on`,
 because the guard permits it.
-For phase 2 the order is **M2, then M93, then every line chunk of the phase**; M93 is in phase 2 and
+For phase 2 the order is **M2, then M93, then M94, then every line chunk of the phase**; M94
+depends on M90, and it runs before the line chunks so that each of them writes front matter under
+the gate. M93 is in phase 2 and
 not phase 1 because M90 holds `.github/workflows/ci.yml` in its phase-1 write scope.
 
 **SM2: the module seam.** `clippy::mod_module_files` is denied, so a module directory needs a
@@ -11487,7 +11559,7 @@ that writes it, and the command that selects it. **PG16 checks the table**, and 
 section 14 selects with no row, and on a row whose chunk id appears in no phase.
 
 Revision 6 broke the rule at four sites. Two rung-two commands and both `soak.yml` commands selected
-`soak`, `proptest_large`, and `crates/duet-engine/tests/alignment.rs`, and no Writes column carried
+`soak`, `proptest_large`, and `crates/bc_audio/duet-engine/lang_rust/tests/alignment.rs`, and no Writes column carried
 any of the three (critic N3). `--no-tests=fail` made each one a red job rather than a vacuous green,
 which is louder and no better.
 
@@ -11525,8 +11597,8 @@ chunk that edits the front matter proves only what the chunk decided. The rule h
    nine rows of 2026-09-22 are the worked examples. **A chunk that stops on an escalation is a
    completed chunk when every other step of its brief passed**; the escalation is the deliverable
    for the step it could not take.
-4. **A repair chunk carries a document edit only when a `tools/xtask` register change makes the two
-   atomic.** The `DATA_BLOCKS` register of `tools/xtask/src/check_placement.rs` states the floor of
+4. **A repair chunk carries a document edit only when a `tools/bc_repo_guard/xtask/lang_rust` register change makes the two
+   atomic.** The `DATA_BLOCKS` register of `tools/bc_repo_guard/xtask/lang_rust/src/check_placement.rs` states the floor of
    every `<!-- GUARD BLOCK ... -->` block, PG27 refuses a marker that differs from the register,
    and PG27b refuses a block that holds more rows than its floor. A row added to a registered block
    therefore needs the document and the register in ONE commit, which the Architect alone cannot
@@ -11557,7 +11629,7 @@ That is the same property rule CL1c already relies on.
 
 | Chunk | Phase | Creates the skeleton for | Also writes | Completion |
 |---|---|---|---|---|
-| M0 | 0 | `duet-time` | `Cargo.toml`, `[workspace.dependencies]` only (`serde`, `serde_json`, `thiserror`, `smallvec`, `proptest`, `md-5`); `Cargo.lock`; `tools/xtask/src/main.rs`; `tools/xtask/src/{check_conversions,check_placement,check_roster,check_closure,check_manifests}.rs`, where `check_manifests` reads every member manifest for `[lints] workspace = true` and a non-empty `description` because `clippy::cargo_common_metadata` cannot fire under `publish = false` (critic C20-W7); `tools/xtask/tests/probes.rs`, which ports every section 1.9 probe; `scripts/dod.sh`, which gains the `check-conversions` line and the `check-manifests` line and loses the `\|\| printf` fallback that stops a `typos` finding from failing the gate (critic C20-W6); `scripts/bootstrap.sh`, which gains `libpipewire-0.3-dev`, `libasound2-dev`, and `pkg-config` on Linux (section 11.5); `deny.toml`; `.cargo/config.toml`; `.github/workflows/ci.yml`, **the WHOLE file**: the `plan-lint` job it adds, and the `dod` job's runner labels and package list (critic C16-17, C17-5); `clippy.toml`, for the `doc-valid-idents` list (concern N16-9, N17-1); `.gitignore`, which gains a `__pycache__/` rule because the plan tools are Python and no chunk owned that file (critic N19-7); `.claude/skills/gpui-kit/SKILL.md`; `crates/duet/Cargo.toml`; **`tools/xtask/Cargo.toml`**, which gains the `md-5` entry the five ports need and which SM1 makes the using chunk write in the same commit as the code that uses it (critic C21-W5); **`rust-toolchain.toml`**, because this plan pins about thirty crates over the toolchain the file names and a pin whose minimum rustc is higher had no owner (critic N21-10); `crates/duet/packaging/macos/Info.plist`; `crates/duet/assets/fonts/`; `NOTICE` | `cargo xtask check-conversions` |
+| M0 | 0 | `duet-time` | `Cargo.toml`, `[workspace.dependencies]` only (`serde`, `serde_json`, `thiserror`, `smallvec`, `proptest`, `md-5`); `Cargo.lock`; `tools/bc_repo_guard/xtask/lang_rust/src/main.rs`; `tools/bc_repo_guard/xtask/lang_rust/src/{check_conversions,check_placement,check_roster,check_closure,check_manifests}.rs`, where `check_manifests` reads every member manifest for `[lints] workspace = true` and a non-empty `description` because `clippy::cargo_common_metadata` cannot fire under `publish = false` (critic C20-W7); `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs`, which ports every section 1.9 probe; `scripts/dod.sh`, which gains the `check-conversions` line and the `check-manifests` line and loses the `\|\| printf` fallback that stops a `typos` finding from failing the gate (critic C20-W6); `scripts/bootstrap.sh`, which gains `libpipewire-0.3-dev`, `libasound2-dev`, and `pkg-config` on Linux (section 11.5); `deny.toml`; `.cargo/config.toml`; `.github/workflows/ci.yml`, **the WHOLE file**: the `plan-lint` job it adds, and the `dod` job's runner labels and package list (critic C16-17, C17-5); `clippy.toml`, for the `doc-valid-idents` list (concern N16-9, N17-1); `.gitignore`, which gains a `__pycache__/` rule because the plan tools are Python and no chunk owned that file (critic N19-7); `.claude/skills/gpui-kit/SKILL.md`; `crates/bc_app/duet/lang_rust/Cargo.toml`; **`tools/bc_repo_guard/xtask/lang_rust/Cargo.toml`**, which gains the `md-5` entry the five ports need and which SM1 makes the using chunk write in the same commit as the code that uses it (critic C21-W5); **`rust-toolchain.toml`**, because this plan pins about thirty crates over the toolchain the file names and a pin whose minimum rustc is higher had no owner (critic N21-10); `crates/bc_app/duet/packaging/macos/Info.plist`; `crates/bc_app/duet/assets/fonts/`; `NOTICE` | `cargo xtask check-conversions` |
 | M1 | 1 | `duet-score`, `duet-dsp` | `Cargo.toml`, `[workspace.dependencies]` only (`rustfft`, `realfft`); `Cargo.lock` | `cargo check -p duet-score -p duet-dsp --locked` |
 | M2 | 2 | `duet-session`, `duet-engrave`, `duet-analysis` | `Cargo.toml`, `[workspace.dependencies]` only (no new pin; the phase adds none); `Cargo.lock` | `cargo check -p duet-session -p duet-engrave -p duet-analysis --locked` |
 | M3 | 3 | `duet-command`, `duet-media` | `Cargo.toml`, `[workspace.dependencies]` only (`hound`, `arrayvec`); `Cargo.lock` | `cargo check -p duet-command -p duet-media --locked` |
@@ -11628,29 +11700,31 @@ a gate is the defect CLAUDE.md names.
 
 SM9 rule 4 and the `M` class paragraph of SM1 govern this table. A repair chunk lands a repair the
 Architect mandates after a line chunk has closed. It is in no line, it creates no crate skeleton,
-and it pins no dependency. **FOUR rows follow, and they answer two sets.** M91 and M90 answer the
+and it pins no dependency. **FIVE rows follow, and they answer three sets.** M91 and M90 answer the
 nine escalations that chunks M0 and T1 opened on 2026-09-22. M92 and M93 answer two plan defects the
 same act found: a soak property that states a weaker bound than its gate twin, and a guard oracle
 whose policy inputs trigger no job. **The three phase-1 repair chunks run in the order the
 section 13.3 phase-1 row prints: M91, then M90, then M92, then every line chunk of the phase.** M93
 is in phase 2, because chunk M90 holds `.github/workflows/ci.yml` in its phase-1 write scope and no
-two chunks of one phase may share a write-scope path (SM1, PG31).
+two chunks of one phase may share a write-scope path (SM1, PG31). M94 answers the third set: the
+adoption of the DDD path grammar (ADR 0011).
 
 | Chunk | Phase | Creates the skeleton for | Also writes | Completion |
 |---|---|---|---|---|
-| M91 | 1 | none | `crates/duet-time/src/convert.rs`; `crates/duet-time/src/units.rs`; `crates/duet-time/tests/kernel.rs` | `cargo nextest run -p duet-time --no-tests=fail` |
-| M90 | 1 | none | `tools/xtask/src/main.rs`; `tools/xtask/src/check_plan_graph.rs`; `tools/xtask/src/check_placement.rs`; `tools/xtask/src/check_roster.rs`; `tools/xtask/src/check_conversions.rs`; `tools/xtask/src/check_closure.rs`; `tools/xtask/tests/probes.rs`; `scripts/dod.sh`, which gains the path-conditional plan-guard step of section 14 rung one and loses the `typos` fallback; `typos.toml`; `.github/workflows/ci.yml`, the `plan-lint` job; `roadmap/duet-v1/tools/conversion_check.py`, the `CG9` token PG29 reads; `roadmap/duet-v1/architecture.md`, the sub-items b, c and d of M90 step 21, which SM9 rule 4 makes atomic with the register; `roadmap/duet-v1/plan-graph.md`, regenerated under SM9 rule 2 | `cargo nextest run -p xtask --test probes --no-tests=fail` |
-| M92 | 1 | none | `crates/duet-time/tests/proptest_large.rs` | `cargo nextest run -p duet-time --no-tests=fail` |
+| M91 | 1 | none | `crates/bc_time/duet-time/lang_rust/src/convert.rs`; `crates/bc_time/duet-time/lang_rust/src/units.rs`; `crates/bc_time/duet-time/lang_rust/tests/kernel.rs` | `cargo nextest run -p duet-time --no-tests=fail` |
+| M90 | 1 | none | `tools/bc_repo_guard/xtask/lang_rust/src/main.rs`; `tools/bc_repo_guard/xtask/lang_rust/src/check_plan_graph.rs`; `tools/bc_repo_guard/xtask/lang_rust/src/check_placement.rs`; `tools/bc_repo_guard/xtask/lang_rust/src/check_roster.rs`; `tools/bc_repo_guard/xtask/lang_rust/src/check_conversions.rs`; `tools/bc_repo_guard/xtask/lang_rust/src/check_closure.rs`; `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs`; `scripts/dod.sh`, which gains the path-conditional plan-guard step of section 14 rung one and loses the `typos` fallback; `typos.toml`; `.github/workflows/ci.yml`, the `plan-lint` job; `roadmap/duet-v1/tools/conversion_check.py`, the `CG9` token PG29 reads; `roadmap/duet-v1/architecture.md`, the sub-items b, c and d of M90 step 21, which SM9 rule 4 makes atomic with the register; `roadmap/duet-v1/plan-graph.md`, regenerated under SM9 rule 2 | `cargo nextest run -p xtask --test probes --no-tests=fail` |
+| M92 | 1 | none | `crates/bc_time/duet-time/lang_rust/tests/proptest_large.rs` | `cargo nextest run -p duet-time --no-tests=fail` |
 | M93 | 2 | none | `.github/workflows/ci.yml`, the `changes` job filter over the four PG25 policy inputs, and its output name | `cargo xtask check-plan-graph roadmap/duet-v1 --check-manifest` |
+| M94 | 2 | none | `tools/bc_repo_guard/xtask/lang_rust/src/check_ddd.rs` and its modules, `main.rs`, `Cargo.toml`, `tests/ddd.rs` and its fixtures; `scripts/dod.sh`, the `ddd` step; `.ddd/context-map.toml`; `CLAUDE.md`, the front-matter exemption of the comment rule; the front-matter block of every `.rs` file that phase 1 created and no phase-2 chunk writes | `cargo xtask check-ddd` exits 0, and `cargo nextest run -p xtask --test ddd --no-tests=fail` |
 
 **M90 and M93 are dispatched to the Orchestrator, and M91 and M92 to an engineer.**
 `scripts/dod.sh`, `typos.toml`, and `.github/workflows/ci.yml` are policy files under SM4, so
 CLAUDE.md makes M90 and M93 an adjudication. M91 and M92 write crate source alone, so each one is
 ordinary engineering work.
 
-**M92 repairs the soak target and it runs after M91.** `crates/duet-time/tests/proptest_large.rs`
+**M92 repairs the soak target and it runs after M91.** `crates/bc_time/duet-time/lang_rust/tests/proptest_large.rs`
 asserted that the 24-bit drift stays inside one least significant bit, and it asserted equality only
-below half scale, while `crates/duet-time/tests/kernel.rs` asserts equality over the whole drawn
+below half scale, while `crates/bc_time/duet-time/lang_rust/tests/kernel.rs` asserts equality over the whole drawn
 range. A bound of one is green whenever the drift is zero, so the soak target could not go red for
 the lossless gap at all, and its module doc claimed parity with the gate file. M92 replaces that
 bound with the exact assertion `tests/kernel.rs` carries. The write scopes of M91 and M92 are
@@ -11662,13 +11736,26 @@ and not the code.
 **M93 widens the `plan-lint` trigger to four of the five inputs rule PG25 reads.** The roster
 compile copies the root `[workspace.lints]` table, `.cargo/config.toml`, `clippy.toml`,
 `rust-toolchain.toml` and `Cargo.lock` into its scratch workspace, and the `changes` job of
-`.github/workflows/ci.yml` matches `^roadmap/|^tools/xtask/` alone, so a change to any of the five
+`.github/workflows/ci.yml` matches `^roadmap/|^tools/bc_repo_guard/xtask/` alone, so a change to any of the five
 ran no roster in the gate and none in CI. M93 takes the four policy files and leaves `Cargo.lock`
 out, because the lock file changes on every dependency edit and the job costs 4.0 GB. Section 14
 states the interim rule until M93 lands, and it states the `Cargo.lock` limit beside it.
 
+**The move to the path grammar is a plan act and not a chunk, and M94 is the guard that holds it.**
+The move rewrote the path of every landed file and the write scope of every chunk, so as a chunk it
+would share a write-scope path with every other chunk of any phase it sat in, and rule 4 of
+`check-plan-graph` refuses that by construction. It landed the way the phase-1 escalation repairs
+landed: one pull request, with `control:signal` at `pause` for its whole life, and the plan store
+records rewritten when it merged. **M94 makes the grammar a gate.** `cargo xtask check-ddd` classifies
+every tracked path against `.ddd/grammar.toml` with a Rust port of the grammar subset this workspace
+uses, checks every member manifest against the context map, reads front matter, and requires a
+block on every `.rs` file the grammar grades. M94 writes those blocks for the files phase 1 created
+with its own canonical writer, `cargo xtask check-ddd --write`, and leaves the four `duet-dsp`
+dynamics files to chunk D2, which writes them in the same phase. **M94 is dispatched to the
+Orchestrator**, because `scripts/dod.sh` and `CLAUDE.md` are policy files under SM4.
+
 **M91 runs FIRST, and rule CG9 is the reason.** M90 adds the rule that compares each Appendix B.1
-reason cell with the `reason =` string of `crates/duet-time/src/convert.rs`. That file still holds
+reason cell with the `reason =` string of `crates/bc_time/duet-time/lang_rust/src/convert.rs`. That file still holds
 the revision-23 strings until M91 repairs them, so an M90 commit ahead of M91 would be red on its
 own gate. The two write scopes stay disjoint, which is what lets both sit in one phase (SM1).
 
@@ -11687,10 +11774,10 @@ Each trunk chunk owns one crate, so the trunk is four lines of one chunk each.
 
 | Chunk | Phase | Goal | Writes | Completion |
 |---|---|---|---|---|
-| T1 | 0 | The time kernel, `convert`, `Finite` with its `try_from`, `Unit`, the five kernel counts, `SchemaVersion`, `Ratio`, `NoteValue`, `Tuplet`, the tempo map, the tuplet rule, and the nightly proptest target | `crates/duet-time/Cargo.toml`, `src/lib.rs`, `src/{units,convert,position,span,finite,bbt,tempo,tuplet,error}.rs`, `tests/kernel.rs`, `tests/proptest_large.rs`, `Cargo.lock` | `cargo nextest run -p duet-time --no-tests=fail` |
-| T2 | 1 | The score aggregate, `ScoreCommand`, `apply`, the canonical reader and writer, and the determinism test that rung two command 4 selects | `crates/duet-score/Cargo.toml`, `src/lib.rs`, `src/{model,ids,command,event,apply,canonical,error}.rs`, `crates/duet-score/tests/canonical_determinism.rs`, `Cargo.lock` | `cargo nextest run -p duet-score --no-tests=fail` |
-| T3 | 2 | Tracks with `name`, `input`, `monitor`, `armed`; takes with `TakeFlag::MidiPortLost` and `TakeSetMuted`, regions with `RegionSetStart`, locations, strips with the B86 refusal, `DeviceKey`, `ParamIdRange`, `ParamRange`, `param_range`, `SlotKind` with its eight arms, `MasterStage` with `ORDER` and `slot_kind`, curves, `SessionCommand` | `crates/duet-session/Cargo.toml`, `src/lib.rs`, `src/{session,track,take,region,location,mix,curve,slot,calibration,command,event,error}.rs`, `tests/`, `Cargo.lock` | `cargo nextest run -p duet-session --no-tests=fail` |
-| T4 | 3 | `Verb`, `VerbOutcome`, `EditCommand`, `Mode`, `ModeView`, `ViewState`, `ViewDocument`, `PortSlot`, `MidiPortId`, `MidiPortInfo`, `MidiMessage`, `MidiNote`, `Velocity`, `MidiRecord`, `NoteEntry` with their `size_of` test, `DitherKind`, `FaultCode`, snapshots, `BundleDocument`, the plain-data assertion | `crates/duet-command/Cargo.toml`, `src/lib.rs`, `src/{verb,outcome,request,event,snapshot,view,document,fault,midi,recent,export,error}.rs`, `tests/`, `Cargo.lock` | `cargo nextest run -p duet-command --no-tests=fail` |
+| T1 | 0 | The time kernel, `convert`, `Finite` with its `try_from`, `Unit`, the five kernel counts, `SchemaVersion`, `Ratio`, `NoteValue`, `Tuplet`, the tempo map, the tuplet rule, and the nightly proptest target | `crates/bc_time/duet-time/lang_rust/Cargo.toml`, `src/lib.rs`, `src/{units,convert,position,span,finite,bbt,tempo,tuplet,error}.rs`, `tests/kernel.rs`, `tests/proptest_large.rs`, `Cargo.lock` | `cargo nextest run -p duet-time --no-tests=fail` |
+| T2 | 1 | The score aggregate, `ScoreCommand`, `apply`, the canonical reader and writer, and the determinism test that rung two command 4 selects | `crates/bc_document/duet-score/lang_rust/Cargo.toml`, `src/lib.rs`, `src/{model,ids,command,event,apply,canonical,error}.rs`, `crates/bc_document/duet-score/lang_rust/tests/canonical_determinism.rs`, `Cargo.lock` | `cargo nextest run -p duet-score --no-tests=fail` |
+| T3 | 2 | Tracks with `name`, `input`, `monitor`, `armed`; takes with `TakeFlag::MidiPortLost` and `TakeSetMuted`, regions with `RegionSetStart`, locations, strips with the B86 refusal, `DeviceKey`, `ParamIdRange`, `ParamRange`, `param_range`, `SlotKind` with its eight arms, `MasterStage` with `ORDER` and `slot_kind`, curves, `SessionCommand` | `crates/bc_document/duet-session/lang_rust/Cargo.toml`, `src/lib.rs`, `src/{session,track,take,region,location,mix,curve,slot,calibration,command,event,error}.rs`, `tests/`, `Cargo.lock` | `cargo nextest run -p duet-session --no-tests=fail` |
+| T4 | 3 | `Verb`, `VerbOutcome`, `EditCommand`, `Mode`, `ModeView`, `ViewState`, `ViewDocument`, `PortSlot`, `MidiPortId`, `MidiPortInfo`, `MidiMessage`, `MidiNote`, `Velocity`, `MidiRecord`, `NoteEntry` with their `size_of` test, `DitherKind`, `FaultCode`, snapshots, `BundleDocument`, the plain-data assertion | `crates/bc_document/duet-command/lang_rust/Cargo.toml`, `src/lib.rs`, `src/{verb,outcome,request,event,snapshot,view,document,fault,midi,recent,export,error}.rs`, `tests/`, `Cargo.lock` | `cargo nextest run -p duet-command --no-tests=fail` |
 
 ### 13.2 The lines of work
 
@@ -11702,10 +11789,10 @@ writes `Cargo.lock` (SM5). No two chunks of one line share a phase (SM6).
 
 | Chunk | Phase | Goal | Writes | Completion |
 |---|---|---|---|---|
-| A1 | 2 | The SMuFL metadata reader, the scale model, the placement types, `SystemXMap`; every module file of the line | `crates/duet-engrave/Cargo.toml`, `src/lib.rs`, `src/{smufl,metrics,placement,map,spacing,system,beam,spanner,lyric,mark}.rs`, `Cargo.lock` | `cargo nextest run -p duet-engrave -E 'test(xmap)' --no-tests=fail` |
-| A2 | 3 | Horizontal spacing and the system break | `crates/duet-engrave/src/{spacing,system}.rs` | `cargo nextest run -p duet-engrave -E 'test(spacing)' --no-tests=fail` |
-| A3 | 4 | Beams, ties, slurs, dynamics, lyrics, marks | `crates/duet-engrave/src/{beam,spanner,lyric,mark}.rs` | `cargo nextest run -p duet-engrave -E 'test(beam)' --no-tests=fail` |
-| A4 | 5 | The golden corpus, the comparator, the criterion bench and its `[[bench]]` target | `crates/duet-engrave/tests/golden.rs`, `crates/duet-engrave/tests/golden/`, `crates/duet-engrave/benches/`, `crates/duet-engrave/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-engrave --test golden --no-tests=fail` |
+| A1 | 2 | The SMuFL metadata reader, the scale model, the placement types, `SystemXMap`; every module file of the line | `crates/bc_notation/duet-engrave/lang_rust/Cargo.toml`, `src/lib.rs`, `src/{smufl,metrics,placement,map,spacing,system,beam,spanner,lyric,mark}.rs`, `Cargo.lock` | `cargo nextest run -p duet-engrave -E 'test(xmap)' --no-tests=fail` |
+| A2 | 3 | Horizontal spacing and the system break | `crates/bc_notation/duet-engrave/lang_rust/src/{spacing,system}.rs` | `cargo nextest run -p duet-engrave -E 'test(spacing)' --no-tests=fail` |
+| A3 | 4 | Beams, ties, slurs, dynamics, lyrics, marks | `crates/bc_notation/duet-engrave/lang_rust/src/{beam,spanner,lyric,mark}.rs` | `cargo nextest run -p duet-engrave -E 'test(beam)' --no-tests=fail` |
+| A4 | 5 | The golden corpus, the comparator, the criterion bench and its `[[bench]]` target | `crates/bc_notation/duet-engrave/lang_rust/tests/golden.rs`, `crates/bc_notation/duet-engrave/lang_rust/tests/golden/`, `crates/bc_notation/duet-engrave/lang_rust/benches/`, `crates/bc_notation/duet-engrave/lang_rust/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-engrave --test golden --no-tests=fail` |
 
 **Line X, interchange.** Crate `duet-interchange`. **The line was `B` until revision 10.** Chunk
 `B1`, `B2`, and `B3` collided with the budget ids B1, B2, and B3 of section 1.6, and Appendix B.3
@@ -11714,41 +11801,41 @@ from `M` to `N` for the same reason, and the rename stopped one letter short (cr
 
 | Chunk | Phase | Goal | Writes | Completion |
 |---|---|---|---|---|
-| X1 | 4 | The MusicXML reader for the modelled subset, with the unmapped bucket; every module file of the line | `crates/duet-interchange/Cargo.toml`, `src/lib.rs`, `src/{musicxml,smf}.rs`, `src/musicxml/{read,write}.rs`, `Cargo.lock` | `cargo nextest run -p duet-interchange -E 'test(read_musicxml)' --no-tests=fail` |
-| X2 | 5 | The MusicXML writer and the round-trip property test, which needs `proptest` | `crates/duet-interchange/src/musicxml/write.rs`, `crates/duet-interchange/tests/round_trip.rs`, `crates/duet-interchange/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-interchange --test round_trip --no-tests=fail` |
-| X3 | 6 | Standard MIDI File import with the quantize options | `crates/duet-interchange/src/smf.rs`, `crates/duet-interchange/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-interchange -E 'test(smf_import)' --no-tests=fail` |
+| X1 | 4 | The MusicXML reader for the modelled subset, with the unmapped bucket; every module file of the line | `crates/bc_notation/duet-interchange/lang_rust/Cargo.toml`, `src/lib.rs`, `src/{musicxml,smf}.rs`, `src/musicxml/{read,write}.rs`, `Cargo.lock` | `cargo nextest run -p duet-interchange -E 'test(read_musicxml)' --no-tests=fail` |
+| X2 | 5 | The MusicXML writer and the round-trip property test, which needs `proptest` | `crates/bc_notation/duet-interchange/lang_rust/src/musicxml/write.rs`, `crates/bc_notation/duet-interchange/lang_rust/tests/round_trip.rs`, `crates/bc_notation/duet-interchange/lang_rust/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-interchange --test round_trip --no-tests=fail` |
+| X3 | 6 | Standard MIDI File import with the quantize options | `crates/bc_notation/duet-interchange/lang_rust/src/smf.rs`, `crates/bc_notation/duet-interchange/lang_rust/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-interchange -E 'test(smf_import)' --no-tests=fail` |
 
 **Line C, engine.** Crate `duet-engine`.
 
 | Chunk | Phase | Goal | Writes | Completion |
 |---|---|---|---|---|
-| C1 | 4 | The backend trait, `Cycle`, the dummy backend with a varying block, the transport machine, device input selection; every module file of the line and the forbidden-call list | `crates/duet-engine/Cargo.toml`, `src/lib.rs`, `src/{backend,dummy,transport,disk,chain,mix,cpal,audio}.rs`, `src/disk/{reader,writer,ring}.rs`, `src/chain/{topology,state,graph,migrate,configure}.rs`, `src/mix/{strip,bus,solo}.rs`, `src/cpal/{host,stream,calibrate}.rs`, `src/audio/README.md`, `Cargo.lock` | `cargo nextest run -p duet-engine -E 'test(transport_machine)' --no-tests=fail` |
-| C2 | 5 | The rtrb ring TYPES, the disk thread with `EngineDisk` as its own root, `DiskTake` and `DiskSource` with the take writer, the source reader and the peak builder of section 5.10, the disk reader and writer, the `Output<PlaybackPlan>` read end and the B33 consumer, **`EngineLink` and the B138 channel with its B147 pending list** (critic C23I-3), and the one `CaptureInfo` per armed track that the thread reports on it. **It allocates no ring**: it consumes the ends that `configure` hands it, and chunk C3 builds the allocation with `GraphConfigurator` (TH4, critic C15-1, C22I-2, C22I-4) | `crates/duet-engine/src/disk/{reader,writer,ring}.rs`, `crates/duet-engine/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-engine -E 'test(disk_ring) + test(capture_done)' --no-tests=fail` |
-| C3 | 6 | `ChainTopology`, `ChainState`, `PoolHandle`, `ChainSlot`, `ChainSource`, `ChainLayout`, `GraphConfigurator` with the engine handoff thread, its `basedrop` collector at B108, and its B95 retry, the per-position migration of section 5.5, the drain rule and the generation proof of section 5.6, the mixer runtime with solo in place, the graph runner, the THREE audio publications with `TransportSnapshot`, `MeterSnapshot` and `SlotMeterSnapshot`, the `FaultRun` latch of C21-1 with its B136 cap, **`EngineProcess::sounding` with the `MidiMessage::PortGone` drain, the note-off synthesis of section 8.2 step 1 and B139** (critic C23I-6), the B138 send from this thread with its B147 pending list, and `ConfigureCommand::Stop`, which is the one message that ends the thread's loop, and the `soak` test | `crates/duet-engine/src/chain/{topology,state,graph,migrate,configure}.rs`, `src/mix/{strip,bus,solo}.rs`, `crates/duet-engine/tests/soak.rs`, `crates/duet-engine/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-engine -E 'test(chain_migrate) + test(solo_in_place) + test(slot_meters) + test(fault_run) + test(handoff_stop) + test(port_gone_silence)' --no-tests=fail`. **Five selected tests and not two** (critic N22I-8): this chunk names the most mechanisms of any chunk of the plan, every Critical of the last four reviews landed inside its scope, and SM3 asks one command to fail before the chunk and pass after it |
-| C4 | 7 | The cpal backend, the PipeWire host selection by id, the input ring bridge with `CpalBridge` as its declared pair of ends, the calibration split, the drift report, the `pipewire_smoke` test, and the alignment test | `crates/duet-engine/src/cpal/{host,stream,calibrate}.rs`, `crates/duet-engine/tests/alignment.rs`, `crates/duet-engine/Cargo.toml`, `Cargo.lock` | **macOS, on `macos-26`:** `cargo nextest run -p duet-engine -E 'test(calibration_split)' --no-tests=fail`. **Linux, on `ubuntu-26.04`:** `cargo nextest run -p duet-engine -E 'test(calibration_split) + test(host_select)' --no-tests=fail`. `host_select` is the PipeWire host selection and it is `#[cfg(target_os = "linux")]`, so it exists on one platform alone and SM3 rule 3 asks for a per-platform command and the runner of each (critic C21-W16). Revision 21 gave both platforms one command whose `+` is a filterset union, so a macOS run that matched `calibration_split` alone still passed `--no-tests=fail` and nothing proved the Linux half |
+| C1 | 4 | The backend trait, `Cycle`, the dummy backend with a varying block, the transport machine, device input selection; every module file of the line and the forbidden-call list | `crates/bc_audio/duet-engine/lang_rust/Cargo.toml`, `src/lib.rs`, `src/{backend,dummy,transport,disk,chain,mix,cpal,audio}.rs`, `src/disk/{reader,writer,ring}.rs`, `src/chain/{topology,state,graph,migrate,configure}.rs`, `src/mix/{strip,bus,solo}.rs`, `src/cpal/{host,stream,calibrate}.rs`, `src/audio/README.md`, `Cargo.lock` | `cargo nextest run -p duet-engine -E 'test(transport_machine)' --no-tests=fail` |
+| C2 | 5 | The rtrb ring TYPES, the disk thread with `EngineDisk` as its own root, `DiskTake` and `DiskSource` with the take writer, the source reader and the peak builder of section 5.10, the disk reader and writer, the `Output<PlaybackPlan>` read end and the B33 consumer, **`EngineLink` and the B138 channel with its B147 pending list** (critic C23I-3), and the one `CaptureInfo` per armed track that the thread reports on it. **It allocates no ring**: it consumes the ends that `configure` hands it, and chunk C3 builds the allocation with `GraphConfigurator` (TH4, critic C15-1, C22I-2, C22I-4) | `crates/bc_audio/duet-engine/lang_rust/src/disk/{reader,writer,ring}.rs`, `crates/bc_audio/duet-engine/lang_rust/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-engine -E 'test(disk_ring) + test(capture_done)' --no-tests=fail` |
+| C3 | 6 | `ChainTopology`, `ChainState`, `PoolHandle`, `ChainSlot`, `ChainSource`, `ChainLayout`, `GraphConfigurator` with the engine handoff thread, its `basedrop` collector at B108, and its B95 retry, the per-position migration of section 5.5, the drain rule and the generation proof of section 5.6, the mixer runtime with solo in place, the graph runner, the THREE audio publications with `TransportSnapshot`, `MeterSnapshot` and `SlotMeterSnapshot`, the `FaultRun` latch of C21-1 with its B136 cap, **`EngineProcess::sounding` with the `MidiMessage::PortGone` drain, the note-off synthesis of section 8.2 step 1 and B139** (critic C23I-6), the B138 send from this thread with its B147 pending list, and `ConfigureCommand::Stop`, which is the one message that ends the thread's loop, and the `soak` test | `crates/bc_audio/duet-engine/lang_rust/src/chain/{topology,state,graph,migrate,configure}.rs`, `src/mix/{strip,bus,solo}.rs`, `crates/bc_audio/duet-engine/lang_rust/tests/soak.rs`, `crates/bc_audio/duet-engine/lang_rust/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-engine -E 'test(chain_migrate) + test(solo_in_place) + test(slot_meters) + test(fault_run) + test(handoff_stop) + test(port_gone_silence)' --no-tests=fail`. **Five selected tests and not two** (critic N22I-8): this chunk names the most mechanisms of any chunk of the plan, every Critical of the last four reviews landed inside its scope, and SM3 asks one command to fail before the chunk and pass after it |
+| C4 | 7 | The cpal backend, the PipeWire host selection by id, the input ring bridge with `CpalBridge` as its declared pair of ends, the calibration split, the drift report, the `pipewire_smoke` test, and the alignment test | `crates/bc_audio/duet-engine/lang_rust/src/cpal/{host,stream,calibrate}.rs`, `crates/bc_audio/duet-engine/lang_rust/tests/alignment.rs`, `crates/bc_audio/duet-engine/lang_rust/Cargo.toml`, `Cargo.lock` | **macOS, on `macos-26`:** `cargo nextest run -p duet-engine -E 'test(calibration_split)' --no-tests=fail`. **Linux, on `ubuntu-26.04`:** `cargo nextest run -p duet-engine -E 'test(calibration_split) + test(host_select)' --no-tests=fail`. `host_select` is the PipeWire host selection and it is `#[cfg(target_os = "linux")]`, so it exists on one platform alone and SM3 rule 3 asks for a per-platform command and the runner of each (critic C21-W16). Revision 21 gave both platforms one command whose `+` is a filterset union, so a macOS run that matched `calibration_split` alone still passed `--no-tests=fail` and nothing proved the Linux half |
 
 **Line D, signal blocks.** Crate `duet-dsp`.
 
 | Chunk | Phase | Goal | Writes | Completion |
 |---|---|---|---|---|
-| D1 | 1 | Buffers, `SampleSource`, `fft`, `align`, gain, pan, biquad filters, `OverMark`, and the `meter_law` module with `db_to_fraction`, `lufs_to_fraction`, `true_peak_to_fraction`, `fader_fraction_to_db` and `fader_db_to_fraction`, which are B106, B143, B144 and B145 (critic C23I-W11); **`PoolSlot`, declared in `src/buffer.rs`**; every module file of the line | `crates/duet-dsp/Cargo.toml`, `src/lib.rs`, `src/{buffer,source,fft,align,gain,filter,meter,meter_law,dynamics,slot,voice,peaks,pool}.rs`, `src/dynamics/{compressor,gate,deesser,limiter,delay,reverb}.rs`, `src/peaks/{format,builder,reader}.rs`, `Cargo.lock` | `cargo nextest run -p duet-dsp -E 'test(align) + test(meter_law) + test(fader_taper)' --no-tests=fail` |
-| D2 | 2 | The compressor, the gate, the de-esser, and the true-peak limiter, with `CompressorState`, `GateState`, `DeEsserState`, and `LimiterState`. The limiter kernel is the ONE implementation the live master chain and the section 7.4 render both call, so the monitor and the file agree (PR MA-02, critic C19-11) | `crates/duet-dsp/src/dynamics/{compressor,gate,deesser,limiter}.rs` | `cargo nextest run -p duet-dsp -E 'test(dynamics)' --no-tests=fail` |
-| D3 | 3 | The monitor voice, the delay and reverb kernels, `SlotState` over all EIGHT `SlotKind` arms, which is what `clippy::wildcard_enum_match_arm` needs at the first match site (critic C22I-6), `BufferPool` over the `PoolSlot` index D1 declared, the peak pyramid format and builder. It adds the `arrayvec` entry for `PyramidBuilder::staging` at B123, so it writes the member manifest and the lock file (SM1, SM5 rule 2) | `crates/duet-dsp/src/{voice,slot,pool}.rs`, `src/dynamics/{delay,reverb}.rs`, `src/peaks/{format,builder,reader}.rs`, `crates/duet-dsp/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-dsp -E 'test(pyramid) + test(monitor_voice) + test(buffer_pool)' --no-tests=fail` |
+| D1 | 1 | Buffers, `SampleSource`, `fft`, `align`, gain, pan, biquad filters, `OverMark`, and the `meter_law` module with `db_to_fraction`, `lufs_to_fraction`, `true_peak_to_fraction`, `fader_fraction_to_db` and `fader_db_to_fraction`, which are B106, B143, B144 and B145 (critic C23I-W11); **`PoolSlot`, declared in `src/buffer.rs`**; every module file of the line | `crates/bc_audio/duet-dsp/lang_rust/Cargo.toml`, `src/lib.rs`, `src/{buffer,source,fft,align,gain,filter,meter,meter_law,dynamics,slot,voice,peaks,pool}.rs`, `src/dynamics/{compressor,gate,deesser,limiter,delay,reverb}.rs`, `src/peaks/{format,builder,reader}.rs`, `Cargo.lock` | `cargo nextest run -p duet-dsp -E 'test(align) + test(meter_law) + test(fader_taper)' --no-tests=fail` |
+| D2 | 2 | The compressor, the gate, the de-esser, and the true-peak limiter, with `CompressorState`, `GateState`, `DeEsserState`, and `LimiterState`. The limiter kernel is the ONE implementation the live master chain and the section 7.4 render both call, so the monitor and the file agree (PR MA-02, critic C19-11) | `crates/bc_audio/duet-dsp/lang_rust/src/dynamics/{compressor,gate,deesser,limiter}.rs` | `cargo nextest run -p duet-dsp -E 'test(dynamics)' --no-tests=fail` |
+| D3 | 3 | The monitor voice, the delay and reverb kernels, `SlotState` over all EIGHT `SlotKind` arms, which is what `clippy::wildcard_enum_match_arm` needs at the first match site (critic C22I-6), `BufferPool` over the `PoolSlot` index D1 declared, the peak pyramid format and builder. It adds the `arrayvec` entry for `PyramidBuilder::staging` at B123, so it writes the member manifest and the lock file (SM1, SM5 rule 2) | `crates/bc_audio/duet-dsp/lang_rust/src/{voice,slot,pool}.rs`, `src/dynamics/{delay,reverb}.rs`, `src/peaks/{format,builder,reader}.rs`, `crates/bc_audio/duet-dsp/lang_rust/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-dsp -E 'test(pyramid) + test(monitor_voice) + test(buffer_pool)' --no-tests=fail` |
 
 **`PoolSlot` is D1's and `BufferPool` is D3's, and the split is what lets phase 2 compile.**
 `LimiterState` holds an `Option<PoolSlot>` (section 15.2) and chunk D2 writes `LimiterState` in
 phase 2, so the index type must exist one phase earlier. D1 declares `PoolSlot` in
-`crates/duet-dsp/src/buffer.rs` in phase 1, and D3 builds the pool itself and its free list in
-`crates/duet-dsp/src/pool.rs` in phase 3. Revision 23 gave both names to D3, and the chunk author of
+`crates/bc_audio/duet-dsp/lang_rust/src/buffer.rs` in phase 1, and D3 builds the pool itself and its free list in
+`crates/bc_audio/duet-dsp/lang_rust/src/pool.rs` in phase 3. Revision 23 gave both names to D3, and the chunk author of
 line D reported that D2 could not compile.
 
 **Line E, analysis.** Crate `duet-analysis`.
 
 | Chunk | Phase | Goal | Writes | Completion |
 |---|---|---|---|---|
-| E1 | 2 | The pyramid read path over `SampleSource`; every module file of the line | `crates/duet-analysis/Cargo.toml`, `src/lib.rs`, `src/{peaks,pyin,loudness}.rs`, `src/pyin/{candidates,decode}.rs`, `Cargo.lock` | `cargo nextest run -p duet-analysis -E 'test(pyramid_read)' --no-tests=fail` |
-| E2 | 3 | pYIN: per-frame candidates, then a path decode over the whole take. It adds the `duet-session` entry for the `SourceHash` that `PitchTrack` names, so it writes the member manifest and the lock file (SM1, SM5 rule 2) | `crates/duet-analysis/src/pyin/{candidates,decode}.rs`, `crates/duet-analysis/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-analysis -E 'test(pyin)' --no-tests=fail` |
-| E3 | 4 | The loudness reader over ebur128 | `crates/duet-analysis/src/loudness.rs`, `crates/duet-analysis/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-analysis -E 'test(loudness_read)' --no-tests=fail` |
+| E1 | 2 | The pyramid read path over `SampleSource`; every module file of the line | `crates/bc_audio/duet-analysis/lang_rust/Cargo.toml`, `src/lib.rs`, `src/{peaks,pyin,loudness}.rs`, `src/pyin/{candidates,decode}.rs`, `Cargo.lock` | `cargo nextest run -p duet-analysis -E 'test(pyramid_read)' --no-tests=fail` |
+| E2 | 3 | pYIN: per-frame candidates, then a path decode over the whole take. It adds the `duet-session` entry for the `SourceHash` that `PitchTrack` names, so it writes the member manifest and the lock file (SM1, SM5 rule 2) | `crates/bc_audio/duet-analysis/lang_rust/src/pyin/{candidates,decode}.rs`, `crates/bc_audio/duet-analysis/lang_rust/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-analysis -E 'test(pyin)' --no-tests=fail` |
+| E3 | 4 | The loudness reader over ebur128 | `crates/bc_audio/duet-analysis/lang_rust/src/loudness.rs`, `crates/bc_audio/duet-analysis/lang_rust/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-analysis -E 'test(loudness_read)' --no-tests=fail` |
 
 **E2 writes the member manifest, and section 13.0 already said so.** The `phase-pair-exempt` block
 states that "E2 adds that entry one phase later for `SourceHash`", and revision 23 gave E2 a Writes
@@ -11761,48 +11848,48 @@ prefix is shared.
 
 | Chunk | Phase | Goal | Writes | Completion |
 |---|---|---|---|---|
-| N1 | 3 | `SourceReader` and `TakeWriter` over hound, plus the `SampleSource` impl; every module file of the line | `crates/duet-media/Cargo.toml`, `src/lib.rs`, `src/{wav,rf64,flac,decode}.rs`, `Cargo.lock` | `cargo nextest run -p duet-media -E 'test(wav)' --no-tests=fail` |
-| N2 | 4 | The RF64 path over bwavfile and the promotion rule | `crates/duet-media/src/rf64.rs`, `crates/duet-media/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-media -E 'test(rf64)' --no-tests=fail` |
-| N3 | 5 | The FLAC encoder over flacenc and the decode path over symphonia | `crates/duet-media/src/{flac,decode}.rs`, `crates/duet-media/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-media -E 'test(flac) + test(decode)' --no-tests=fail` |
+| N1 | 3 | `SourceReader` and `TakeWriter` over hound, plus the `SampleSource` impl; every module file of the line | `crates/bc_audio/duet-media/lang_rust/Cargo.toml`, `src/lib.rs`, `src/{wav,rf64,flac,decode}.rs`, `Cargo.lock` | `cargo nextest run -p duet-media -E 'test(wav)' --no-tests=fail` |
+| N2 | 4 | The RF64 path over bwavfile and the promotion rule | `crates/bc_audio/duet-media/lang_rust/src/rf64.rs`, `crates/bc_audio/duet-media/lang_rust/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-media -E 'test(rf64)' --no-tests=fail` |
+| N3 | 5 | The FLAC encoder over flacenc and the decode path over symphonia | `crates/bc_audio/duet-media/lang_rust/src/{flac,decode}.rs`, `crates/bc_audio/duet-media/lang_rust/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-media -E 'test(flac) + test(decode)' --no-tests=fail` |
 
 **Line F, project.** Crate `duet-project`.
 
 | Chunk | Phase | Goal | Writes | Completion |
 |---|---|---|---|---|
-| F1 | 4 | Bundle create, the five-step atomic save, `state/view.json` through `BundleDocument`, the crash matrix, the repository config, the two templates; every module file of the line | `crates/duet-project/Cargo.toml`, `src/lib.rs`, `src/{bundle,save,view,gitconfig,store,history,checkout,headwatch,watch,lock,templates,recent,platform_macos,platform_linux}.rs`, `src/store/{manifest,content,gc}.rs`, `src/history/{gix_impl,budget}.rs`, `src/watch/{debounce,ledger}.rs`, `src/templates.rs`, `src/templates/default.rs`, `Cargo.lock` | `cargo nextest run -p duet-project -E 'test(atomic_save) + test(view_json)' --no-tests=fail` |
-| F2 | 5 | The content store, the manifest, the reachability walk, `gc` and `--purge`, the recent-project list, the macOS case-insensitive store test | `crates/duet-project/src/store/{manifest,content,gc}.rs`, `src/recent.rs`, `crates/duet-project/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-project -E 'test(content_store) + test(recent_list)' --no-tests=fail` |
-| F3 | 6 | The `History` trait and the gix implementation, with the B19 budget on a job thread | `crates/duet-project/src/history/{gix_impl,budget}.rs`, `crates/duet-project/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-project -E 'test(history_budget)' --no-tests=fail` |
-| F4 | 7 | Checkout by manifest, the `HEAD` watch, the external-git contract | `crates/duet-project/src/{checkout,headwatch}.rs` | `cargo nextest run -p duet-project -E 'test(checkout)' --no-tests=fail` |
-| F5 | 8 | The file watcher, the debouncer, the writer ledger, the writer lock protocol | `crates/duet-project/src/watch/{debounce,ledger}.rs`, `src/lock.rs`, `crates/duet-project/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-project -E 'test(writer_ledger) + test(writer_lock)' --no-tests=fail` |
+| F1 | 4 | Bundle create, the five-step atomic save, `state/view.json` through `BundleDocument`, the crash matrix, the repository config, the two templates; every module file of the line | `crates/bc_project/duet-project/lang_rust/Cargo.toml`, `src/lib.rs`, `src/{bundle,save,view,gitconfig,store,history,checkout,headwatch,watch,lock,templates,recent,platform_macos,platform_linux}.rs`, `src/store/{manifest,content,gc}.rs`, `src/history/{gix_impl,budget}.rs`, `src/watch/{debounce,ledger}.rs`, `src/templates.rs`, `src/templates/default.rs`, `Cargo.lock` | `cargo nextest run -p duet-project -E 'test(atomic_save) + test(view_json)' --no-tests=fail` |
+| F2 | 5 | The content store, the manifest, the reachability walk, `gc` and `--purge`, the recent-project list, the macOS case-insensitive store test | `crates/bc_project/duet-project/lang_rust/src/store/{manifest,content,gc}.rs`, `src/recent.rs`, `crates/bc_project/duet-project/lang_rust/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-project -E 'test(content_store) + test(recent_list)' --no-tests=fail` |
+| F3 | 6 | The `History` trait and the gix implementation, with the B19 budget on a job thread | `crates/bc_project/duet-project/lang_rust/src/history/{gix_impl,budget}.rs`, `crates/bc_project/duet-project/lang_rust/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-project -E 'test(history_budget)' --no-tests=fail` |
+| F4 | 7 | Checkout by manifest, the `HEAD` watch, the external-git contract | `crates/bc_project/duet-project/lang_rust/src/{checkout,headwatch}.rs` | `cargo nextest run -p duet-project -E 'test(checkout)' --no-tests=fail` |
+| F5 | 8 | The file watcher, the debouncer, the writer ledger, the writer lock protocol | `crates/bc_project/duet-project/lang_rust/src/watch/{debounce,ledger}.rs`, `src/lock.rs`, `crates/bc_project/duet-project/lang_rust/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-project -E 'test(writer_ledger) + test(writer_lock)' --no-tests=fail` |
 
 **Line G, MIDI.** Crate `duet-midi`.
 
 | Chunk | Phase | Goal | Writes | Completion |
 |---|---|---|---|---|
-| G1 | 4 | `MidiPresence`, `MidiStream`, `MidiPortMap` with the B88 refusal, `PlatformPort`, the B87 hot-plug queue, the midir presence fallback and the midir byte path, the poll exception, the open timeouts; every module file of the line | `crates/duet-midi/Cargo.toml`, `src/lib.rs`, `src/{presence,stream,portmap,bind,entry,platform_macos,platform_linux}.rs`, `Cargo.lock` | `cargo nextest run -p duet-midi -E 'test(port_map) + test(midir_presence)' --no-tests=fail` |
-| G2 | 5 | The macOS coremidi presence source with the notify callback | `crates/duet-midi/src/platform_macos.rs`, `crates/duet-midi/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-midi -E 'test(coremidi_presence)' --no-tests=fail` (macOS runner) |
-| G3 | 6 | The Linux PipeWire registry presence source, filtered to MIDI nodes and ports | `crates/duet-midi/src/platform_linux.rs`, `crates/duet-midi/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-midi -E 'test(pipewire_presence)' --no-tests=fail` (Linux runner) |
-| G4 | 7 | The auto-bind policy, `BindFailed`, `InputLost` with the four steps of section 8.2, the audio ring, the note-entry queue, the B100 write end on `MidiPortMap`, and the MINT of one `MidiMessage::PortGone` per departure, so the audio thread can silence a departed port's held notes. **The arm itself is T4's work** (critic C23I-W9): `MidiMessage` is a `duet-command` type, line G owns `duet-midi`, and `T4 before G1` already orders the two | `crates/duet-midi/src/{bind,entry}.rs` | `cargo nextest run -p duet-midi -E 'test(auto_bind) + test(note_entry)' --no-tests=fail` |
+| G1 | 4 | `MidiPresence`, `MidiStream`, `MidiPortMap` with the B88 refusal, `PlatformPort`, the B87 hot-plug queue, the midir presence fallback and the midir byte path, the poll exception, the open timeouts; every module file of the line | `crates/bc_midi/duet-midi/lang_rust/Cargo.toml`, `src/lib.rs`, `src/{presence,stream,portmap,bind,entry,platform_macos,platform_linux}.rs`, `Cargo.lock` | `cargo nextest run -p duet-midi -E 'test(port_map) + test(midir_presence)' --no-tests=fail` |
+| G2 | 5 | The macOS coremidi presence source with the notify callback | `crates/bc_midi/duet-midi/lang_rust/src/platform_macos.rs`, `crates/bc_midi/duet-midi/lang_rust/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-midi -E 'test(coremidi_presence)' --no-tests=fail` (macOS runner) |
+| G3 | 6 | The Linux PipeWire registry presence source, filtered to MIDI nodes and ports | `crates/bc_midi/duet-midi/lang_rust/src/platform_linux.rs`, `crates/bc_midi/duet-midi/lang_rust/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-midi -E 'test(pipewire_presence)' --no-tests=fail` (Linux runner) |
+| G4 | 7 | The auto-bind policy, `BindFailed`, `InputLost` with the four steps of section 8.2, the audio ring, the note-entry queue, the B100 write end on `MidiPortMap`, and the MINT of one `MidiMessage::PortGone` per departure, so the audio thread can silence a departed port's held notes. **The arm itself is T4's work** (critic C23I-W9): `MidiMessage` is a `duet-command` type, line G owns `duet-midi`, and `T4 before G1` already orders the two | `crates/bc_midi/duet-midi/lang_rust/src/{bind,entry}.rs` | `cargo nextest run -p duet-midi -E 'test(auto_bind) + test(note_entry)' --no-tests=fail` |
 
 **Line H, export.** Crate `duet-export`.
 
 | Chunk | Phase | Goal | Writes | Completion |
 |---|---|---|---|---|
-| H1 | 7 | The offline render harness over the dummy backend in freewheel, and the resample stage; every module file of the line | `crates/duet-export/Cargo.toml`, `src/lib.rs`, `src/{render,loudness,encode,preset}.rs`, `src/loudness/{analyse,limit}.rs`, `src/encode/{wav,flac,promote}.rs`, `Cargo.lock` | `cargo nextest run -p duet-export -E 'test(offline_render)' --no-tests=fail` |
-| H2 | 8 | The two-pass loudness graph, the intermediate directory and its cleanup contract, the limiter stage, the measure job | `crates/duet-export/src/loudness/{analyse,limit}.rs` | `cargo nextest run -p duet-export -E 'test(two_pass) + test(cancel_cleanup)' --no-tests=fail` |
-| H3 | 9 | The encode stage over `duet-media`, and the size promotion rule | `crates/duet-export/src/encode/{wav,flac,promote}.rs`, `crates/duet-export/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-export -E 'test(encode_stage)' --no-tests=fail` |
-| H4 | 10 | The Streaming, Broadcast, and Custom presets | `crates/duet-export/src/preset.rs` | `cargo nextest run -p duet-export -E 'test(preset)' --no-tests=fail` |
+| H1 | 7 | The offline render harness over the dummy backend in freewheel, and the resample stage; every module file of the line | `crates/bc_audio/duet-export/lang_rust/Cargo.toml`, `src/lib.rs`, `src/{render,loudness,encode,preset}.rs`, `src/loudness/{analyse,limit}.rs`, `src/encode/{wav,flac,promote}.rs`, `Cargo.lock` | `cargo nextest run -p duet-export -E 'test(offline_render)' --no-tests=fail` |
+| H2 | 8 | The two-pass loudness graph, the intermediate directory and its cleanup contract, the limiter stage, the measure job | `crates/bc_audio/duet-export/lang_rust/src/loudness/{analyse,limit}.rs` | `cargo nextest run -p duet-export -E 'test(two_pass) + test(cancel_cleanup)' --no-tests=fail` |
+| H3 | 9 | The encode stage over `duet-media`, and the size promotion rule | `crates/bc_audio/duet-export/lang_rust/src/encode/{wav,flac,promote}.rs`, `crates/bc_audio/duet-export/lang_rust/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-export -E 'test(encode_stage)' --no-tests=fail` |
+| H4 | 10 | The Streaming, Broadcast, and Custom presets | `crates/bc_audio/duet-export/lang_rust/src/preset.rs` | `cargo nextest run -p duet-export -E 'test(preset)' --no-tests=fail` |
 
 **Line I, core.** Crate `duet-core`.
 
 | Chunk | Phase | Goal | Writes | Completion |
 |---|---|---|---|---|
-| I1 | 7 | Verb dispatch for project, transport, score, take, track, mix, view, and history; the aggregate behind `Arc`; the undo stack; the `JobRunner`; **`DuetCore::drain_note_entries`, a plain method with no framework type in its signature**; every module file of the line | `crates/duet-core/Cargo.toml`, `src/lib.rs`, `src/{gateway,aggregate,undo,job_runner,channel,snapshot,job,midi_entry,reader,quit}.rs`, `src/channel/{input,event,resync}.rs`, `Cargo.lock` | `cargo nextest run -p duet-core -E 'test(dispatch)' --no-tests=fail` |
-| I2 | 8 | The structural channels with `CoreLink`, `ClientLink` and `CoreClient` as their declared ends, the B138 engine-event receiver, the B109 `SyncSender`, the version counter, the resynchronize path with hysteresis, `DuetCore::register_client` and `release_client` with the B141 refusal, **the five-source `TakeFlags` merge of section 6.4 into `DuetCore::take_flags`** (critic C23I-W10), and **the whole nine-step quit path of section 9.5 rule 8**: the `duet-quit-save` thread of TH12 with `QuitSave`, `JobWorker` with its `CoreInput::WorkerStopped` report, and the four bounds B119, B131, B132 and B134, each measured by the core on its own input loop (critic C22I-2, C22I-6) | `crates/duet-core/src/channel/{input,event,resync}.rs`, `src/quit.rs`, `src/job_runner.rs`, `crates/duet-core/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-core -E 'test(resync) + test(quit_path) + test(quit_save_thread) + test(worker_stopped) + test(take_flag_merge) + test(client_budget)' --no-tests=fail` |
-| I3 | 9 | Snapshot publication and the `Arc::make_mut` bench, the job registry, **the `PlaybackPlan` build on a job thread inside B130 and the one `Input<PlaybackPlan>` write the core performs** (critic C21I-1, C22I-6), the note-entry drain as a plain method with no framework type in its signature, the peak read task, `MeterReader` and `TransportReader` with the per-strip over-mark compare of section 7.3, the B111 and B112 cap state, and **`MeterReader::slot_measure`**, which is the one producer of `StageCurve::measure` | `crates/duet-core/src/{snapshot,job,midi_entry,reader}.rs`, `crates/duet-core/benches/`, `crates/duet-core/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-core -E 'test(snapshot) + test(job_registry) + test(playback_plan) + test(slot_measure)' --no-tests=fail` |
-| I4 | 10 | The `ExportAudio`, `MasterMeasure`, and `Gc` dispatch arms, with the TH8 re-validation. **It keeps `GatewayError::NotYetImplemented`** and adds a test that asserts no verb answers it (critic C16-10) | `crates/duet-core/src/gateway.rs`, `crates/duet-core/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-core -E 'test(export_arm) + test(gc_arm)' --no-tests=fail` |
+| I1 | 7 | Verb dispatch for project, transport, score, take, track, mix, view, and history; the aggregate behind `Arc`; the undo stack; the `JobRunner`; **`DuetCore::drain_note_entries`, a plain method with no framework type in its signature**; every module file of the line | `crates/bc_gateway/duet-core/lang_rust/Cargo.toml`, `src/lib.rs`, `src/{gateway,aggregate,undo,job_runner,channel,snapshot,job,midi_entry,reader,quit}.rs`, `src/channel/{input,event,resync}.rs`, `Cargo.lock` | `cargo nextest run -p duet-core -E 'test(dispatch)' --no-tests=fail` |
+| I2 | 8 | The structural channels with `CoreLink`, `ClientLink` and `CoreClient` as their declared ends, the B138 engine-event receiver, the B109 `SyncSender`, the version counter, the resynchronize path with hysteresis, `DuetCore::register_client` and `release_client` with the B141 refusal, **the five-source `TakeFlags` merge of section 6.4 into `DuetCore::take_flags`** (critic C23I-W10), and **the whole nine-step quit path of section 9.5 rule 8**: the `duet-quit-save` thread of TH12 with `QuitSave`, `JobWorker` with its `CoreInput::WorkerStopped` report, and the four bounds B119, B131, B132 and B134, each measured by the core on its own input loop (critic C22I-2, C22I-6) | `crates/bc_gateway/duet-core/lang_rust/src/channel/{input,event,resync}.rs`, `src/quit.rs`, `src/job_runner.rs`, `crates/bc_gateway/duet-core/lang_rust/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-core -E 'test(resync) + test(quit_path) + test(quit_save_thread) + test(worker_stopped) + test(take_flag_merge) + test(client_budget)' --no-tests=fail` |
+| I3 | 9 | Snapshot publication and the `Arc::make_mut` bench, the job registry, **the `PlaybackPlan` build on a job thread inside B130 and the one `Input<PlaybackPlan>` write the core performs** (critic C21I-1, C22I-6), the note-entry drain as a plain method with no framework type in its signature, the peak read task, `MeterReader` and `TransportReader` with the per-strip over-mark compare of section 7.3, the B111 and B112 cap state, and **`MeterReader::slot_measure`**, which is the one producer of `StageCurve::measure` | `crates/bc_gateway/duet-core/lang_rust/src/{snapshot,job,midi_entry,reader}.rs`, `crates/bc_gateway/duet-core/lang_rust/benches/`, `crates/bc_gateway/duet-core/lang_rust/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-core -E 'test(snapshot) + test(job_registry) + test(playback_plan) + test(slot_measure)' --no-tests=fail` |
+| I4 | 10 | The `ExportAudio`, `MasterMeasure`, and `Gc` dispatch arms, with the TH8 re-validation. **It keeps `GatewayError::NotYetImplemented`** and adds a test that asserts no verb answers it (critic C16-10) | `crates/bc_gateway/duet-core/lang_rust/src/gateway.rs`, `crates/bc_gateway/duet-core/lang_rust/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet-core -E 'test(export_arm) + test(gc_arm)' --no-tests=fail` |
 
-**Three chunks of line K own `crates/duet/Cargo.toml`, `crates/duet/benches/`, and `Cargo.lock`,
+**Three chunks of line K own `crates/bc_app/duet/lang_rust/Cargo.toml`, `crates/bc_app/duet/lang_rust/benches/`, and `Cargo.lock`,
 one per phase.** K1 adds the internal `{ workspace = true }` entries in phase 9, K4 adds the Mix
 frame-cost bench in phase 12, and K5 adds the Master frame-cost bench in phase 13. SM6 keeps the
 three in three phases, so the manifest has one writer per phase and the seam is serial. **Revision
@@ -11811,7 +11898,7 @@ chunk was told to write a file outside its own scope (critic C16-W10).
 
 **Chunk I3 owns a bench, so it owns the manifest and the directory.** Section 5.12 lists the
 `Arc::make_mut` clone as a measured path against B5, and revision 5 gave I3 neither
-`crates/duet-core/Cargo.toml`, nor `benches/`, nor `Cargo.lock` (critic S4). SM6 puts I3 in phase 9
+`crates/bc_gateway/duet-core/lang_rust/Cargo.toml`, nor `benches/`, nor `Cargo.lock` (critic S4). SM6 puts I3 in phase 9
 and I4 in phase 10, so the `duet-core` manifest has one writer per phase.
 
 **The note-entry drain is split across a crate boundary, and the split is the framework rule**
@@ -11841,7 +11928,7 @@ adds `no_verb_is_unimplemented`, which drives every `Verb` arm and asserts that 
 `NotYetImplemented`. The arm stays as the declared shape of a verb the plan has not built, and the
 test is the guard that no verb uses it.
 
-**I4 adds `crates/duet-core/Cargo.toml` and `Cargo.lock` to its write scope**, because the
+**I4 adds `crates/bc_gateway/duet-core/lang_rust/Cargo.toml` and `Cargo.lock` to its write scope**, because the
 `MasterMeasure` arm calls the measure job and the `ExportAudio` arm calls the encode stage, both in
 `duet-export`. SM1 makes the chunk that uses a dependency add the `{ workspace = true }` entry in
 the same commit, and SM5 rule 2 then also requires the lock. SM6 keeps I4 alone in its phase for
@@ -11851,9 +11938,9 @@ that manifest.
 
 | Chunk | Phase | Goal | Writes | Completion |
 |---|---|---|---|---|
-| J1 | 8 | The MCP server over stdio with rmcp on tokio, the shutdown choke point, and the headless end-to-end test of everything phase 8 delivers; every module file of the line | `crates/duet-agent/Cargo.toml`, `src/lib.rs`, `src/{stdio,shutdown,socket,path,lock}.rs`, `crates/duet-agent/tests/end_to_end.rs`, `Cargo.lock` | `cargo nextest run -p duet-agent -E 'test(stdio) + test(shutdown)' --no-tests=fail` |
-| J2 | 9 | The Unix socket transport, the path resolver, the client lock helper, the client timeouts | `crates/duet-agent/src/{socket,path,lock}.rs` | `cargo nextest run -p duet-agent -E 'test(socket_transport)' --no-tests=fail` |
-| J3 | 11 | The headless export end-to-end test: `MasterMeasure` with its progress and completion, then a 48 kHz 24-bit WAV export with the Streaming preset, with the B75 and B76 assertions | `crates/duet-agent/tests/export_end_to_end.rs` | `cargo nextest run -p duet-agent --test export_end_to_end --no-tests=fail` |
+| J1 | 8 | The MCP server over stdio with rmcp on tokio, the shutdown choke point, and the headless end-to-end test of everything phase 8 delivers; every module file of the line | `crates/bc_gateway/duet-agent/lang_rust/Cargo.toml`, `src/lib.rs`, `src/{stdio,shutdown,socket,path,lock}.rs`, `crates/bc_gateway/duet-agent/lang_rust/tests/end_to_end.rs`, `Cargo.lock` | `cargo nextest run -p duet-agent -E 'test(stdio) + test(shutdown)' --no-tests=fail` |
+| J2 | 9 | The Unix socket transport, the path resolver, the client lock helper, the client timeouts | `crates/bc_gateway/duet-agent/lang_rust/src/{socket,path,lock}.rs` | `cargo nextest run -p duet-agent -E 'test(socket_transport)' --no-tests=fail` |
+| J3 | 11 | The headless export end-to-end test: `MasterMeasure` with its progress and completion, then a 48 kHz 24-bit WAV export with the Streaming preset, with the B75 and B76 assertions | `crates/bc_gateway/duet-agent/lang_rust/tests/export_end_to_end.rs` | `cargo nextest run -p duet-agent --test export_end_to_end --no-tests=fail` |
 
 **The headless product path is TWO tests, and the phase numbers are the reason** (critic C16-9).
 `end_to_end` is `Plain`, so `scripts/dod.sh` runs it at every commit from phase 8 onward. The export
@@ -11874,16 +11961,16 @@ needs no `mod` line.
 
 | Chunk | Phase | Goal | Writes | Completion |
 |---|---|---|---|---|
-| K1 | 9 | The shell: the command-line front, the mode machine, the entity tree, `CoreHost` with the frame pump of section 10.2 and its `CoreClient` ends and `slot_measure` accessor (critic C22I-8), **the note-entry drain registration in `Window::on_next_frame`** (critic C16-W9), and the `cx.observe_global::<gpui_kit::component::Theme>` subscription that re-resolves `DuetTokens` (critic CR-21, WR-28), `AgentBridge`, `TopBar`, the `Toolbar` element with its overflow rule, `TransportBar` with the arm control, `ModeSwitcher`, `MenuHost`, `fault_text`, `WorkAreaState`, the `ViewState` round trip; every element, shell, and work-area module file | modifies `crates/duet/src/main.rs`; **removes** `src/app.rs`; creates `src/element.rs`, `src/tokens.rs`, `src/{shell,compose,record,mix,master}.rs`, `src/element/{staff_system,waveform_lane,playhead_layer,punch_range,level_meter,fader,knob,automation_lane,stage_curve,lufs_meter,toolbar}.rs` as stubs (critic N21-19), the twenty files under `src/shell/`, `src/compose/{view,caret,menu,duration}.rs`, `src/record/{view,lane,cache,controls}.rs`, `src/mix/{view,strip,meter_layer,automation}.rs`, `src/master/{view,export_dialog,report}.rs`; `crates/duet/Cargo.toml`; `Cargo.lock` | `cargo nextest run -p duet -E 'test(shell) + test(view_round_trip)' --no-tests=fail` |
-| K2 | 10 | `StaffSystem`, `ComposeView` with its `VirtualList`, the cached sibling systems of section 10.2, the duration selector, the context menu, the Compose `ModeToolbar` | `crates/duet/src/element/staff_system.rs`, `src/compose/{view,caret,menu,duration}.rs`, `src/shell/toolbar_compose.rs` | `cargo nextest run -p duet -E 'test(compose)' --no-tests=fail` |
-| K3 | 11 | `WaveformLane`, `PlayheadLayer` with the start and stop conditions of section 10.2, `PunchRange`, `RecordView` with its `VirtualList`, the cached sibling lanes of section 10.2, `PathCache`, `TakeSegment`, the pitch overlay, the input and monitor controls, the track filter, the Record `ModeToolbar` | `crates/duet/src/element/{waveform_lane,playhead_layer,punch_range}.rs`, `src/record/{view,lane,cache,controls}.rs`, `src/shell/toolbar_record.rs` | `cargo nextest run -p duet -E 'test(record_view) + test(path_cache)' --no-tests=fail` |
-| K4 | 12 | `LevelMeter`, `Fader`, `Knob`, `AutomationLane`, `StageCurve`, `MixView`, `MeterLayer`, the cached sibling strips of section 10.2, mute and solo, the arm control on the strip, the reverb and delay bus strips, the linear ruler, the Mix `ModeToolbar`, and the frame-cost bench | `crates/duet/src/element/{level_meter,fader,knob,automation_lane,stage_curve}.rs`, `src/mix/{view,strip,meter_layer,automation}.rs`, `src/shell/toolbar_mix.rs`, `crates/duet/benches/`, `crates/duet/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet -E 'test(mix_view) + test(stage_curve)' --no-tests=fail` |
-| K5 | 13 | `LufsMeter`, `MasterView`, which draws one stage box per `MasterStage::ORDER` arm and no other, with the five stage curves, `MasterMeterLayer`, the `criterion` bench over one Master frame that section 10.2 requires, the export dialog with the per-part choice of PR MA-05 and the rate and bit-depth choice of PR MA-06, the measured report, the Master `ModeToolbar` | `crates/duet/src/element/lufs_meter.rs`, `src/master/{view,export_dialog,report}.rs`, `src/shell/toolbar_master.rs`, `crates/duet/benches/`, `crates/duet/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet -E 'test(master_view) + test(export_dialog)' --no-tests=fail` |
-| K6 | 14 | The title bar, the sidebar tree with track lifecycle, the arm control and the track filter, the inspector chain editor, the status bar, the history sheet, `StartView`, `ViewStateStore` | `crates/duet/src/shell/{title_bar,sidebar,inspector,status_bar,history_sheet,start,view_state}.rs` | `cargo nextest run -p duet -E 'test(sidebar) + test(start_view) + test(view_state_store)' --no-tests=fail` |
+| K1 | 9 | The shell: the command-line front, the mode machine, the entity tree, `CoreHost` with the frame pump of section 10.2 and its `CoreClient` ends and `slot_measure` accessor (critic C22I-8), **the note-entry drain registration in `Window::on_next_frame`** (critic C16-W9), and the `cx.observe_global::<gpui_kit::component::Theme>` subscription that re-resolves `DuetTokens` (critic CR-21, WR-28), `AgentBridge`, `TopBar`, the `Toolbar` element with its overflow rule, `TransportBar` with the arm control, `ModeSwitcher`, `MenuHost`, `fault_text`, `WorkAreaState`, the `ViewState` round trip; every element, shell, and work-area module file | modifies `crates/bc_app/duet/lang_rust/src/main.rs`; **removes** `src/app.rs`; creates `src/element.rs`, `src/tokens.rs`, `src/{shell,compose,record,mix,master}.rs`, `src/element/{staff_system,waveform_lane,playhead_layer,punch_range,level_meter,fader,knob,automation_lane,stage_curve,lufs_meter,toolbar}.rs` as stubs (critic N21-19), the twenty files under `src/shell/`, `src/compose/{view,caret,menu,duration}.rs`, `src/record/{view,lane,cache,controls}.rs`, `src/mix/{view,strip,meter_layer,automation}.rs`, `src/master/{view,export_dialog,report}.rs`; `crates/bc_app/duet/lang_rust/Cargo.toml`; `Cargo.lock` | `cargo nextest run -p duet -E 'test(shell) + test(view_round_trip)' --no-tests=fail` |
+| K2 | 10 | `StaffSystem`, `ComposeView` with its `VirtualList`, the cached sibling systems of section 10.2, the duration selector, the context menu, the Compose `ModeToolbar` | `crates/bc_app/duet/lang_rust/src/element/staff_system.rs`, `src/compose/{view,caret,menu,duration}.rs`, `src/shell/toolbar_compose.rs` | `cargo nextest run -p duet -E 'test(compose)' --no-tests=fail` |
+| K3 | 11 | `WaveformLane`, `PlayheadLayer` with the start and stop conditions of section 10.2, `PunchRange`, `RecordView` with its `VirtualList`, the cached sibling lanes of section 10.2, `PathCache`, `TakeSegment`, the pitch overlay, the input and monitor controls, the track filter, the Record `ModeToolbar` | `crates/bc_app/duet/lang_rust/src/element/{waveform_lane,playhead_layer,punch_range}.rs`, `src/record/{view,lane,cache,controls}.rs`, `src/shell/toolbar_record.rs` | `cargo nextest run -p duet -E 'test(record_view) + test(path_cache)' --no-tests=fail` |
+| K4 | 12 | `LevelMeter`, `Fader`, `Knob`, `AutomationLane`, `StageCurve`, `MixView`, `MeterLayer`, the cached sibling strips of section 10.2, mute and solo, the arm control on the strip, the reverb and delay bus strips, the linear ruler, the Mix `ModeToolbar`, and the frame-cost bench | `crates/bc_app/duet/lang_rust/src/element/{level_meter,fader,knob,automation_lane,stage_curve}.rs`, `src/mix/{view,strip,meter_layer,automation}.rs`, `src/shell/toolbar_mix.rs`, `crates/bc_app/duet/lang_rust/benches/`, `crates/bc_app/duet/lang_rust/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet -E 'test(mix_view) + test(stage_curve)' --no-tests=fail` |
+| K5 | 13 | `LufsMeter`, `MasterView`, which draws one stage box per `MasterStage::ORDER` arm and no other, with the five stage curves, `MasterMeterLayer`, the `criterion` bench over one Master frame that section 10.2 requires, the export dialog with the per-part choice of PR MA-05 and the rate and bit-depth choice of PR MA-06, the measured report, the Master `ModeToolbar` | `crates/bc_app/duet/lang_rust/src/element/lufs_meter.rs`, `src/master/{view,export_dialog,report}.rs`, `src/shell/toolbar_master.rs`, `crates/bc_app/duet/lang_rust/benches/`, `crates/bc_app/duet/lang_rust/Cargo.toml`, `Cargo.lock` | `cargo nextest run -p duet -E 'test(master_view) + test(export_dialog)' --no-tests=fail` |
+| K6 | 14 | The title bar, the sidebar tree with track lifecycle, the arm control and the track filter, the inspector chain editor, the status bar, the history sheet, `StartView`, `ViewStateStore` | `crates/bc_app/duet/lang_rust/src/shell/{title_bar,sidebar,inspector,status_bar,history_sheet,start,view_state}.rs` | `cargo nextest run -p duet -E 'test(sidebar) + test(start_view) + test(view_state_store)' --no-tests=fail` |
 
 #### The shell files that chunk K1 creates
 
-`crates/duet/src/shell/` holds twenty files. K1 creates every one and fills thirteen: the nine the
+`crates/bc_app/duet/lang_rust/src/shell/` holds twenty files. K1 creates every one and fills thirteen: the nine the
 table below gives it, plus the four mode toolbars, each with a `group_count` that answers zero and a
 `render` that returns an empty `Toolbar`. K2 to K5 each replace exactly one of those four bodies,
 and K6 fills the remaining seven.
@@ -12038,7 +12125,7 @@ work no verb could perform.
 |---|---|---|---|---|
 | 0 | M0 | The `check_*.rs` xtask guards M0's own 13.1 cell names, the `dod.sh` lines, **the WHOLE `ci.yml`** as that cell states, the policy files of SM4 | T1 | 1 |
 | 1 | M1, M91, M90, M92, in that order | none | T2, D1 | 2 |
-| 2 | M2, M93, in that order | none | T3, A1, D2, E1 | 4 |
+| 2 | M2, M93, M94, in that order | none | T3, A1, D2, E1 | 4 |
 | 3 | M3 | none | T4, A2, D3, E2, N1 | 5 |
 | 4 | M4 | none | A3, C1, E3, F1, G1, N2, X1 | 7 |
 | 5 | none | none | A4, C2, F2, G2, N3, X2 | 6 |
@@ -12203,8 +12290,13 @@ yet is written in the FUTURE tense and names the chunk that builds it** (critic 
 - `cargo clippy --workspace --all-targets --locked -- -D warnings` is clean.
 - `cargo doc` is clean at `-D warnings`.
 - `cargo nextest run --workspace --locked` and `cargo test --doc` are green.
+- Every tracked path classifies without a `Malformed` result under `.ddd/grammar.toml`, every member
+  manifest sits at `(crates|tools)/bc_<context>/<package>/lang_rust/Cargo.toml` with the context the
+  bounded context map names, and every graded `.rs` file carries a valid front-matter block.
+  **Chunk M94 will add `cargo xtask check-ddd` to `scripts/dod.sh`**; until it lands, the `members`
+  globs and PG40 are the only mechanical cover (ADR 0011).
 - `typos` is clean. **It cannot fail the gate today**: `scripts/dod.sh` runs
-  `typos --exclude 'crates/duet/assets/fonts/*' || printf ...`, so a finding prints and the script
+  `typos --exclude 'crates/bc_app/duet/assets/fonts/*' || printf ...`, so a finding prints and the script
   continues. **Chunk M90 removes the fallback and the flag, and writes the configuration that makes
   the plain call green**, and until it does this line is a developer signal and not a pass
   condition (critic C20-W6, escalation M0-1). **The repair is a configuration file and no prose
@@ -12222,13 +12314,13 @@ yet is written in the FUTURE tense and names the chunk that builds it** (critic 
   Each class carries its own rule.
 
   1. **Third-party SMuFL data.** Every finding inside
-     `crates/duet/assets/fonts/bravura_metadata.json`. This repository copies that file and never
+     `crates/bc_app/duet/assets/fonts/bravura_metadata.json`. This repository copies that file and never
      authors it. **Rule: a path exclusion.**
   2. **Append-only records.** Every finding under `roadmap/duet-v1/reviews/` and
      `roadmap/duet-v1/research/`. Rule CL1c of section 1.5 rests on a review file that nobody
      rewrites. **Rule: a second path exclusion.**
   3. **The generated protocol word.** The word `Criticals` in each of its three cases.
-     `tools/xtask/src/check_closure.rs` GENERATES the count sentence that holds it, and rule CL1b
+     `tools/bc_repo_guard/xtask/lang_rust/src/check_closure.rs` GENERATES the count sentence that holds it, and rule CL1b
      of section 1.5 makes that sentence a protocol string. No identifier holds the word.
      **Rule: three word entries, one per case.**
   4. **The SMuFL glyph-name identifiers.** The three whole glyph names `ArticAccent`,
@@ -12322,7 +12414,7 @@ applies everywhere else, and the three commands cost about one second between th
 **Two residual limits, stated rather than hidden.** A force update that moves the remote ref
 BACKWARD leaves clause 3 empty while the push still rewrites history; the `plan-lint` job of
 `.github/workflows/ci.yml` reads the whole document on every pull request that touches `roadmap/` or
-`tools/xtask/`, and that job is the cover for it. A long-lived branch that has already pushed a
+`tools/bc_repo_guard/xtask/lang_rust/`, and that job is the cover for it. A long-lived branch that has already pushed a
 `roadmap/` change carries that change outside clause 3 on the next push; the earlier run covered it,
 and the job covers the merge. **So a skipped local step hides nothing from the merge, and it no
 longer hides everything from the push.**
@@ -12332,7 +12424,7 @@ longer hides everything from the push.**
 commit with no path condition, and rule CG9 of section 2.3 reads `architecture.md`. An unconditional
 CG9 would therefore create the exact coupling the paragraph below refuses. **The step passes
 `--appendix roadmap/duet-v1/architecture.md` only when the union of the three clauses names a path
-that opens `roadmap/` OR names `crates/duet-time/src/convert.rs`**, and it passes no argument
+that opens `roadmap/` OR names `crates/bc_time/duet-time/lang_rust/src/convert.rs`**, and it passes no argument
 otherwise; the guard then prints `REASON TEXTS:    skipped (no --appendix)` and rules CG1 to CG8 run
 unchanged. **Both halves of the binding sit in the condition on purpose**: a `roadmap/`-only
 condition would skip CG9 on a commit that edits `convert.rs`, and that commit is exactly a commit
@@ -12344,7 +12436,7 @@ prints**: M1, then M91, then M90, then M92, then every line chunk of the phase. 
 file under SM4, so CLAUDE.md makes the edit an adjudication and no engineer may make it. Every chunk
 that edits a plan document meets the late signal until M90 lands, and every line chunk of phase 1
 gets the early one. **M91 runs before M90** because M90 adds rule CG9, which compares the Appendix
-B.1 reason cells with the `reason =` strings of `crates/duet-time/src/convert.rs`, and M91 is the
+B.1 reason cells with the `reason =` strings of `crates/bc_time/duet-time/lang_rust/src/convert.rs`, and M91 is the
 chunk that repairs those strings. **All three repair chunks of phase 1 run before every line chunk
 of the phase**, because M91 changes the value that `unit_to_i24` and `unit_to_i32` RETURN and chunks
 D1 and T2 consume `duet-time` in the same phase. The write scopes are disjoint, so PG31 and `check-plan-graph`
@@ -12367,7 +12459,7 @@ measured run reached 4.0 GB of build output and several minutes. It runs in the 
 repository's own `[workspace.lints]` table, `.cargo/config.toml`, `clippy.toml`,
 `rust-toolchain.toml` and `Cargo.lock` into the scratch workspace, so a change to any one of the five
 changes what the roster compile decides. The `changes` job of `.github/workflows/ci.yml` matches
-`^roadmap/|^tools/xtask/` alone, and `scripts/dod.sh` runs no roster at all for the cost reason
+`^roadmap/|^tools/bc_repo_guard/xtask/` alone, and `scripts/dod.sh` runs no roster at all for the cost reason
 above. **A change to the root `Cargo.toml`, to `clippy.toml`, to `rust-toolchain.toml` or to
 `.cargo/config.toml` therefore runs no roster in the gate and none in CI.** Chunk M93 widens the
 `changes` filter to those four paths. **Until chunk M93 lands, every such change is an SM4 act**,
@@ -12436,7 +12528,7 @@ is the one property CL1c exists to hold.
 
 | Property | Answer |
 |---|---|
-| Trigger | A pull request whose diff touches `roadmap/**` or `tools/xtask/**`. `.github/workflows/ci.yml` holds `grep -qE '^roadmap/\|^tools/xtask/'`, and revision 24 amended the workflow row below and left this row stale (critic C1-15) |
+| Trigger | A pull request whose diff touches `roadmap/**` or `tools/bc_repo_guard/xtask/lang_rust/**`. `.github/workflows/ci.yml` holds `grep -qE '^roadmap/\|^tools/bc_repo_guard/xtask/'`, and revision 24 amended the workflow row below and left this row stale (critic C1-15) |
 | Runner | `ubuntu-26.04` |
 | Command | `cargo xtask check-placement roadmap/duet-v1/architecture.md`, then `cargo xtask check-plan-graph roadmap/duet-v1`, then `cargo xtask check-plan-graph roadmap/duet-v1 --check-manifest`, then `cargo xtask check-roster roadmap/duet-v1/architecture.md "$RUNNER_TEMP/roster" .` (PG25), then `cargo xtask check-conversions --appendix roadmap/duet-v1/architecture.md` (CG9), then `cargo nextest run -p xtask --test probes --no-tests=fail`. **The roster command carries no `--generate-only` flag here**, because this job is the one reading that compiles (escalation M0-5). **The conversion command carries the `--appendix` argument ALWAYS here**, because the job is the merge cover and it runs under no further condition (critic C2-1) |
 | A missing document | **Fail closed.** The guard exits non-zero and names the path (PG2). A plan that moves the document moves the job's argument in the same change. |
@@ -12465,7 +12557,7 @@ and left four workflow commands without the flag, so each one reported success i
 
 | Workflow | Runner and trigger | What it runs | Written by |
 |---|---|---|---|
-| `ci.yml`, job `plan-lint` | `ubuntu-26.04`, on a `roadmap/**` or `tools/xtask/**` change | `cargo xtask check-placement roadmap/duet-v1/architecture.md`, then `cargo xtask check-plan-graph roadmap/duet-v1`, then `cargo xtask check-plan-graph roadmap/duet-v1 --check-manifest`, then `cargo xtask check-roster roadmap/duet-v1/architecture.md "$RUNNER_TEMP/roster" .`, then `cargo nextest run -p xtask --test probes --no-tests=fail`, which is the ported probe set of section 1.9. **It runs no `check-closure` line**, which the paragraph above explains (escalation M0-2) | M0; M90 amends it |
+| `ci.yml`, job `plan-lint` | `ubuntu-26.04`, on a `roadmap/**` or `tools/bc_repo_guard/xtask/lang_rust/**` change | `cargo xtask check-placement roadmap/duet-v1/architecture.md`, then `cargo xtask check-plan-graph roadmap/duet-v1`, then `cargo xtask check-plan-graph roadmap/duet-v1 --check-manifest`, then `cargo xtask check-roster roadmap/duet-v1/architecture.md "$RUNNER_TEMP/roster" .`, then `cargo nextest run -p xtask --test probes --no-tests=fail`, which is the ported probe set of section 1.9. **It runs no `check-closure` line**, which the paragraph above explains (escalation M0-2) | M0; M90 amends it |
 | `soak.yml` | `ubuntu-26.04` and `macos-26`, nightly | `cargo nextest run -p duet-engine --run-ignored ignored-only -E 'test(soak)' --no-tests=fail`, then the same shape for `-p duet-time -E 'test(proptest_large)'` | M7 |
 | `audio-smoke.yml` | `ubuntu-26.04`, every run | Installs PipeWire, starts a user daemon, **waits for the socket under B85 and fails the job on expiry**, then `cargo nextest run -p duet-engine --run-ignored ignored-only -E 'test(pipewire_smoke)' --no-tests=fail` | M8 |
 
@@ -12485,14 +12577,14 @@ and fails on a selected name with no row, or on a row whose chunk id appears in 
 <!-- GUARD BLOCK id=selected-tests rows>=8 -->
 | Selected test | Chunk | Phase | File | Marked | Selected by |
 |---|---|---|---|---|---|
-| `end_to_end` | J1 | 8 | `crates/duet-agent/tests/end_to_end.rs` | Plain | Rung two, command 1 |
-| `export_end_to_end` | J3 | 11 | `crates/duet-agent/tests/export_end_to_end.rs` | Plain | Rung two, command 1 |
-| `canonical_determinism` | T2 | 1 | `crates/duet-score/tests/canonical_determinism.rs` | Plain | Rung two, command 4 |
-| `probes` | M0 | 0 | `tools/xtask/tests/probes.rs` | Plain | The `plan-lint` job of `ci.yml`; it is the ported probe set of section 1.9 |
-| `soak` | C3 | 6 | `crates/duet-engine/tests/soak.rs` | `#[ignore]` | Rung two, command 2; `soak.yml` |
-| `alignment` | C4 | 7 | `crates/duet-engine/tests/alignment.rs` | Plain | Rung two, command 3 |
-| `proptest_large` | T1 | 0 | `crates/duet-time/tests/proptest_large.rs` | `#[ignore]` | `soak.yml` |
-| `pipewire_smoke` | C4 | 7 | `crates/duet-engine/src/cpal/stream.rs` | `#[ignore]` | `audio-smoke.yml` |
+| `end_to_end` | J1 | 8 | `crates/bc_gateway/duet-agent/lang_rust/tests/end_to_end.rs` | Plain | Rung two, command 1 |
+| `export_end_to_end` | J3 | 11 | `crates/bc_gateway/duet-agent/lang_rust/tests/export_end_to_end.rs` | Plain | Rung two, command 1 |
+| `canonical_determinism` | T2 | 1 | `crates/bc_document/duet-score/lang_rust/tests/canonical_determinism.rs` | Plain | Rung two, command 4 |
+| `probes` | M0 | 0 | `tools/bc_repo_guard/xtask/lang_rust/tests/probes.rs` | Plain | The `plan-lint` job of `ci.yml`; it is the ported probe set of section 1.9 |
+| `soak` | C3 | 6 | `crates/bc_audio/duet-engine/lang_rust/tests/soak.rs` | `#[ignore]` | Rung two, command 2; `soak.yml` |
+| `alignment` | C4 | 7 | `crates/bc_audio/duet-engine/lang_rust/tests/alignment.rs` | Plain | Rung two, command 3 |
+| `proptest_large` | T1 | 0 | `crates/bc_time/duet-time/lang_rust/tests/proptest_large.rs` | `#[ignore]` | `soak.yml` |
+| `pipewire_smoke` | C4 | 7 | `crates/bc_audio/duet-engine/lang_rust/src/cpal/stream.rs` | `#[ignore]` | `audio-smoke.yml` |
 
 Every writing chunk lands at or before the phase of the chunk that owns its command. `soak.yml` and
 `proptest_large` meet at M7 in phase 7, `soak` lands at C3 in phase 6, and `audio-smoke.yml` meets
@@ -12581,7 +12673,7 @@ cargo nextest run -p duet-score --test canonical_determinism --no-tests=fail
 ```
 
 `canonical_determinism` asserts that two writes of one score give equal bytes. Chunk T2 writes it in
-`crates/duet-score/tests/canonical_determinism.rs`, and the selected-test table below carries its
+`crates/bc_document/duet-score/lang_rust/tests/canonical_determinism.rs`, and the selected-test table below carries its
 row. Revision 16 claimed the property inside the engrave command and no chunk wrote a test for it.
 
 **5. The time kernel and the two guards.**
@@ -12602,11 +12694,11 @@ repository, so a defaulted scratch directory would have been refused (critic C-8
 Section 2.3 lists the four kernel tests and the `check-conversions` contract. Section 1.5 gives the
 `check-placement` contract, and rung one states why that guard runs in `ci.yml` rather than in the
 gate. `roadmap/duet-v1/tools/placement_check.py` and `roadmap/duet-v1/tools/conversion_check.py` are
-the two prototypes that chunk M0 ports to `tools/xtask/src/check_placement.rs` and
-`tools/xtask/src/check_conversions.rs`.
+the two prototypes that chunk M0 ports to `tools/bc_repo_guard/xtask/lang_rust/src/check_placement.rs` and
+`tools/bc_repo_guard/xtask/lang_rust/src/check_conversions.rs`.
 
 **The guard probes are part of rung two, and section 1.9 is the one place that counts them.** Each
-probe is one test in `tools/xtask`, one per rule (DR5), and section 1.9's own table is the count.
+probe is one test in `tools/bc_repo_guard/xtask/lang_rust`, one per rule (DR5), and section 1.9's own table is the count.
 **Chunk M0 ports the recorded TEXT of every cell as well as its exit code**, because PG29 checks the
 exit code alone and a Critic run rewrote a recorded message to text no run emits and kept a green
 guard (critic C-2, concern 1). Each ported test asserts the exact line its cell records, and it
@@ -12827,8 +12919,8 @@ pub enum DspError { SourceRead, BlockTooLong, PoolSlotMissing, PyramidFormat }
 **`PoolSlot` and `BufferPool` are declared in section 5.5, and two chunks write them.**
 `LimiterState`, `DelayState`, and `ReverbState` each hold an `Option<PoolSlot>`, and section 13.2
 gives `LimiterState` to chunk D2 in phase 2. The index type therefore lands one phase earlier: chunk
-D1 declares `PoolSlot` in `crates/duet-dsp/src/buffer.rs` in phase 1, and chunk D3 builds
-`BufferPool`, its three classes, and its free word in `crates/duet-dsp/src/pool.rs` in phase 3.
+D1 declares `PoolSlot` in `crates/bc_audio/duet-dsp/lang_rust/src/buffer.rs` in phase 1, and chunk D3 builds
+`BufferPool`, its three classes, and its free word in `crates/bc_audio/duet-dsp/lang_rust/src/pool.rs` in phase 3.
 
 ### 15.3 `duet-score`
 
@@ -15582,7 +15674,7 @@ records the decision and states which round trip is exact and which is bounded.
 
 **No guard compared a cell of this block with the `reason =` string in the code, and chunk M90 adds
 one** (critic C1-4). That gap is the mechanism that let the T1-1 defect survive a whole revision:
-this appendix stated one scale factor, `crates/duet-time/src/convert.rs` carried another, and every
+this appendix stated one scale factor, `crates/bc_time/duet-time/lang_rust/src/convert.rs` carried another, and every
 gate was green. Rule CG9 of section 2.3 states the contract, and section 1.9 states how the row and
 the register land together.
 
@@ -15776,7 +15868,7 @@ pin lists.
 | `async-channel` | 2.5.0 | The executor-agnostic structural channels. **Two chunks add the entry, in two crates.** Chunk C2 adds the `duet-engine` entry in phase 5 for the B138 engine-to-core event channel, whose `Sender` is `Clone` and whose two producers are the engine handoff thread and the engine disk thread. Chunk I1 adds the `duet-core` entry in phase 7, and **not I2** (SM1): section 15.14 declares `DuetCore` as ONE struct whose `inputs`, `engine_events` and `configure` fields name this crate, and section 13.2 gives I1 the file that holds the struct. **The owner is M4 and not M7** (SM1 rule 1), because phases 5 and 6 have no manifest chunk | Apache-2.0 or MIT | C2, I1 | M4 |
 | `futures` | 0.3.34 | The executor-agnostic oneshot reply. **Chunk I1 adds the entry, not I2**, for the `async-channel` reason above | MIT or Apache-2.0 | I1 | M7 |
 | `criterion` | 0.7.0 | The `duet-engrave` layout bench, the `duet-core` clone bench, and the two `duet` frame-cost benches of section 10.2, one over a Mix frame and one over a Master frame (critic WR-26); a dev-dependency with `harness = false`. A4 runs in phase 5 and phases 5 and 6 have no manifest chunk, so SM1 rule 1 gives the pin to M4 | MIT or Apache-2.0 | A4, I3, K4, K5 | M4 |
-| `md-5` | 0.10.6 | The digest that PG32 rule CL5 and rule CL1c compute over a review file, in `tools/xtask/src/check_closure.rs`. **The five ports need it and revision 21 gave `tools/xtask/Cargo.toml` no write scope at all** (critic C21-W5), so chunk M0 would have stopped under SM0 at the first `cargo build`. The four other ports parse with `str` methods alone and need no regular-expression crate, which is why `regex` is pinned nowhere | MIT or Apache-2.0 | M0 | M0 |
+| `md-5` | 0.10.6 | The digest that PG32 rule CL5 and rule CL1c compute over a review file, in `tools/bc_repo_guard/xtask/lang_rust/src/check_closure.rs`. **The five ports need it and revision 21 gave `tools/bc_repo_guard/xtask/lang_rust/Cargo.toml` no write scope at all** (critic C21-W5), so chunk M0 would have stopped under SM0 at the first `cargo build`. The four other ports parse with `str` methods alone and need no regular-expression crate, which is why `regex` is pinned nowhere | MIT or Apache-2.0 | M0 | M0 |
 | `tokio-util` | 0.7.19 | `CancellationToken` for the shutdown order | MIT | J1 | M8 |
 
 `pipewire` 0.10.1 is the version cpal 0.18.2 already brings through its `pipewire` feature. The pin
@@ -15798,7 +15890,7 @@ dependency.
 
 `cargo deny check` reports `multiple-versions` as a warning, not a failure. Section 8.1 reason 3 depends on `midir`'s transitive `alsa` version, and the research file does not
 record it (critic S16). **Chunk G1 records the output of `cargo tree -i alsa`**, because G1 adds the
-`midir` entry to `crates/duet-midi/Cargo.toml` and that entry is what puts `alsa` in the graph.
+`midir` entry to `crates/bc_midi/duet-midi/lang_rust/Cargo.toml` and that entry is what puts `alsa` in the graph.
 Chunk M4 pins `midir` and confirms the version with `cargo info midir@0.11.0`. Appendix B.5 states
 the rule, and section 8.1 reason 3 names the same chunk.
 
@@ -16553,7 +16645,7 @@ The review file this block records is stored at plan-store key `36304khn9wqcl-re
 | C16-7 | no `AudioBackend` owner | **CLOSED** | 5.5 `GraphConfigurator::backend`, with the constructing thread and the dropping thread named |
 | C16-8 | cap publication | **CLOSED** | 7.3 and 15.14. The cap left `MeterReading` for `MeterView::caps`, and `MeterReader::holds` carries the B111 deadline |
 | C16-9 | `end_to_end` gate test | **CLOSED** | 13.2 and 14. Two tests, two chunks, two selected-test rows, and the `I4 and H4 before J3` link |
-| C16-10 | chunk I4 cannot commit | **CLOSED** | 13.2, where I4's write scope holds `crates/duet-core/Cargo.toml` and `Cargo.lock` |
+| C16-10 | chunk I4 cannot commit | **CLOSED** | 13.2, where I4's write scope holds `crates/bc_gateway/duet-core/lang_rust/Cargo.toml` and `Cargo.lock` |
 | C16-11 | C3 creates a forbidden file | **CLOSED** | 13.2, where C1's stub list holds `chain/{topology,state,graph,migrate,configure}.rs` |
 | C16-12 | three pairs share a phase | **CLOSED** | 13.0 SM8, 13.3, 13.4, and 1.5 PG31. **PG31 reads the links the document writes**, and PG31b now derives the binding edges from the crate each chunk writes, so a pair with no row is red as well (critic C17-W9) |
 | C16-13 | refusal table keyed wrong | **CLOSED** | 12.4, where `fault_text.rs` holds four tables and the fourth keys on `ConfigError` |
@@ -16717,7 +16809,7 @@ one.
 | C19-1 | eight C.22 rows state a mechanism the artifact refutes | **CLOSED** | C.22, where all eight rows are rewritten to the mechanism the artifact holds; 1.5 PG30, PG31b, PG33, and PG34, and 2.3 CG1b, each of which now STATES the rule its prototype runs; `probe_roster_text.py`, whose floor is one line per planted shape |
 | C19-2 | `review_ids.py` takes its denominator from one source | **CLOSED** | **Revision 21 recorded this CLOSED and it was PARTIAL** (critic C21-W1): CL1b reads a second SENTENCE of the file CL1 reads, under one hand, so it is not a second source and seven coordinated edits defeated it with every gate green. 1.5 PG32 rule CL1c and `tools/closure_check.py` `store_digest`, which read the plan store, outside the Architect's write scope, and compare its copy of the review; C.20 to C.26, where every closure section records its review's store key; 1.9, probe PP32, whose two CL1c shapes are red. CL1b stands beside it and reads both spellings, the `**Counts: ...**` form and the recovered `This review holds ...` form |
 | C19-3 | PG29 holds a typed tuple against the probe table, and no review format is stated | **CLOSED** | 1.5 PG32 rule CL0, which states the required heading format and the count sentence; 1.5 PG29 and `placement_check.py` `implemented_rule_ids`, which SCANS the four prototypes for their own rule ids |
-| C19-4 | the `reviews/` premise is false and M0's scope omits the closure guard | **CLOSED** | **Revision 21 recorded this CLOSED and it was PARTIAL** (critic C21-5, C21-W5): M0's cell was truncated by an unescaped pipe and `tools/xtask/Cargo.toml` was in no write scope, so the scope a reader saw held neither the policy files nor the manifest the port needs. 1.5 PG32, where the false sentence is deleted and the gate is stated; 13.1, where M0's write scope holds `tools/xtask/src/check_closure.rs`, `tools/xtask/Cargo.toml` and `rust-toolchain.toml`, and where both pipes are escaped; 1.5 PG38, which refuses a ragged row; 14 rung one, where the `plan-lint` job runs one `cargo xtask check-closure` line per closure block |
+| C19-4 | the `reviews/` premise is false and M0's scope omits the closure guard | **CLOSED** | **Revision 21 recorded this CLOSED and it was PARTIAL** (critic C21-5, C21-W5): M0's cell was truncated by an unescaped pipe and `tools/bc_repo_guard/xtask/lang_rust/Cargo.toml` was in no write scope, so the scope a reader saw held neither the policy files nor the manifest the port needs. 1.5 PG32, where the false sentence is deleted and the gate is stated; 13.1, where M0's write scope holds `tools/bc_repo_guard/xtask/lang_rust/src/check_closure.rs`, `tools/bc_repo_guard/xtask/lang_rust/Cargo.toml` and `rust-toolchain.toml`, and where both pipes are escaped; 1.5 PG38, which refuses a ragged row; 14 rung one, where the `plan-lint` job runs one `cargo xtask check-closure` line per closure block |
 | C19-5 | six B.5 pin owners contradict the 13.1 pin lists | **CLOSED** | B.3 and B.5, where all nine wrong owners read M4; 1.5 PG36 and `placement_check.py` `pin_owner_audit`; probe PP36 |
 | C19-6 | the per-phase `Cargo.lock` writer counts are wrong at seven phases | **CLOSED** | 13.3, where the sequence is the derived one; 1.5 PG35 and `placement_check.py` `lock_sequence_audit`; probe PP35, whose second shape moves the derivation and not the sentence |
 | C19-7 | no command closes the stream, and the core cannot call `AudioBackend::stop` | **CLOSED** | 5.5 `ConfigureCommand::Close`, the one caller of `AudioBackend::stop`; 5.5, the shutdown steps, where the engine handoff thread owns the stop AND the drop; 15.10 `EngineEvent::StreamClosed`; 1.6 B116; 5.12, the stop row; B.5, the B116 mechanism. **Revision 20 left the B116 half unsound and revision 21 completes it** (critic C20-4): B116 is a REPORT the CORE measures, the stop is never abandoned, and `EngineFault::DeviceStalled` carries the expiry |
@@ -16799,7 +16891,7 @@ from that path. Both are closed at every site in this revision, and the C.23 row
 | C20-W4 | the peak pyramid grows without a bound and without a budget row | **CLOSED** | 5.10 `PyramidBuilder::staging`, a fixed `ArrayVec` drained on every append; 15.2 `Pyramid`, which holds ONE level and one span; 1.6 B123 and B124; 1.6, the `PEAK_STAGING_BINS` constant |
 | C20-W5 | the cpal error callback is an undeclared thread that performs a declared push | **CLOSED** | 5.7, the thread table row for the cpal error callback and rule TH11; 5.4, the xrun row, which names the second producer; 5.8, where two producers decide the primitive |
 | C20-W6 | section 14 rung one and section 11.5 state four facts about the live repository that are false | **CLOSED** | **Revision 21 recorded this CLOSED and it was PARTIAL** (critic C21-5): an unescaped pipe inside a backtick span split the row into six cells under a four-column header, so the cell a reader saw was garbled and CL4 passed on the truncated text. 14 rung one, where every line that names an unbuilt state is in the future tense and names chunk M0, and where `typos` is not a pass condition until M0 removes the `\|\| printf` fallback of `scripts/dod.sh`; 11.5, whose column reads `Who will install them`; 13.1, M0's write scope; 1.5 PG38 and `placement_check.py` `split_row`, so a guard and a renderer read this row the same way |
-| C20-W7 | `cargo_common_metadata` cannot fire, so the description half of rung one is unguarded | **CLOSED** | 14 rung one, which states that the lint skips a package under `publish = false` and gives the evidence; 13.1, where M0 writes `tools/xtask/src/check_manifests.rs` and the `scripts/dod.sh` line |
+| C20-W7 | `cargo_common_metadata` cannot fire, so the description half of rung one is unguarded | **CLOSED** | 14 rung one, which states that the lint skips a package under `publish = false` and gives the evidence; 13.1, where M0 writes `tools/bc_repo_guard/xtask/lang_rust/src/check_manifests.rs` and the `scripts/dod.sh` line |
 | C20-W8 | two pins the plan requires carry no version, and the pins guard cannot express the feature negation | **CLOSED** | **Revision 21 recorded this CLOSED and it was PARTIAL** (critic C21-W9): it pinned `proptest` and left `criterion` reading the same instruction its B.5 State cell already carried, which is a duplicate instruction and not a pin. B.3, which gains a Version column and pins `proptest` at 1.11.0 and `criterion` at 0.7.0; 1.9, the `pins` block, whose line format takes a lone `-` for `default-features = false`; `roster_compile.sh`, which writes that form; 1.9, which states why a dev-dependency is not in the pins block |
 | C20-W9 | a recorded closure cites an Appendix B.5 row that does not exist | **CLOSED** | B.5, which holds the `blake3` row with its feature set and the reason it is not the `git2` case; C.20 and C.21, where the C16-W18 and C17-W5 rows name the row that now exists |
 | C20-W10 | the `audio-owned` floor is one below its row count | **CLOSED** | 1.5 PG27b and `placement_check.py` `floor_audit`, which refuses a floor below the row count for EVERY registered block; `tools/sync_floors.py`, which writes all three copies of each floor from the count; 1.9, probe PP27b, one shape per registered block |
@@ -16901,7 +16993,7 @@ exists.
 | C21-W2 | PG37 accepts a wrong budget value that the neighbouring declaration line carries | **CLOSED** | 1.5 PG37 and `placement_check.py` `adjacent_declaration`, whose oracle is the citing line and its ONE adjacent declaration, read DOWN from a `///` comment and UP from a `//` comment; 1.9, the PG37 cell, which records the B120 oracle as `9` alone; 1.9, probe PP37-neighbour |
 | C21-W3 | `run_all_gates.py` holds its review list as a literal, so a new review gets no closure gate | **CLOSED** | 1.9, the harness table; `tools/run_all_gates.py` `closure_pairs`, which derives the list from `reviews/critic-spec-*.md`, refuses a review at or above the earliest registered revision with no block, and refuses a registered block with no review file |
 | C21-W4 | `probe_roster.sh` deletes a cargo target its caller owns, at an unvalidated path | **CLOSED** | 1.9, the one-target paragraph; `tools/probe_roster.sh`, which traps only the target it created itself and refuses a `ROSTER_TARGET_DIR` inside the repository or a relative path; `tools/roster_compile.sh`, which refuses the same two shapes |
-| C21-W5 | `tools/xtask/Cargo.toml` is in no write scope, so chunk M0 stops under SM0 | **CLOSED** | 13.1, chunk M0's write scope, which holds `tools/xtask/Cargo.toml` and `rust-toolchain.toml`; 13.1, M0's pin list, which gains `md-5`; B.3, the `md-5` row at 0.10.6 with its purpose and its owner, and the sentence that states why `regex` is pinned nowhere |
+| C21-W5 | `tools/bc_repo_guard/xtask/lang_rust/Cargo.toml` is in no write scope, so chunk M0 stops under SM0 | **CLOSED** | 13.1, chunk M0's write scope, which holds `tools/bc_repo_guard/xtask/lang_rust/Cargo.toml` and `rust-toolchain.toml`; 13.1, M0's pin list, which gains `md-5`; B.3, the `md-5` row at 0.10.6 with its purpose and its owner, and the sentence that states why `regex` is pinned nowhere |
 | C21-W6 | ADR 0006 gives the linear path cache two owner sets, and B61 counts two caches where it names three | **CLOSED** | 1.6 B61, which states three caches, names all three owners, and separates the live figure from the retained one; `adr/0006-wrapped-timeline.md` decision 6, rewritten to the three owners decision 8 already named |
 | C21-W7 | section 1.7, the one rule index, omits four live ids | **CLOSED** | 1.7, whose ranges read PG1 to PG40 and PP1 to PP40 with every lettered id, and whose TH1 row names PG26, PG26b and PG26c; 1.5 PG39 and `placement_check.py` `rule_index_audit`, which expands every range and holds it against the prototypes and the probe table in both directions; 1.9, probe PP39 |
 | C21-W8 | B125 and B126 cite the wrong story and promote a SHOULD to a MUST | **CLOSED** | 1.6 B125, which cites PR R-15 and calls it a SHOULD; 1.6 B126, which cites PR R-14 and calls it a SHOULD; 6.3 and 15.8, where both citations read the same; C.23, where the C19-W18 row records the correction |

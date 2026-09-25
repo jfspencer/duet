@@ -3,7 +3,7 @@ id: J3
 line: J
 depends_on: [J2, H4, I4]
 write_scope:
-  - crates/duet-agent/tests/export_end_to_end.rs
+  - crates/bc_gateway/duet-agent/lang_rust/tests/export_end_to_end.rs
 parallelism: independent
 completion: "cargo nextest run -p duet-agent --test export_end_to_end --no-tests=fail passes; cargo clippy -p duet-agent --all-targets -- -D warnings is clean; commit SHA on a branch chunk/j3-export-end-to-end"
 ---
@@ -28,7 +28,7 @@ needs no `mod` line anywhere.
 
 ## Files
 
-- `crates/duet-agent/tests/export_end_to_end.rs` — create. One integration test, wrapped in a
+- `crates/bc_gateway/duet-agent/lang_rust/tests/export_end_to_end.rs` — create. One integration test, wrapped in a
   `#[cfg(test)] mod tests` because `clippy::tests_outside_test_module` is denied.
 
 This chunk writes no member manifest and no lock file. Every dependency it needs is already an entry
@@ -99,12 +99,12 @@ preset list at run time, so this test names a preset by its identifier and never
 
 ## Steps
 
-1. Read `crates/duet-agent/tests/`. Confirm that `end_to_end.rs` exists and that
+1. Read `crates/bc_gateway/duet-agent/lang_rust/tests/`. Confirm that `end_to_end.rs` exists and that
    `export_end_to_end.rs` does not. Stop and report a discrepancy.
 2. Confirm that chunk I4 landed: run
    `cargo nextest run -p duet-core -E 'test(export_arm) + test(gc_arm)' --no-tests=fail` and confirm
    that it passes. A red run means this chunk starts too early.
-3. Create `crates/duet-agent/tests/export_end_to_end.rs` with a `//!` file doc and a
+3. Create `crates/bc_gateway/duet-agent/lang_rust/tests/export_end_to_end.rs` with a `//!` file doc and a
    `#[cfg(test)] mod tests`.
 4. Write the test body as a failing test first. Build a headless host with the dummy backend, exactly
    as `end_to_end.rs` does. Create a project from the SATB template, add one track, arm it, and
@@ -137,7 +137,7 @@ The test uses its own scratch directory, per the `test-author` skill.
 
 | Test | File | What it asserts |
 |---|---|---|
-| `export_end_to_end` | `crates/duet-agent/tests/export_end_to_end.rs` | The whole path of the Steps section: create, arm, record eight bars, `MasterMeasure` with its progress and its completion, then a 48 kHz 24-bit WAV export with the Streaming preset. It asserts the B75 loudness result and the B76 true-peak result on the written file, that the file exists at the requested path, and that `exports/.tmp/` is empty. |
+| `export_end_to_end` | `crates/bc_gateway/duet-agent/lang_rust/tests/export_end_to_end.rs` | The whole path of the Steps section: create, arm, record eight bars, `MasterMeasure` with its progress and its completion, then a 48 kHz 24-bit WAV export with the Streaming preset. It asserts the B75 loudness result and the B76 true-peak result on the written file, that the file exists at the requested path, and that `exports/.tmp/` is empty. |
 
 The test carries no `#[ignore]`. `scripts/dod.sh` runs it at every commit from phase 11 onward.
 
@@ -163,7 +163,8 @@ chunk, and that chunk lands at or before the phase of the command that selects i
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

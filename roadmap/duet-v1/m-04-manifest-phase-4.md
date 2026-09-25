@@ -5,14 +5,14 @@ depends_on: [M3, T4, A2, D3, E2, N1]
 write_scope:
   - Cargo.toml
   - Cargo.lock
-  - crates/duet-engine/Cargo.toml
-  - crates/duet-engine/src/lib.rs
-  - crates/duet-project/Cargo.toml
-  - crates/duet-project/src/lib.rs
-  - crates/duet-midi/Cargo.toml
-  - crates/duet-midi/src/lib.rs
-  - crates/duet-interchange/Cargo.toml
-  - crates/duet-interchange/src/lib.rs
+  - crates/bc_audio/duet-engine/lang_rust/Cargo.toml
+  - crates/bc_audio/duet-engine/lang_rust/src/lib.rs
+  - crates/bc_project/duet-project/lang_rust/Cargo.toml
+  - crates/bc_project/duet-project/lang_rust/src/lib.rs
+  - crates/bc_midi/duet-midi/lang_rust/Cargo.toml
+  - crates/bc_midi/duet-midi/lang_rust/src/lib.rs
+  - crates/bc_notation/duet-interchange/lang_rust/Cargo.toml
+  - crates/bc_notation/duet-interchange/lang_rust/src/lib.rs
 parallelism: serial-only: SM1 runs the manifest chunk alone before every line chunk of its phase.
 completion: "cargo check -p duet-engine -p duet-project -p duet-midi -p duet-interchange --locked exits 0; commit SHA on a branch chunk/m4-manifest-phase-4"
 ---
@@ -47,7 +47,7 @@ Chunk I1 adds the `duet-core` entry for the same crate in phase 7 and reads this
 
 **`coremidi` and `pipewire` are root pins with no `cfg`** (section 11.2, section 13.1 decision 1).
 The root manifest pins both plainly. Chunk G2 declares `coremidi` under a macOS `cfg` table in
-`crates/duet-midi/Cargo.toml`, and chunk G3 declares `pipewire` under a Linux `cfg` table in the
+`crates/bc_midi/duet-midi/lang_rust/Cargo.toml`, and chunk G3 declares `pipewire` under a Linux `cfg` table in the
 same file.
 
 The chunk does exactly four things (SM1): it pins, it creates four skeletons with no
@@ -60,14 +60,14 @@ carries no policy file, so SM4 does not route it to the Orchestrator.
 |---|---|
 | `Cargo.toml` | modify (`[workspace.dependencies]` only) |
 | `Cargo.lock` | modify |
-| `crates/duet-engine/Cargo.toml` | create |
-| `crates/duet-engine/src/lib.rs` | create |
-| `crates/duet-project/Cargo.toml` | create |
-| `crates/duet-project/src/lib.rs` | create |
-| `crates/duet-midi/Cargo.toml` | create |
-| `crates/duet-midi/src/lib.rs` | create |
-| `crates/duet-interchange/Cargo.toml` | create |
-| `crates/duet-interchange/src/lib.rs` | create |
+| `crates/bc_audio/duet-engine/lang_rust/Cargo.toml` | create |
+| `crates/bc_audio/duet-engine/lang_rust/src/lib.rs` | create |
+| `crates/bc_project/duet-project/lang_rust/Cargo.toml` | create |
+| `crates/bc_project/duet-project/lang_rust/src/lib.rs` | create |
+| `crates/bc_midi/duet-midi/lang_rust/Cargo.toml` | create |
+| `crates/bc_midi/duet-midi/lang_rust/src/lib.rs` | create |
+| `crates/bc_notation/duet-interchange/lang_rust/Cargo.toml` | create |
+| `crates/bc_notation/duet-interchange/lang_rust/src/lib.rs` | create |
 
 ## Types and signatures
 
@@ -116,10 +116,10 @@ covers, and this chunk records that choice.
 ### The four internal path entries (SM1 rule 4)
 
 ```toml
-duet-engine = { path = "crates/duet-engine" }
-duet-interchange = { path = "crates/duet-interchange" }
-duet-midi = { path = "crates/duet-midi" }
-duet-project = { path = "crates/duet-project" }
+duet-engine = { path = "crates/bc_audio/duet-engine/lang_rust" }
+duet-interchange = { path = "crates/bc_notation/duet-interchange/lang_rust" }
+duet-midi = { path = "crates/bc_midi/duet-midi/lang_rust" }
+duet-project = { path = "crates/bc_project/duet-project/lang_rust" }
 ```
 
 A member crate reaches an internal crate with `duet-<crate> = { workspace = true }`, and that entry
@@ -172,7 +172,7 @@ the code that uses them (SM1).
 
 ## Steps
 
-1. Confirm that M3, T4, A2, D3, E2, and N1 landed: `crates/duet-command` and `crates/duet-media`
+1. Confirm that M3, T4, A2, D3, E2, and N1 landed: `crates/bc_document/duet-command/lang_rust` and `crates/bc_audio/duet-media/lang_rust`
    each hold source beyond the skeleton, and `cargo nextest run -p duet-command --no-tests=fail`
    passes. Confirm that the four new crate directories do not exist. Confirm that
    `.github/workflows/ci.yml` names `ubuntu-26.04` and installs `libpipewire-0.3-dev`, which chunk
@@ -209,7 +209,7 @@ the code that uses them (SM1).
    states the rule.
 9. Name the owner of the ALSA record and do not run it here. `midir` brings `alsa`, and the survey
    does not record the version (Appendix B.4). **Chunk G1 runs `cargo tree -i alsa` and records the
-   result**, because G1 adds the `midir` entry to `crates/duet-midi/Cargo.toml` and that entry is
+   result**, because G1 adds the `midir` entry to `crates/bc_midi/duet-midi/lang_rust/Cargo.toml` and that entry is
    what puts `alsa` in the graph. Confirm the `midir` pin with `cargo info midir@0.11.0` instead,
    and paste the output into the commit body.
 10. Confirm that `pipewire` 0.10.1 adds no second version. `cpal` 0.18.2 already brings that version
@@ -266,7 +266,8 @@ Then commit on a branch named `chunk/m4-manifest-phase-4`. The native git hook r
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.
