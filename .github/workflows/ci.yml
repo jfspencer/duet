@@ -81,7 +81,7 @@ jobs:
           else
             changed="roadmap/"
           fi
-          if printf '%s\n' "$changed" | grep -qE '^roadmap/|^tools/xtask/'; then
+          if printf '%s\n' "$changed" | grep -qE '^roadmap/|^tools/bc_repo_guard/xtask/'; then
             echo "roadmap=true" >> "$GITHUB_OUTPUT"
           else
             echo "roadmap=false" >> "$GITHUB_OUTPUT"

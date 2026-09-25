@@ -43,7 +43,7 @@ Invoke the `simplified-technical-english` skill before you author or revise a ma
 
 ### Untrusted Input
 - **Files and network**: everything the app reads from disk, the clipboard, a socket, or an HTTP response is untrusted. Decode with a typed parser (`serde` into a closed struct, `deny_unknown_fields` where the schema is fixed) and fail closed on a missing discriminant.
-- **Paths**: a user-supplied or file-supplied path is normalized and checked against its allowed root before it is opened (see `tools/plan-db` `normalize` + `strip_prefix` for the pattern). Path traversal and symlink escapes are Critical findings.
+- **Paths**: a user-supplied or file-supplied path is normalized and checked against its allowed root before it is opened (see `tools/bc_plan_store/plan-db/lang_rust` `normalize` + `strip_prefix` for the pattern). Path traversal and symlink escapes are Critical findings.
 - **The plan store**: `~/.claude/plan-dbs/` is written by other processes. Values are opaque strings; a reader that treats a stored string as a command, a path, or a key without validation is a finding.
 
 ### Memory Safety

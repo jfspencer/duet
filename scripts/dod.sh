@@ -132,7 +132,7 @@ cargo machete
 step "agents: cargo xtask sync-agents --check"
 cargo xtask sync-agents --check
 
-if touches '^roadmap/|^crates/duet-time/src/convert\.rs$'; then
+if touches '^roadmap/|^crates/bc_time/duet-time/lang_rust/src/convert\.rs$'; then
   step "conversions: cargo xtask check-conversions --appendix roadmap/duet-v1/architecture.md"
   cargo xtask check-conversions --appendix roadmap/duet-v1/architecture.md
 else

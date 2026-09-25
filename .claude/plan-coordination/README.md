@@ -32,9 +32,9 @@ worktrees** of the same repo at once.
   in-worktree file is unreachable from a sibling worktree.)
 
 **How `db.sh` reaches LMDB.** `db.sh` is a thin launcher for the Rust binary
-`plan-db` (`tools/plan-db`, a workspace member that links LMDB through the `heed`
+`plan-db` (`tools/bc_plan_store/plan-db/lang_rust`, a workspace member that links LMDB through the `heed`
 crate). It resolves, in order: `plan-db` on `PATH` (installed by
-`scripts/bootstrap.sh` with `cargo install --path tools/plan-db`), then
+`scripts/bootstrap.sh` with `cargo install --path tools/bc_plan_store/plan-db/lang_rust`), then
 `<main checkout>/target/release/plan-db`, then `target/debug/plan-db`, and as a
 last resort `cargo run --release -p plan-db` from the main checkout. The plan key
 is derived from git, not from where the binary lives, so every path opens the
@@ -45,12 +45,12 @@ never reached by a cold `cargo run`.
 
 | File | What it does |
 |---|---|
-| `db.sh` | The single DB tool. Every agent calls `.claude/plan-coordination/db.sh <cmd>`. A launcher for the Rust `plan-db` binary (`tools/plan-db`, LMDB via `heed`). Subcommands below. Rely on LMDB's built-in cross-process locking; no external locks. |
+| `db.sh` | The single DB tool. Every agent calls `.claude/plan-coordination/db.sh <cmd>`. A launcher for the Rust `plan-db` binary (`tools/bc_plan_store/plan-db/lang_rust`, LMDB via `heed`). Subcommands below. Rely on LMDB's built-in cross-process locking; no external locks. |
 | `check-usage.sh` | On-demand reader for the account-GLOBAL usage window. Emits clean JSON (`five_hour` / `seven_day` `{used_pct, remaining_pct, reset_in_s, pace_delta}`, `context {used_pct}`, `captured_at`, `stale_s`, `source`). Safe under concurrent reads; never writes. |
 | `README.md` | This file. |
 
 There is **no `db-init.sh`** — its job moved to `db.sh init`. `PLAN_DB_ROOT` overrides the
-`~/.claude/plan-dbs` parent for tests only (see `tools/plan-db/tests/roundtrip.rs`).
+`~/.claude/plan-dbs` parent for tests only (see `tools/bc_plan_store/plan-db/lang_rust/tests/roundtrip.rs`).
 
 ## `db.sh` — the access CLI
 

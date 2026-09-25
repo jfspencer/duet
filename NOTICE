@@ -25,14 +25,14 @@ Bravura music font
 
 Duet ships the Bravura music font and the Bravura SMuFL metadata file:
 
-    crates/duet/assets/fonts/Bravura.otf
-    crates/duet/assets/fonts/bravura_metadata.json
+    crates/bc_app/duet/assets/fonts/Bravura.otf
+    crates/bc_app/duet/assets/fonts/bravura_metadata.json
 
 Copyright (c) 2015, Steinberg Media Technologies GmbH
 (http://www.steinberg.net/), with Reserved Font Name "Bravura".
 
 The font carries the SIL Open Font License, Version 1.1. The full licence text
-is in crates/duet/assets/fonts/LICENSE.txt. The text below repeats that
+is in crates/bc_app/duet/assets/fonts/LICENSE.txt. The text below repeats that
 licence.
 
 ------------------------------------------------------------------------------

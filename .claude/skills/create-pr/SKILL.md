@@ -50,7 +50,7 @@ From the commits and diff, determine:
 
 - **Title**: Short, under 70 characters. Use conventional commit style prefix (`feat:`, `fix:`, `refactor:`, `chore:`).
 - **Summary**: 1-3 bullet points focused on WHY, not WHAT.
-- **Changes**: which crates (`crates/duet`, `tools/plan-db`, `tools/xtask`) and which agent, skill, hook, or config trees were modified.
+- **Changes**: which crates (`crates/bc_app/duet/lang_rust`, `tools/bc_plan_store/plan-db/lang_rust`, `tools/bc_repo_guard/xtask/lang_rust`) and which agent, skill, hook, or config trees were modified.
 
 ### Step 3: Fill the Verification section
 

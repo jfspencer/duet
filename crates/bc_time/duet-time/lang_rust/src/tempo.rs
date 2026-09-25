@@ -457,7 +457,7 @@ impl TempoMap {
     /// The tempo entries, ordered by tick.
     ///
     /// `duet-export` and `duet-interchange` write the map to another format,
-    /// and `crates/duet` draws a tempo ruler. Each one reads the list here,
+    /// and `crates/bc_app/duet/lang_rust` draws a tempo ruler. Each one reads the list here,
     /// because `duet-time` holds no `serde_json` edge.
     #[must_use]
     pub fn tempos(&self) -> &[TempoPoint] {

@@ -43,6 +43,79 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
     use std::{env, fs};
 
+    /// The repository root: the nearest ancestor of this crate that holds the
+    /// workspace lockfile. The guard binary resolves its own root the same way.
+    fn repository_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .find(|dir| dir.join("Cargo.lock").is_file())
+            .expect("an ancestor of the xtask crate holds the workspace lockfile")
+            .to_path_buf()
+    }
+
+    /// The path of this crate relative to the repository root, with `/` separators.
+    fn crate_path_in_repository() -> String {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .strip_prefix(repository_root())
+            .expect("the xtask crate sits inside the repository root")
+            .components()
+            .map(|part| part.as_os_str().to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+            .join("/")
+    }
+
+    /// The CI changed-path filter names the directory that holds this crate.
+    ///
+    /// The `plan-lint` job runs only when the filter matches a changed path, so a
+    /// filter that names a directory which no longer exists skips every guard
+    /// probe in CI and still reports green.
+    #[test]
+    fn gate_filter_ci_names_the_guard_crate() {
+        let workflow = fs::read_to_string(repository_root().join(".github/workflows/ci.yml"))
+            .expect("the CI workflow opens");
+        let crate_path = crate_path_in_repository();
+        let filter = workflow
+            .lines()
+            .find(|line| line.contains("grep -qE '^roadmap/|"))
+            .expect("the CI workflow holds the plan changed-path filter");
+        let named: Vec<&str> = filter
+            .split("grep -qE '")
+            .nth(1)
+            .and_then(|rest| rest.split('\'').next())
+            .expect("the filter holds one quoted pattern")
+            .split('|')
+            .map(|alternative| alternative.trim_start_matches('^'))
+            .collect();
+        assert!(
+            named
+                .iter()
+                .any(|prefix| format!("{crate_path}/").starts_with(prefix)),
+            "the CI filter {named:?} names no prefix of the guard crate path `{crate_path}`"
+        );
+    }
+
+    /// The Definition of Done gate runs the reason-text half of `check-conversions` when the
+    /// one exempt file changes, so its changed-path pattern names that file.
+    #[test]
+    fn gate_filter_dod_names_the_exempt_conversion_file() {
+        let root = repository_root();
+        let dod = fs::read_to_string(root.join("scripts/dod.sh")).expect("the DoD script opens");
+        let line = dod
+            .lines()
+            .find(|line| line.contains("touches '^roadmap/|") && line.contains("convert"))
+            .expect("the DoD script holds the conversion changed-path filter");
+        let pattern = line
+            .split("|^")
+            .nth(1)
+            .and_then(|rest| rest.split('$').next())
+            .expect("the filter names one anchored file after `roadmap/`");
+        let file = pattern.replace("\\.", ".");
+        assert!(
+            root.join(&file).is_file(),
+            "the DoD conversion filter names `{file}`, and no such file exists"
+        );
+    }
+
     /// A library file with no cast and no suppression.
     const CLEAN_LIB: &str = "//! A probe member.\n";
 
@@ -816,9 +889,9 @@ path = "other/lib.rs"
     fn conversion_cg7_only_the_exempt_file_may_hold_a_cast() {
         let (code, report) = conversions(
             "cg7-exempt",
-            &root_manifest(&["crates/*"], &[]),
+            &root_manifest(&["crates/*/*/lang_rust"], &[]),
             &[Member::lib(
-                "crates/duet-time",
+                "crates/bc_time/duet-time/lang_rust",
                 "duet-time",
                 &[
                     ("src/lib.rs", CLEAN_LIB),
@@ -837,7 +910,7 @@ path = "other/lib.rs"
             "only the sibling reports: {report}"
         );
         assert!(
-            report.contains("  CAST: crates/duet-time/src/other.rs: line 2"),
+            report.contains("  CAST: crates/bc_time/duet-time/lang_rust/src/other.rs: line 2"),
             "the finding names the sibling file: {report}"
         );
     }
@@ -846,9 +919,9 @@ path = "other/lib.rs"
     fn conversion_cg7_a_suppression_inside_the_exempt_file_is_exempt() {
         let (code, report) = conversions(
             "cg7-exempt-suppression",
-            &root_manifest(&["crates/*"], &[]),
+            &root_manifest(&["crates/*/*/lang_rust"], &[]),
             &[Member::lib(
-                "crates/duet-time",
+                "crates/bc_time/duet-time/lang_rust",
                 "duet-time",
                 &[
                     ("src/lib.rs", CLEAN_LIB),
@@ -929,7 +1002,7 @@ pub fn alpha(value: u64) -> u64 { value }
     /// The one member every `CG9` probe builds: the exempt file and its crate.
     fn exempt_member(convert: &str) -> Member {
         Member::lib(
-            "crates/duet-time",
+            "crates/bc_time/duet-time/lang_rust",
             "duet-time",
             &[("src/lib.rs", CLEAN_LIB), ("src/convert.rs", convert)],
         )
@@ -947,7 +1020,7 @@ pub fn alpha(value: u64) -> u64 { value }
     ) -> (i32, String) {
         let root = workspace(
             label,
-            &root_manifest(&["crates/*"], &[]),
+            &root_manifest(&["crates/*/*/lang_rust"], &[]),
             &[exempt_member(convert)],
         );
         let document = root.join("roadmap").join("duet-v1").join("architecture.md");
@@ -1769,15 +1842,11 @@ pub fn alpha(value: u64) -> u64 { value }
 
     /// The repository the closure guard resolves at compile time.
     ///
-    /// The guard reads `.claude/plan-coordination/db.sh` of the repository two
-    /// levels above its own crate, so a probe of `CL1c` resolves the same
-    /// launcher the same way.
+    /// The guard reads `.claude/plan-coordination/db.sh` of the repository
+    /// that holds the workspace lockfile above its own crate, so a probe of
+    /// `CL1c` resolves the same launcher the same way.
     fn guard_repo() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .ancestors()
-            .nth(2)
-            .expect("the repository root sits two levels above this crate")
-            .to_path_buf()
+        repository_root()
     }
 
     /// A run token no other closure probe shares.
@@ -5139,12 +5208,7 @@ opt-level = 3
 
     /// The workflow directory of this repository.
     fn workflow_directory() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .ancestors()
-            .nth(2)
-            .expect("the crate manifest sits two levels under the repository root")
-            .join(".github")
-            .join("workflows")
+        repository_root().join(".github").join("workflows")
     }
 
     /// The line the skipped half of `check-roster` prints and the full run never does.

@@ -74,7 +74,7 @@ Pick the first layer that fully covers the mode.
 | Banned or constrained dependency, license, or source | `deny.toml` `[bans] deny`, `[licenses]`, `[sources]` |
 | Type-level invariant | a newtype or sealed enum, plus a `compile_fail` doctest that proves the wrong shape does not compile |
 | Behavioral / algebraic property | a unit test in `#[cfg(test)] mod tests`, or a table-driven loop over cases; a `proptest` dependency only after `cargo deny check` accepts it |
-| Cross-process or CLI contract | an integration test under `tests/` that spawns the binary (`tools/plan-db/tests/roundtrip.rs` is the reference) |
+| Cross-process or CLI contract | an integration test under `tests/` that spawns the binary (`tools/bc_plan_store/plan-db/lang_rust/tests/roundtrip.rs` is the reference) |
 | Process / workflow rule | a `.claude/hooks/` hook, registered in `.claude/settings.json` and `.codex/hooks.json` |
 
 Notes on the layers:

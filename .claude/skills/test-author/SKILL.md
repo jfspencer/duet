@@ -7,8 +7,8 @@ verified-against:
   - Cargo.toml
   - clippy.toml
   - scripts/dod.sh
-  - tools/plan-db/tests/roundtrip.rs
-  - crates/duet/src/app.rs
+  - tools/bc_plan_store/plan-db/lang_rust/tests/roundtrip.rs
+  - crates/bc_app/duet/lang_rust/src/app.rs
   - .claude/skills/gpui-kit/references/coding-guides.md
 review-cadence: on-architectural-change
 ---
@@ -43,13 +43,13 @@ cargo test -p <crate> --doc
 | GPUI UI integration test | `#[gpui_kit::test]` in a `#[cfg(test)] mod tests`, with the `gpui-kit` `test-support` feature enabled as a dev dependency | Renders the real view in a headless window and drives it; see the `gpui-kit` skill's testing reference |
 | Contract a code example must satisfy | A doctest on the public item, or a `compile_fail` doctest for a type-level invariant | `cargo test --doc` runs it |
 
-The reference integration test is `tools/plan-db/tests/roundtrip.rs`. The reference unit test is the `tests` module in `crates/duet/src/app.rs`.
+The reference integration test is `tools/bc_plan_store/plan-db/lang_rust/tests/roundtrip.rs`. The reference unit test is the `tests` module in `crates/bc_app/duet/lang_rust/src/app.rs`.
 
 ## The System-Under-Test pattern
 
 1. **Build the SUT in one function.** A test module has one `fn sut(...) -> ...` (or a small set of named builders) that constructs the thing under test with explicit inputs. A test body reads as: build, act, assert.
 2. **No shared mutable state.** No `static mut`, no `OnceLock` that a test mutates, no fixed temp path, no fixed port. Two tests run in parallel by default; shared state makes them flaky.
-3. **Per-test scratch directory.** When a test touches the filesystem, it creates its own directory under `std::env::temp_dir()` with a unique suffix (process id plus a nanosecond timestamp), and removes it at the end. `scratch()` in `tools/plan-db/tests/roundtrip.rs` is the pattern.
+3. **Per-test scratch directory.** When a test touches the filesystem, it creates its own directory under `std::env::temp_dir()` with a unique suffix (process id plus a nanosecond timestamp), and removes it at the end. `scratch()` in `tools/bc_plan_store/plan-db/lang_rust/tests/roundtrip.rs` is the pattern.
 4. **No process-global mutation.** `std::env::set_var` and `remove_var` are banned in `clippy.toml`. Pass configuration explicitly: a `Command::env(...)` for a spawned binary, a constructor argument for a library.
 5. **A spawned binary is the real one.** An integration test of a CLI runs `env!("CARGO_BIN_EXE_<name>")`, never a hand-built path.
 6. **Deterministic completion.** Wait on a signal, a channel, or a returned value. Never `sleep` and hope.
@@ -78,7 +78,7 @@ Every other lint applies: a doc line on every helper (`missing_docs_in_private_i
 
 ## Worked example
 
-An integration test of the `plan-db` CLI, mirroring `tools/plan-db/tests/roundtrip.rs`:
+An integration test of the `plan-db` CLI, mirroring `tools/bc_plan_store/plan-db/lang_rust/tests/roundtrip.rs`:
 
 ```rust
 //! End-to-end check of the CLI against a real store in a scratch directory.

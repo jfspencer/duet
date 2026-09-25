@@ -1,36 +1,42 @@
 ---
 scope: repository
 audience: every-session
-verified: 2026-09-20
+verified: 2026-09-25
 verified-against:
   - Cargo.toml
   - clippy.toml
   - deny.toml
   - rustfmt.toml
   - .cargo/config.toml
+  - .ddd/grammar.toml
+  - roadmap/duet-v1/adr/0011-ddd-path-grammar.md
   - scripts/dod.sh
   - .githooks/pre-commit
   - .claude/settings.json
   - .claude/plan-coordination/README.md
   - .claude/hooks/README.md
-  - tools/plan-db/src/main.rs
-  - tools/xtask/src/sync_agents.rs
+  - tools/bc_plan_store/plan-db/lang_rust/src/main.rs
+  - tools/bc_repo_guard/xtask/lang_rust/src/sync_agents.rs
 review-cadence: quarterly
 ---
 
 # CLAUDE.md
 
-Duet is a Rust-only desktop application built on [GPUI Kit](https://gpui-kit.com) (`gpui-kit` crate). One Cargo workspace: the app in `crates/`, repository tooling in `tools/`, plans in `roadmap/`. Every agent prompt, hook, and gate in this repository is Claude-authored; the invariants here are load-bearing. Consult the skill listed below for the relevant intent before you guess.
+Duet is a Rust-only desktop application built on [GPUI Kit](https://gpui-kit.com) (`gpui-kit` crate). One Cargo workspace: the app in `crates/`, repository tooling in `tools/`, plans in `roadmap/`. Paths follow the ultravisor DDD path grammar (`.ddd/grammar.toml`). Every agent prompt, hook, and gate in this repository is Claude-authored; the invariants here are load-bearing. Consult the skill listed below for the relevant intent before you guess.
 
 ## Crates
 
 | Crate | Purpose |
 |---|---|
-| `crates/duet` | The GPUI Kit desktop app (binary `duet`). `src/main.rs` opens one window with a `Root`; `src/app.rs` holds the root view. |
-| `tools/plan-db` | LMDB plan-store CLI the Hypervisor and Orchestrators share. Called only through `.claude/plan-coordination/db.sh`. |
-| `tools/xtask` | `cargo xtask sync-agents [--check]`: generates `.codex/agents/*.toml` and `.opencode/agents/*.md` from `.claude/agents`. |
+| `crates/bc_app/duet/lang_rust` | The GPUI Kit desktop app (binary `duet`). `src/main.rs` opens one window with a `Root`; `src/app.rs` holds the root view. |
+| `tools/bc_plan_store/plan-db/lang_rust` | LMDB plan-store CLI the Hypervisor and Orchestrators share. Called only through `.claude/plan-coordination/db.sh`. |
+| `tools/bc_repo_guard/xtask/lang_rust` | `cargo xtask sync-agents [--check]`: generates `.codex/agents/*.toml` and `.opencode/agents/*.md` from `.claude/agents`. |
 
-A new crate goes under `crates/` or `tools/` (the workspace globs pick it up) and MUST declare `[lints] workspace = true` plus the `*.workspace = true` package fields, or it sits silently outside the lint policy.
+A new crate MUST declare `[lints] workspace = true` plus the `*.workspace = true` package fields, or it sits silently outside the lint policy.
+
+## Path grammar
+
+**Rule:** Every crate lives at `crates/bc_<context>/<package>/lang_rust/` or `tools/bc_<context>/<package>/lang_rust/`, where `<package>` is the Cargo package name verbatim and holds no `_`. `Cargo.toml`, `src/`, `tests/`, and `benches/` sit in `lang_rust/`; a non-Rust unit file (assets, packaging, `build.rs`) sits beside it in the unit directory. A crate joins an existing context from the context map in `roadmap/duet-v1/architecture.md` section 1.2a; a new context is an ADR. **Why:** the `bc_` segment is the bounded context and a rename of it moves every file in the context, and the `members` globs (`crates/*/*/lang_rust`, `tools/*/*/lang_rust`) do not see a crate at any other depth. **How to apply:** follow ADR 0011; never put layer, pattern, or tags in a path, because they belong in front matter. **Enforced by:** the `members` globs plus CG1b in `cargo xtask check-conversions` (a stray manifest); `cargo xtask check-ddd` when chunk M95 lands.
 
 ## Skills routing
 
@@ -71,7 +77,7 @@ Plan store wiring, the operator control channel, and the compaction hooks: `.cla
 
 **Rule:** The only accepted suppression is a single-site `#[expect(lint, reason = "...")]`. `#[allow]` is denied. An edit to `[workspace.lints]`, `clippy.toml`, or the `deny.toml` ignore list made to get past the gate is a defect that escalates, never a resolution. **Why:** one relaxed lint is invisible in review and permanent in effect. **How to apply:** fix the code; when a lint is wrong at one site, `#[expect]` it with a reason a reviewer can verify. **Enforced by:** `cargo clippy --workspace --all-targets -- -D warnings` in `scripts/dod.sh`.
 
-`unsafe` is denied. The one sanctioned form is `#[expect(unsafe_code, reason = "...")]` on the enclosing function plus a `// SAFETY:` comment on the block (`tools/plan-db/src/main.rs`, `open_lmdb`). Binaries return `std::process::ExitCode` and write through a locked stdout handle, never `println!`.
+`unsafe` is denied. The one sanctioned form is `#[expect(unsafe_code, reason = "...")]` on the enclosing function plus a `// SAFETY:` comment on the block (`tools/bc_plan_store/plan-db/lang_rust/src/main.rs`, `open_lmdb`). Binaries return `std::process::ExitCode` and write through a locked stdout handle, never `println!`.
 
 ## Comments
 

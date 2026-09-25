@@ -5,9 +5,11 @@ A desktop application built in Rust on [GPUI Kit](https://gpui-kit.com), with an
 ## Layout
 
 ```text
-crates/duet/          the app (binary `duet`)
-tools/plan-db/        LMDB plan-store CLI for the agent fleet
-tools/xtask/          `cargo xtask sync-agents` — generates the Codex/OpenCode agent mirrors
+crates/bc_<context>/<crate>/lang_rust/   product crates, one bounded context per bc_ directory (ADR 0011)
+crates/bc_app/duet/lang_rust/            the app (binary `duet`)
+tools/bc_plan_store/plan-db/lang_rust/   LMDB plan-store CLI for the agent fleet
+tools/bc_repo_guard/xtask/lang_rust/     `cargo xtask`: the repository guards and the agent mirror sync
+.ddd/grammar.toml     the DDD path grammar shells (ultravisor ddd-path)
 roadmap/              plans (one directory per plan; the plan store is keyed on the path)
 scripts/dod.sh        the ONLY Definition of Done gate (fmt, clippy, doc, tests, deny, machete, agents, hooks)
 .githooks/            versioned pre-commit + pre-push hooks -> scripts/dod.sh
@@ -33,7 +35,7 @@ open target/debug/Duet.app
 ```
 
 Use `scripts/package-macos.sh --release` for a release bundle. The script prints the bundle path and respects Cargo's target directory.
-The bundle uses the approved icon in `crates/duet/assets/icons/duet.icns`.
+The bundle uses the approved icon in `crates/bc_app/duet/assets/icons/duet.icns`.
 Direct `cargo run` launches the executable without macOS bundle metadata or its application icon.
 
 ## Agents

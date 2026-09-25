@@ -1,6 +1,6 @@
 ---
 name: rust-expertise
-description: "Use when writing, modifying, debugging, or reviewing any Rust code where the language is being leveraged for its strengths: ownership, fearless concurrency, performance, type-driven design. This is the Rust generalist skill covering ownership and lifetimes, error handling (thiserror/anyhow), async with tokio, multithreading (rayon, crossbeam, atomics), trait design, module organization, testing (cargo test, mockall, proptest, criterion), tooling (clippy/rustfmt/cargo-deny), and performance patterns. Pull in for every crate in this workspace: the GPUI Kit app (`crates/duet`, together with the `gpui-kit` skill), the LMDB plan store CLI (`tools/plan-db`), and the repo automation (`tools/xtask`)."
+description: "Use when writing, modifying, debugging, or reviewing any Rust code where the language is being leveraged for its strengths: ownership, fearless concurrency, performance, type-driven design. This is the Rust generalist skill covering ownership and lifetimes, error handling (thiserror/anyhow), async with tokio, multithreading (rayon, crossbeam, atomics), trait design, module organization, testing (cargo test, mockall, proptest, criterion), tooling (clippy/rustfmt/cargo-deny), and performance patterns. Pull in for every crate in this workspace: the GPUI Kit app (`crates/bc_app/duet/lang_rust`, together with the `gpui-kit` skill), the LMDB plan store CLI (`tools/bc_plan_store/plan-db/lang_rust`), and the repo automation (`tools/bc_repo_guard/xtask/lang_rust`)."
 allowed-tools: Bash(cargo:*) Bash(rustc:*) Bash(grep:*) Bash(find:*) Read Grep Edit
 verified: 2026-09-20
 verified-against:
@@ -11,7 +11,7 @@ verified-against:
   - .claude/skills/rust-expertise/references/tooling-config.md
   - .claude/skills/rust-expertise/references/traits-and-generics.md
   - .claude/skills/rust-expertise/references/unsafe-and-drop.md
-  - tools/plan-db/src/main.rs
+  - tools/bc_plan_store/plan-db/lang_rust/src/main.rs
   - Cargo.toml
   - clippy.toml
 length-exception: Rust generalist reference covering ownership, lifetimes, error handling, async with tokio, multithreading, trait design, testing matrix, tooling, and performance patterns; the index covers the full Rust surface so every crate in the workspace can route into the right section; ceiling raised to 400 lines, with detailed pedagogical examples extracted to references/ subdirectory
@@ -22,8 +22,8 @@ review-cadence: quarterly
 
 This is the Rust generalist skill, runtime-agnostic where possible, opinionated where the repo has a stake. Pull it in any time you're doing more than the bare minimum of Rust:
 
-- The GPUI Kit desktop app (`crates/duet`; pair with the `gpui-kit` skill for the UI mechanics)
-- Standalone Rust binaries / CLIs (`tools/plan-db`, `tools/xtask`, and any future crate)
+- The GPUI Kit desktop app (`crates/bc_app/duet/lang_rust`; pair with the `gpui-kit` skill for the UI mechanics)
+- Standalone Rust binaries / CLIs (`tools/bc_plan_store/plan-db/lang_rust`, `tools/bc_repo_guard/xtask/lang_rust`, and any future crate)
 - Rust microservices, sidecars, or daemons
 - Rust libraries that are not wrappers
 
