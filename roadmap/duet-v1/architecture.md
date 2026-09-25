@@ -288,7 +288,7 @@ the `lang_rust/` root that no shell declares.
 | `bc_vocabulary` | `duet-command` | core | The published language: `Verb`, `DomainEvent`, `BundleDocument`, and every value that crosses the transport, including the wire forms that `bc_midi`, `bc_audio`, and `bc_gateway` exchange. Every downstream context conforms to it. |
 | `bc_notation` | `duet-engrave`, `duet-interchange` | core | Engraving of the score, and the anticorruption layer to MusicXML and SMF. |
 | `bc_audio` | `duet-dsp`, `duet-media`, `duet-analysis`, `duet-engine`, `duet-export` | core | Signal blocks, source files, measurement, the real-time engine, and the offline render. |
-| `bc_midi` | `duet-midi` | supporting | Device presence and streams. Conformist to the document language. |
+| `bc_midi` | `duet-midi` | supporting | Device presence and streams. Conformist to the vocabulary, the published language. |
 | `bc_project` | `duet-project` | supporting | The bundle, the content store, the history over gix, and the watch. |
 | `bc_gateway` | `duet-core`, `duet-agent` | supporting | The one writer (application service) and the Model Context Protocol host (open host service). |
 | `bc_app` | `duet` | supporting | Presentation only. |

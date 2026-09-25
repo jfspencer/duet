@@ -219,7 +219,9 @@ names its upstream set in its `///` doc.
    path of `CHANGED_PATHS` that exists in the working tree to `--require-front-matter`; a deleted
    path and the old side of a rename are skipped, because `--no-renames` lists both. **When
    `DENOMINATOR_UNKNOWN` is 1, the step passes `--require-front-matter-all`**, which requires a block
-   on every tracked graded `.rs` file: the step cannot see which files changed, so it answers yes the
+   on every tracked `.rs` file in the step 7 set (`Graded`, `Test`, and `Anchor` of kind
+   `crate_root`). Between this chunk and chunk D2, such a run is red on the four D2 dynamics stubs,
+   which is intended: the step cannot see which files changed, so it answers yes the
    way `touches` does, and the remedy for a red run is a branch with an upstream or `origin/main`. **So after
    this chunk lands, every chunk that writes a `.rs` file writes its block in the same commit, and
    the gate refuses a commit that does not.**

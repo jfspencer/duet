@@ -41,4 +41,4 @@ Run that command from `/Users/james/Developer/duet`. Then return ONLY: a five-li
 - macOS 26 is the minimum macOS release. No support for an earlier macOS. CI runs on it.
 
 ## Operator decision added 2026-09-25 (after phase 1)
-- The repository adopts the ultravisor DDD path grammar (ADR 0011). A path carries the bounded context (`bc_<context>`), the language root (`lang_rust`), and the test tree, and nothing else. The DDD layer, the tactical pattern, and the tags of a file go in its front matter. Architecture section 1.2 ("The bounded context map") names the eight contexts and the context of every crate.
+- The repository adopts the ultravisor DDD path grammar (ADR 0011). A path carries the bounded context (`bc_<context>`), the language root (`lang_rust`), and the test tree, and nothing else. The DDD layer, the tactical pattern, and the tags of a file go in its front matter. Architecture section 1.2 ("The bounded context map") names the nine contexts and the context of every crate.
