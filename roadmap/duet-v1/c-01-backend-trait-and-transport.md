@@ -3,31 +3,31 @@ id: C1
 line: C
 depends_on: [T4, M4]
 write_scope:
-  - crates/duet-engine/Cargo.toml
-  - crates/duet-engine/src/lib.rs
-  - crates/duet-engine/src/backend.rs
-  - crates/duet-engine/src/dummy.rs
-  - crates/duet-engine/src/transport.rs
-  - crates/duet-engine/src/disk.rs
-  - crates/duet-engine/src/chain.rs
-  - crates/duet-engine/src/mix.rs
-  - crates/duet-engine/src/cpal.rs
-  - crates/duet-engine/src/audio.rs
-  - crates/duet-engine/src/disk/reader.rs
-  - crates/duet-engine/src/disk/writer.rs
-  - crates/duet-engine/src/disk/ring.rs
-  - crates/duet-engine/src/chain/topology.rs
-  - crates/duet-engine/src/chain/state.rs
-  - crates/duet-engine/src/chain/graph.rs
-  - crates/duet-engine/src/chain/migrate.rs
-  - crates/duet-engine/src/chain/configure.rs
-  - crates/duet-engine/src/mix/strip.rs
-  - crates/duet-engine/src/mix/bus.rs
-  - crates/duet-engine/src/mix/solo.rs
-  - crates/duet-engine/src/cpal/host.rs
-  - crates/duet-engine/src/cpal/stream.rs
-  - crates/duet-engine/src/cpal/calibrate.rs
-  - crates/duet-engine/src/audio/README.md
+  - crates/bc_audio/duet-engine/lang_rust/Cargo.toml
+  - crates/bc_audio/duet-engine/lang_rust/src/lib.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/backend.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/dummy.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/transport.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/disk.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/chain.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/mix.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/cpal.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/audio.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/disk/reader.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/disk/writer.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/disk/ring.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/chain/topology.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/chain/state.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/chain/graph.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/chain/migrate.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/chain/configure.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/mix/strip.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/mix/bus.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/mix/solo.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/cpal/host.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/cpal/stream.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/cpal/calibrate.rs
+  - crates/bc_audio/duet-engine/lang_rust/src/audio/README.md
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-engine -E 'test(transport_machine)' --no-tests=fail passes; commit SHA on a branch chunk/c1-backend-trait-and-transport"
@@ -35,36 +35,36 @@ completion: "cargo nextest run -p duet-engine -E 'test(transport_machine)' --no-
 
 # C1: The backend trait, the dummy backend, and the transport machine
 
-Verify the current state of the files in the write scope; report a discrepancy and stop, instead of proceeding. This chunk builds the first layer of `duet-engine`: the `AudioBackend` and `AudioProcess` traits of architecture section 5.1, the variable block-size rule of section 5.2, the `DummyBackend` of section 5.3, the device input selection of section 5.4, and the transport state machine of section 5.9. It also creates every module file of line C as a stub (SM2) and writes the forbidden-call list at `crates/duet-engine/src/audio/README.md` that section 5.7 requires. ADR 0004 clauses 1, 2, 3 and 5 decide the trait shape, the variable block, the dummy backend, and the one-device rule. It carries MUST stories C-22 (playback with a built-in voice, the transport half), R-04 (input selection, the device half), R-06 (count-in), R-07 and R-08 (the transport half), X-02 (the playhead, the transport half), and R-13 (the engine state half). Sections 12.1 and 12.3 decide the error enums and the no-panic forms. The crate skeleton (`Cargo.toml` package fields, `[lints] workspace = true`, `src/lib.rs` with `#![forbid(unsafe_code)]`) already exists, because chunk M4 created it.
+Verify the current state of the files in the write scope; report a discrepancy and stop, instead of proceeding. This chunk builds the first layer of `duet-engine`: the `AudioBackend` and `AudioProcess` traits of architecture section 5.1, the variable block-size rule of section 5.2, the `DummyBackend` of section 5.3, the device input selection of section 5.4, and the transport state machine of section 5.9. It also creates every module file of line C as a stub (SM2) and writes the forbidden-call list at `crates/bc_audio/duet-engine/lang_rust/src/audio/README.md` that section 5.7 requires. ADR 0004 clauses 1, 2, 3 and 5 decide the trait shape, the variable block, the dummy backend, and the one-device rule. It carries MUST stories C-22 (playback with a built-in voice, the transport half), R-04 (input selection, the device half), R-06 (count-in), R-07 and R-08 (the transport half), X-02 (the playhead, the transport half), and R-13 (the engine state half). Sections 12.1 and 12.3 decide the error enums and the no-panic forms. The crate skeleton (`Cargo.toml` package fields, `[lints] workspace = true`, `src/lib.rs` with `#![forbid(unsafe_code)]`) already exists, because chunk M4 created it.
 
 ## Files
 
-- `crates/duet-engine/Cargo.toml` — modify. Add the `{ workspace = true }` entries this chunk uses.
+- `crates/bc_audio/duet-engine/lang_rust/Cargo.toml` — modify. Add the `{ workspace = true }` entries this chunk uses.
 - `Cargo.lock` — modify. Commit it in the same commit as the manifest (SM5).
-- `crates/duet-engine/src/lib.rs` — modify. Add every `mod` line of the line.
-- `crates/duet-engine/src/backend.rs` — create.
-- `crates/duet-engine/src/dummy.rs` — create.
-- `crates/duet-engine/src/transport.rs` — create.
-- `crates/duet-engine/src/disk.rs` — create as a stub.
-- `crates/duet-engine/src/chain.rs` — create as a stub.
-- `crates/duet-engine/src/mix.rs` — create as a stub.
-- `crates/duet-engine/src/cpal.rs` — create as a stub.
-- `crates/duet-engine/src/audio.rs` — create as a stub.
-- `crates/duet-engine/src/disk/reader.rs` — create as a stub.
-- `crates/duet-engine/src/disk/writer.rs` — create as a stub.
-- `crates/duet-engine/src/disk/ring.rs` — create as a stub.
-- `crates/duet-engine/src/chain/topology.rs` — create as a stub.
-- `crates/duet-engine/src/chain/state.rs` — create as a stub.
-- `crates/duet-engine/src/chain/graph.rs` — create as a stub.
-- `crates/duet-engine/src/chain/migrate.rs` — create as a stub.
-- `crates/duet-engine/src/chain/configure.rs` — create as a stub.
-- `crates/duet-engine/src/mix/strip.rs` — create as a stub.
-- `crates/duet-engine/src/mix/bus.rs` — create as a stub.
-- `crates/duet-engine/src/mix/solo.rs` — create as a stub.
-- `crates/duet-engine/src/cpal/host.rs` — create as a stub.
-- `crates/duet-engine/src/cpal/stream.rs` — create as a stub.
-- `crates/duet-engine/src/cpal/calibrate.rs` — create as a stub.
-- `crates/duet-engine/src/audio/README.md` — create.
+- `crates/bc_audio/duet-engine/lang_rust/src/lib.rs` — modify. Add every `mod` line of the line.
+- `crates/bc_audio/duet-engine/lang_rust/src/backend.rs` — create.
+- `crates/bc_audio/duet-engine/lang_rust/src/dummy.rs` — create.
+- `crates/bc_audio/duet-engine/lang_rust/src/transport.rs` — create.
+- `crates/bc_audio/duet-engine/lang_rust/src/disk.rs` — create as a stub.
+- `crates/bc_audio/duet-engine/lang_rust/src/chain.rs` — create as a stub.
+- `crates/bc_audio/duet-engine/lang_rust/src/mix.rs` — create as a stub.
+- `crates/bc_audio/duet-engine/lang_rust/src/cpal.rs` — create as a stub.
+- `crates/bc_audio/duet-engine/lang_rust/src/audio.rs` — create as a stub.
+- `crates/bc_audio/duet-engine/lang_rust/src/disk/reader.rs` — create as a stub.
+- `crates/bc_audio/duet-engine/lang_rust/src/disk/writer.rs` — create as a stub.
+- `crates/bc_audio/duet-engine/lang_rust/src/disk/ring.rs` — create as a stub.
+- `crates/bc_audio/duet-engine/lang_rust/src/chain/topology.rs` — create as a stub.
+- `crates/bc_audio/duet-engine/lang_rust/src/chain/state.rs` — create as a stub.
+- `crates/bc_audio/duet-engine/lang_rust/src/chain/graph.rs` — create as a stub.
+- `crates/bc_audio/duet-engine/lang_rust/src/chain/migrate.rs` — create as a stub.
+- `crates/bc_audio/duet-engine/lang_rust/src/chain/configure.rs` — create as a stub.
+- `crates/bc_audio/duet-engine/lang_rust/src/mix/strip.rs` — create as a stub.
+- `crates/bc_audio/duet-engine/lang_rust/src/mix/bus.rs` — create as a stub.
+- `crates/bc_audio/duet-engine/lang_rust/src/mix/solo.rs` — create as a stub.
+- `crates/bc_audio/duet-engine/lang_rust/src/cpal/host.rs` — create as a stub.
+- `crates/bc_audio/duet-engine/lang_rust/src/cpal/stream.rs` — create as a stub.
+- `crates/bc_audio/duet-engine/lang_rust/src/cpal/calibrate.rs` — create as a stub.
+- `crates/bc_audio/duet-engine/lang_rust/src/audio/README.md` — create.
 
 A stub holds the `//!` module documentation and nothing else (SM2). A later chunk of line C modifies a stub and creates no file.
 
@@ -316,10 +316,10 @@ pub struct Generation(u64);
 
 ## Steps
 
-1. Read `crates/duet-engine/Cargo.toml` and `crates/duet-engine/src/lib.rs`. Confirm the M4 skeleton: the `*.workspace = true` package fields, a `description`, `[lints] workspace = true`, no `[dependencies]` section, and a `src/lib.rs` that holds the `//!` crate documentation and `#![forbid(unsafe_code)]`. Report a discrepancy and stop.
+1. Read `crates/bc_audio/duet-engine/lang_rust/Cargo.toml` and `crates/bc_audio/duet-engine/lang_rust/src/lib.rs`. Confirm the M4 skeleton: the `*.workspace = true` package fields, a `description`, `[lints] workspace = true`, no `[dependencies]` section, and a `src/lib.rs` that holds the `//!` crate documentation and `#![forbid(unsafe_code)]`. Report a discrepancy and stop.
 2. Create every module file of the write scope as a stub. Each stub holds one `//!` line and nothing else. Add one `mod` line per stub to `src/lib.rs`, and one `mod` line per child stub to its parent module file. The `cpal` module file is `src/cpal.rs` and its children are `src/cpal/{host,stream,calibrate}.rs`.
 3. Run `cargo check -p duet-engine`. Confirm that the crate builds with the stub tree and that `clippy::mod_module_files` reports nothing.
-4. Add to `crates/duet-engine/Cargo.toml` the dependency entries this chunk uses: `duet-time`, `duet-session`, `duet-command`, `duet-media`, `duet-dsp`, `serde`, `thiserror`, `tracing`, and `arrayvec`. Each entry is `{ workspace = true }`. Run `cargo build --workspace` and commit `Cargo.lock` with the manifest.
+4. Add to `crates/bc_audio/duet-engine/lang_rust/Cargo.toml` the dependency entries this chunk uses: `duet-time`, `duet-session`, `duet-command`, `duet-media`, `duet-dsp`, `serde`, `thiserror`, `tracing`, and `arrayvec`. Each entry is `{ workspace = true }`. Run `cargo build --workspace` and commit `Cargo.lock` with the manifest.
 5. Write the failing test `transport_machine_refuses_punch_and_loop` in `src/transport.rs`. Run `cargo nextest run -p duet-engine -E 'test(transport_machine)' --no-tests=fail` and confirm that it fails to compile, because `Transport` does not exist.
 6. Write `TransportState`, `RecordState`, `Transport`, `TransportSnapshot`, and `TransportError` in `src/transport.rs`, with the declarations above. Write `Transport::apply` as one match over the nine transitions, with the `#[expect]` attribute above it. Run the same command and confirm that it passes.
 7. Write the failing test `transport_machine_counts_in_before_it_records`. Run it and confirm that it fails.
@@ -328,7 +328,7 @@ pub struct Generation(u64);
 10. Write the failing test `dummy_backend_varies_the_block_size`. Run it and confirm that it fails.
 11. Write `DummyBackend` in `src/dummy.rs` with the two modes of section 5.3, `RealTime` and `Freewheel`. The frame count of each cycle comes from a fixed-seed generator over the whole range from 1 to `max_block`, so every engine test meets the variation (section 5.2). The backend reports a configurable `LatencyReport`, which is what the alignment test of chunk C4 needs. Run the test and confirm that it passes.
 12. Write the device input selection in `src/backend.rs`: the engine answers `InputSelection` and `MonitorMode` from the device list the backend reports, and `InputSelection::None` means the track plays back and records nothing (PR R-04, section 6.1).
-13. Write `crates/duet-engine/src/audio/README.md`. It holds the forbidden-call list of section 5.7 verification means 1: no allocation, no free, no lock, no block, no string format, no log, no panic primitive, and TH9 on every published type. It names the six house forms of section 5.11 as the only forms the audio modules use.
+13. Write `crates/bc_audio/duet-engine/lang_rust/src/audio/README.md`. It holds the forbidden-call list of section 5.7 verification means 1: no allocation, no free, no lock, no block, no string format, no log, no panic primitive, and TH9 on every published type. It names the six house forms of section 5.11 as the only forms the audio modules use.
 14. Write `EngineError` in `src/lib.rs` with `#[from]` on each arm.
 15. Run `cargo clippy -p duet-engine --all-targets -- -D warnings`. Fix every finding in the code, never in a policy file.
 16. Commit on the branch `chunk/c1-backend-trait-and-transport`. The native git hook runs `scripts/dod.sh`.
@@ -366,7 +366,8 @@ Every assert carries a message. No test uses a shared temporary path, a fixed po
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

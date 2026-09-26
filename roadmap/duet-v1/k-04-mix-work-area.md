@@ -3,18 +3,18 @@ id: K4
 line: K
 depends_on: [K3, C3, D2, I3]
 write_scope:
-  - crates/duet/src/element/level_meter.rs
-  - crates/duet/src/element/fader.rs
-  - crates/duet/src/element/knob.rs
-  - crates/duet/src/element/automation_lane.rs
-  - crates/duet/src/element/stage_curve.rs
-  - crates/duet/src/mix/view.rs
-  - crates/duet/src/mix/strip.rs
-  - crates/duet/src/mix/meter_layer.rs
-  - crates/duet/src/mix/automation.rs
-  - crates/duet/src/shell/toolbar_mix.rs
-  - crates/duet/benches/
-  - crates/duet/Cargo.toml
+  - crates/bc_app/duet/lang_rust/src/element/level_meter.rs
+  - crates/bc_app/duet/lang_rust/src/element/fader.rs
+  - crates/bc_app/duet/lang_rust/src/element/knob.rs
+  - crates/bc_app/duet/lang_rust/src/element/automation_lane.rs
+  - crates/bc_app/duet/lang_rust/src/element/stage_curve.rs
+  - crates/bc_app/duet/lang_rust/src/mix/view.rs
+  - crates/bc_app/duet/lang_rust/src/mix/strip.rs
+  - crates/bc_app/duet/lang_rust/src/mix/meter_layer.rs
+  - crates/bc_app/duet/lang_rust/src/mix/automation.rs
+  - crates/bc_app/duet/lang_rust/src/shell/toolbar_mix.rs
+  - crates/bc_app/duet/lang_rust/benches/
+  - crates/bc_app/duet/lang_rust/Cargo.toml
   - Cargo.lock
 parallelism: "serial-only: phase 12 holds one chunk, because line K has six chunks and no cross-line dependency exists after phase 11 (section 13.3)"
 completion: "cargo nextest run -p duet -E 'test(mix_view) + test(stage_curve)' --no-tests=fail passes; cargo clippy -p duet --all-targets -- -D warnings is clean; commit SHA on a branch chunk/k4-mix-work-area"
@@ -30,7 +30,7 @@ linear ruler, the Mix `ModeToolbar`, and the frame-cost bench. It implements arc
 7.3, 10.2, 10.3, 10.4, 10.5, 10.7 and 15.16, design contract sections 4.1 to 4.8, 8.3 and the
 `StageCurve` appendix. It carries product stories M-02, M-03, M-04, M-05, M-06, M-07, R-05 and X-05.
 
-**Three chunks of line K own `crates/duet/Cargo.toml`, `crates/duet/benches/`, and `Cargo.lock`, one
+**Three chunks of line K own `crates/bc_app/duet/lang_rust/Cargo.toml`, `crates/bc_app/duet/lang_rust/benches/`, and `Cargo.lock`, one
 per phase.** Chunk K1 added the internal entries in phase 9, this chunk adds the Mix frame-cost
 bench in phase 12, and chunk K5 adds the Master frame-cost bench in phase 13. SM6 keeps the three in
 three phases, so the manifest has one writer per phase and the seam is serial (section 13.2, critic
@@ -38,25 +38,25 @@ C16-W10).
 
 ## Files
 
-- `crates/duet/src/element/level_meter.rs` — modify. Documentation stub.
-- `crates/duet/src/element/fader.rs` — modify. Documentation stub.
-- `crates/duet/src/element/knob.rs` — modify. Documentation stub.
-- `crates/duet/src/element/automation_lane.rs` — modify. Documentation stub.
-- `crates/duet/src/element/stage_curve.rs` — modify. Documentation stub.
-- `crates/duet/src/mix/view.rs` — modify. Chunk K1 left a seam view.
-- `crates/duet/src/mix/strip.rs` — modify. Documentation stub.
-- `crates/duet/src/mix/meter_layer.rs` — modify. Chunk K1 left a driver seam.
-- `crates/duet/src/mix/automation.rs` — modify. Documentation stub.
-- `crates/duet/src/shell/toolbar_mix.rs` — modify. Replace one `render` body and one `group_count`
+- `crates/bc_app/duet/lang_rust/src/element/level_meter.rs` — modify. Documentation stub.
+- `crates/bc_app/duet/lang_rust/src/element/fader.rs` — modify. Documentation stub.
+- `crates/bc_app/duet/lang_rust/src/element/knob.rs` — modify. Documentation stub.
+- `crates/bc_app/duet/lang_rust/src/element/automation_lane.rs` — modify. Documentation stub.
+- `crates/bc_app/duet/lang_rust/src/element/stage_curve.rs` — modify. Documentation stub.
+- `crates/bc_app/duet/lang_rust/src/mix/view.rs` — modify. Chunk K1 left a seam view.
+- `crates/bc_app/duet/lang_rust/src/mix/strip.rs` — modify. Documentation stub.
+- `crates/bc_app/duet/lang_rust/src/mix/meter_layer.rs` — modify. Chunk K1 left a driver seam.
+- `crates/bc_app/duet/lang_rust/src/mix/automation.rs` — modify. Documentation stub.
+- `crates/bc_app/duet/lang_rust/src/shell/toolbar_mix.rs` — modify. Replace one `render` body and one `group_count`
   body. Edit `top_bar.rs` not at all.
-- `crates/duet/benches/mix_frame.rs` — create. The `criterion` bench of section 10.2.
-- `crates/duet/Cargo.toml` — modify. The `criterion` dev-dependency and the `[[bench]]` target with
+- `crates/bc_app/duet/lang_rust/benches/mix_frame.rs` — create. The `criterion` bench of section 10.2.
+- `crates/bc_app/duet/lang_rust/Cargo.toml` — modify. The `criterion` dev-dependency and the `[[bench]]` target with
   `harness = false`.
 - `Cargo.lock` — modify (SM5 rule 2).
 
 ## Types and signatures
 
-### Declared by this chunk, in `crates/duet/src/mix/`
+### Declared by this chunk, in `crates/bc_app/duet/lang_rust/src/mix/`
 
 Copied from architecture section 15.16.
 
@@ -117,7 +117,7 @@ copy of the armed set**: it calls `CoreHost::frame_demand` in `render`, so `Duet
 owner. `MixView` calls `cx.notify` on this entity when the armed set changes, which is a
 notification and not a value.
 
-### Declared by this chunk, in `crates/duet/src/element/`
+### Declared by this chunk, in `crates/bc_app/duet/lang_rust/src/element/`
 
 Copied from architecture section 15.16.
 
@@ -204,7 +204,7 @@ horizontal lines across the mixer.
 
 1. Read every file of the write scope. Confirm that chunk K1 created each one, that `mix/view.rs`
    holds the seam view and `mix/meter_layer.rs` holds the driver seam, and that
-   `crates/duet/benches/` does not exist. Stop and report a discrepancy.
+   `crates/bc_app/duet/lang_rust/benches/` does not exist. Stop and report a discrepancy.
 2. Add `criterion` as a dev-dependency with `{ workspace = true }`, and add the `[[bench]]` target
    with `harness = false` and `name = "mix_frame"`. Run `cargo build --workspace` and commit the
    `Cargo.lock` it produces.
@@ -249,7 +249,7 @@ horizontal lines across the mixer.
     group set comes from product stories M-03 and M-04 and from contract 4.8: a snap grid `Select`
     shared with Compose, a `Clear solo` control that contract 4.7 puts in the transport bar, and the
     view controls of contract 4.8. Set `group_count` to the number of groups `render` returns.
-17. Write the `criterion` bench in `crates/duet/benches/mix_frame.rs`. It measures one Mix frame at
+17. Write the `criterion` bench in `crates/bc_app/duet/lang_rust/benches/mix_frame.rs`. It measures one Mix frame at
     B1, with the cached siblings and without them, and reports both against B4. The same run records
     what one frame leaves for an immediate verb at B5.
 18. Write every test of the Tests section.
@@ -324,8 +324,8 @@ bench reports against B4 and B5 (section 10.7).
 2. `cargo nextest run -p duet --no-tests=fail` passes.
 3. `cargo bench -p duet --bench mix_frame -- --test` builds and runs one iteration.
 4. `cargo clippy -p duet --all-targets -- -D warnings` prints no warning.
-5. `git status` shows no change under `crates/duet/src/shell/top_bar.rs`, `crates/duet/src/compose/`
-   or `crates/duet/src/record/`.
+5. `git status` shows no change under `crates/bc_app/duet/lang_rust/src/shell/top_bar.rs`, `crates/bc_app/duet/lang_rust/src/compose/`
+   or `crates/bc_app/duet/lang_rust/src/record/`.
 6. One commit on a branch named `chunk/k4-mix-work-area`. The native git hook runs `scripts/dod.sh`.
 
 ## Constraints
@@ -335,7 +335,8 @@ bench reports against B4 and B5 (section 10.7).
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

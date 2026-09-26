@@ -3,16 +3,16 @@ id: T2
 line: trunk
 depends_on: [M1, T1]
 write_scope:
-  - crates/duet-score/Cargo.toml
-  - crates/duet-score/src/lib.rs
-  - crates/duet-score/src/model.rs
-  - crates/duet-score/src/ids.rs
-  - crates/duet-score/src/command.rs
-  - crates/duet-score/src/event.rs
-  - crates/duet-score/src/apply.rs
-  - crates/duet-score/src/canonical.rs
-  - crates/duet-score/src/error.rs
-  - crates/duet-score/tests/canonical_determinism.rs
+  - crates/bc_document/duet-score/lang_rust/Cargo.toml
+  - crates/bc_document/duet-score/lang_rust/src/lib.rs
+  - crates/bc_document/duet-score/lang_rust/src/model.rs
+  - crates/bc_document/duet-score/lang_rust/src/ids.rs
+  - crates/bc_document/duet-score/lang_rust/src/command.rs
+  - crates/bc_document/duet-score/lang_rust/src/event.rs
+  - crates/bc_document/duet-score/lang_rust/src/apply.rs
+  - crates/bc_document/duet-score/lang_rust/src/canonical.rs
+  - crates/bc_document/duet-score/lang_rust/src/error.rs
+  - crates/bc_document/duet-score/lang_rust/tests/canonical_determinism.rs
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-score --no-tests=fail passes; cargo clippy -p duet-score --all-targets -- -D warnings is clean; commit SHA on a branch chunk/t2-score"
@@ -31,23 +31,23 @@ command. Section 14 selects `canonical_determinism` for rung-two command 4, so t
 that integration target.
 
 Section 13.4 puts `T1 before T2`, because every declaration here names `Ticks`, `Position`, or
-`SchemaVersion`. Chunk M1 creates the `crates/duet-score` skeleton (SM1 rule 2), so the crate root
+`SchemaVersion`. Chunk M1 creates the `crates/bc_document/duet-score/lang_rust` skeleton (SM1 rule 2), so the crate root
 and the member manifest already exist. Dispatch: **Duet Engineer**.
 
 ## Files
 
 | Path | Action |
 |---|---|
-| `crates/duet-score/Cargo.toml` | modify (add `[dependencies]`) |
-| `crates/duet-score/src/lib.rs` | modify (add the `mod` and `pub use` lines) |
-| `crates/duet-score/src/ids.rs` | create |
-| `crates/duet-score/src/model.rs` | create |
-| `crates/duet-score/src/command.rs` | create |
-| `crates/duet-score/src/event.rs` | create |
-| `crates/duet-score/src/apply.rs` | create |
-| `crates/duet-score/src/canonical.rs` | create |
-| `crates/duet-score/src/error.rs` | create |
-| `crates/duet-score/tests/canonical_determinism.rs` | create |
+| `crates/bc_document/duet-score/lang_rust/Cargo.toml` | modify (add `[dependencies]`) |
+| `crates/bc_document/duet-score/lang_rust/src/lib.rs` | modify (add the `mod` and `pub use` lines) |
+| `crates/bc_document/duet-score/lang_rust/src/ids.rs` | create |
+| `crates/bc_document/duet-score/lang_rust/src/model.rs` | create |
+| `crates/bc_document/duet-score/lang_rust/src/command.rs` | create |
+| `crates/bc_document/duet-score/lang_rust/src/event.rs` | create |
+| `crates/bc_document/duet-score/lang_rust/src/apply.rs` | create |
+| `crates/bc_document/duet-score/lang_rust/src/canonical.rs` | create |
+| `crates/bc_document/duet-score/lang_rust/src/error.rs` | create |
+| `crates/bc_document/duet-score/lang_rust/tests/canonical_determinism.rs` | create |
 | `Cargo.lock` | modify (SM5 rule 2) |
 
 ## Types and signatures
@@ -493,15 +493,15 @@ pub enum ScoreError {
 
 ## Steps
 
-1. Read `crates/duet-score/Cargo.toml` and `crates/duet-score/src/lib.rs`. Confirm that M1 created
-   both and that the manifest holds no `[dependencies]` section. Confirm that `crates/duet-time`
+1. Read `crates/bc_document/duet-score/lang_rust/Cargo.toml` and `crates/bc_document/duet-score/lang_rust/src/lib.rs`. Confirm that M1 created
+   both and that the manifest holds no `[dependencies]` section. Confirm that `crates/bc_time/duet-time/lang_rust`
    holds every type this chunk names. Report a discrepancy and stop if any one is false.
-2. Add the dependency entries to `crates/duet-score/Cargo.toml`. The section 1.2 row for
+2. Add the dependency entries to `crates/bc_document/duet-score/lang_rust/Cargo.toml`. The section 1.2 row for
    `duet-score` names four third-party crates, and section 1.3 gives the one internal edge.
 
    ```toml
    [dependencies]
-   duet-time = { path = "../duet-time" }
+   duet-time = { workspace = true }
    serde = { workspace = true }
    serde_json = { workspace = true }
    smallvec = { workspace = true }
@@ -530,7 +530,7 @@ pub enum ScoreError {
    arm validates first and mutates second, and every arm builds the inverse command list and the
    `InverseCost`. `clippy::wildcard_enum_match_arm` is denied, so the match over `ScoreCommand`
    names every arm. Run the same command. Expected result: the run passes.
-9. Write the failing determinism test in `crates/duet-score/tests/canonical_determinism.rs`. It
+9. Write the failing determinism test in `crates/bc_document/duet-score/lang_rust/tests/canonical_determinism.rs`. It
    builds one score, calls `write` twice, and asserts that the three byte blocks are equal. It then
    inserts the same notes in a different order, calls `write`, and asserts that the bytes still
    match. It then calls `read` on the output and asserts that the score is equal. Run
@@ -592,7 +592,8 @@ commit lands only when every gate passes.
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

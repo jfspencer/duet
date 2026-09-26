@@ -7,7 +7,7 @@ Sample output the audit produces. Use as a layout reference only; the audit rend
 
 **Run date:** 2026-09-20
 **Files scanned:** 3
-**Worst-case session load:** 190 lines (root + crates/duet)
+**Worst-case session load:** 190 lines (root + crates/bc_app/duet/lang_rust)
 
 ## Summary
 
@@ -17,7 +17,7 @@ Sample output the audit produces. Use as a layout reference only; the audit rend
 
 ## CRITICAL
 
-### crates/duet/CLAUDE.md
+### crates/bc_app/duet/lang_rust/CLAUDE.md
 
 - **Finding:** Contains 40 lines of phase progress notes (anti-pattern: phase journal).
 - **Confidence:** high
@@ -40,7 +40,7 @@ Sample output the audit produces. Use as a layout reference only; the audit rend
 - **Location:** Lines 48-53 and lines 91-96
 - **Recommended fix:** Consolidate to one entry in the design-system section. Reference from coding style if relevant.
 
-### tools/plan-db/CLAUDE.md
+### tools/bc_plan_store/plan-db/lang_rust/CLAUDE.md
 
 - **Finding:** Code block of 14 lines in §Key classes (anti-pattern: code block > 5 lines).
 - **Confidence:** high
@@ -49,7 +49,7 @@ Sample output the audit produces. Use as a layout reference only; the audit rend
 
 ### .claude/skills/test-author/SKILL.md
 
-- **Finding:** References `tools/plan-db/tests/lifecycle.rs`, which was renamed to `tools/plan-db/tests/roundtrip.rs`.
+- **Finding:** References `tools/bc_plan_store/plan-db/lang_rust/tests/lifecycle.rs`, which was renamed to `tools/bc_plan_store/plan-db/lang_rust/tests/roundtrip.rs`.
 - **Confidence:** high
 - **Location:** Line 47
 - **Recommended fix:** Replace the path.
@@ -62,7 +62,7 @@ Sample output the audit produces. Use as a layout reference only; the audit rend
 - **Confidence:** high
 - **Recommended fix:** Re-index or delete the orphan.
 
-### tools/xtask/CLAUDE.md
+### tools/bc_repo_guard/xtask/lang_rust/CLAUDE.md
 
 - **Finding:** `review-cadence: on-architectural-change`, no automatic re-verification trigger.
 - **Confidence:** medium
@@ -73,14 +73,14 @@ Sample output the audit produces. Use as a layout reference only; the audit rend
 | File | Lines | Verified | Cadence | Scope |
 |---|---|---|---|---|
 | /CLAUDE.md | 142 | 2026-02-15 | quarterly | workspace |
-| crates/duet/CLAUDE.md | 48 | 2026-09-11 | quarterly | crates/duet |
-| tools/plan-db/CLAUDE.md | 31 | 2026-09-11 | on-architectural-change | tools/plan-db |
+| crates/bc_app/duet/lang_rust/CLAUDE.md | 48 | 2026-09-11 | quarterly | crates/bc_app/duet/lang_rust |
+| tools/bc_plan_store/plan-db/lang_rust/CLAUDE.md | 31 | 2026-09-11 | on-architectural-change | tools/bc_plan_store/plan-db/lang_rust |
 
 ## Recommended next actions (ranked)
 
-1. Delete the phase-journal block in `crates/duet/CLAUDE.md` (CRITICAL, single highest-impact fix).
+1. Delete the phase-journal block in `crates/bc_app/duet/lang_rust/CLAUDE.md` (CRITICAL, single highest-impact fix).
 2. Re-verify root `/CLAUDE.md` and bump `verified:`.
 3. Consolidate the duplicate literal-color rule in `/CLAUDE.md`.
 4. Replace the stale `test-author` reference path.
-5. Trim the oversized code block in `tools/plan-db/CLAUDE.md`.
+5. Trim the oversized code block in `tools/bc_plan_store/plan-db/lang_rust/CLAUDE.md`.
 ```

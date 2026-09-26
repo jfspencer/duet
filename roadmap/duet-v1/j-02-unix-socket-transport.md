@@ -3,9 +3,9 @@ id: J2
 line: J
 depends_on: [J1]
 write_scope:
-  - crates/duet-agent/src/socket.rs
-  - crates/duet-agent/src/path.rs
-  - crates/duet-agent/src/lock.rs
+  - crates/bc_gateway/duet-agent/lang_rust/src/socket.rs
+  - crates/bc_gateway/duet-agent/lang_rust/src/path.rs
+  - crates/bc_gateway/duet-agent/lang_rust/src/lock.rs
 parallelism: independent
 completion: "cargo nextest run -p duet-agent -E 'test(socket_transport)' --no-tests=fail passes; cargo clippy -p duet-agent --all-targets -- -D warnings is clean; commit SHA on a branch chunk/j2-unix-socket-transport"
 ---
@@ -21,9 +21,9 @@ This chunk modifies three files and creates none. SM2 gave every file to chunk J
 
 ## Files
 
-- `crates/duet-agent/src/socket.rs` — modify. The accept loop over `tokio::net::UnixStream`.
-- `crates/duet-agent/src/path.rs` — modify. The platform socket path resolver.
-- `crates/duet-agent/src/lock.rs` — modify. The client lock helper and the two client timeouts.
+- `crates/bc_gateway/duet-agent/lang_rust/src/socket.rs` — modify. The accept loop over `tokio::net::UnixStream`.
+- `crates/bc_gateway/duet-agent/lang_rust/src/path.rs` — modify. The platform socket path resolver.
+- `crates/bc_gateway/duet-agent/lang_rust/src/lock.rs` — modify. The client lock helper and the two client timeouts.
 
 No manifest edit is expected. Chunk J1 added `tokio` with the feature set `rmcp` and the socket both
 need. Add an entry only if a step below names a crate the manifest lacks, and then add `Cargo.lock`
@@ -139,7 +139,8 @@ directory, per the `test-author` skill. Every assert carries a message.
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

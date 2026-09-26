@@ -3,15 +3,15 @@ id: D3
 line: D
 depends_on: [M3, D2]
 write_scope:
-  - crates/duet-dsp/src/voice.rs
-  - crates/duet-dsp/src/slot.rs
-  - crates/duet-dsp/src/pool.rs
-  - crates/duet-dsp/src/dynamics/delay.rs
-  - crates/duet-dsp/src/dynamics/reverb.rs
-  - crates/duet-dsp/src/peaks/format.rs
-  - crates/duet-dsp/src/peaks/builder.rs
-  - crates/duet-dsp/src/peaks/reader.rs
-  - crates/duet-dsp/Cargo.toml
+  - crates/bc_audio/duet-dsp/lang_rust/src/voice.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/slot.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/pool.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/dynamics/delay.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/dynamics/reverb.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/peaks/format.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/peaks/builder.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/peaks/reader.rs
+  - crates/bc_audio/duet-dsp/lang_rust/Cargo.toml
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-dsp -E 'test(pyramid) + test(monitor_voice) + test(buffer_pool)' --no-tests=fail"
@@ -34,29 +34,29 @@ The chunk writes the member manifest, so `Cargo.lock` is in the write scope (SM5
 
 `PyramidBuilder::staging` is an `ArrayVec<PeakBin, PEAK_STAGING_BINS>` (section 5.10), so this chunk
 uses the crate `arrayvec`. **This chunk adds the `arrayvec = { workspace = true }` entry to
-`crates/duet-dsp/Cargo.toml`** (SM1), and `Cargo.lock` goes in the same commit (SM5 rule 2).
+`crates/bc_audio/duet-dsp/lang_rust/Cargo.toml`** (SM1), and `Cargo.lock` goes in the same commit (SM5 rule 2).
 **Chunk M3 pins `arrayvec` in the root `[workspace.dependencies]` in phase 3**, one step before this
 chunk: architecture section 13.1 ownership decision 6 and Appendix B.3 both state the owner. The pin
 was M4's until this revision, which is one phase too late; the chunk author of line D reported it
 and the Architect moved it.
 
-Read the root `Cargo.toml` and `crates/duet-dsp/Cargo.toml` first. Proceed when
+Read the root `Cargo.toml` and `crates/bc_audio/duet-dsp/lang_rust/Cargo.toml` first. Proceed when
 `[workspace.dependencies]` pins `arrayvec`. Report the discrepancy to the Architect and stop when
 the pin is absent (SM0), because SM4 forbids this chunk to edit the root manifest.
 
 ## Files
 
-- `crates/duet-dsp/src/voice.rs` — modify. The monitor voice.
-- `crates/duet-dsp/src/slot.rs` — modify. `SlotState` over the eight `SlotKind` arms.
-- `crates/duet-dsp/src/pool.rs` — modify. `BufferPool`, `PoolBuffer`, and `PoolClass`. **`PoolSlot`
+- `crates/bc_audio/duet-dsp/lang_rust/src/voice.rs` — modify. The monitor voice.
+- `crates/bc_audio/duet-dsp/lang_rust/src/slot.rs` — modify. `SlotState` over the eight `SlotKind` arms.
+- `crates/bc_audio/duet-dsp/lang_rust/src/pool.rs` — modify. `BufferPool`, `PoolBuffer`, and `PoolClass`. **`PoolSlot`
   is chunk D1's, in `src/buffer.rs`**; this chunk reads it and declares it nowhere.
-- `crates/duet-dsp/Cargo.toml` — modify. Add the `arrayvec = { workspace = true }` entry.
+- `crates/bc_audio/duet-dsp/lang_rust/Cargo.toml` — modify. Add the `arrayvec = { workspace = true }` entry.
 - `Cargo.lock` — modify. `cargo build --workspace` settles it (SM5 rule 3).
-- `crates/duet-dsp/src/dynamics/delay.rs` — modify. `DelayState` and the delay kernel.
-- `crates/duet-dsp/src/dynamics/reverb.rs` — modify. `ReverbState` and the reverb kernel.
-- `crates/duet-dsp/src/peaks/format.rs` — modify. Add the write half of the level layout.
-- `crates/duet-dsp/src/peaks/builder.rs` — modify. `PyramidBuilder`.
-- `crates/duet-dsp/src/peaks/reader.rs` — modify. Add the header read that the builder writes.
+- `crates/bc_audio/duet-dsp/lang_rust/src/dynamics/delay.rs` — modify. `DelayState` and the delay kernel.
+- `crates/bc_audio/duet-dsp/lang_rust/src/dynamics/reverb.rs` — modify. `ReverbState` and the reverb kernel.
+- `crates/bc_audio/duet-dsp/lang_rust/src/peaks/format.rs` — modify. Add the write half of the level layout.
+- `crates/bc_audio/duet-dsp/lang_rust/src/peaks/builder.rs` — modify. `PyramidBuilder`.
+- `crates/bc_audio/duet-dsp/lang_rust/src/peaks/reader.rs` — modify. Add the header read that the builder writes.
 
 ## Types and signatures
 
@@ -161,7 +161,7 @@ pub struct PoolBuffer {
 
 ```
 
-**`PoolSlot` is declared by chunk D1, in `crates/duet-dsp/src/buffer.rs`.** `LimiterState`,
+**`PoolSlot` is declared by chunk D1, in `crates/bc_audio/duet-dsp/lang_rust/src/buffer.rs`.** `LimiterState`,
 `DelayState`, and `ReverbState` each hold an `Option<PoolSlot>` and chunk D2 writes `LimiterState`
 in phase 2, so the index type lands in phase 1 and the pool that hands it out lands here, in phase
 3. Architecture sections 13.2 and 15.2 state the split. This chunk imports the type and declares it
@@ -293,7 +293,7 @@ arguments.
    discrepancy and stop if the state differs.
 2. Read the root `Cargo.toml`. Confirm that `[workspace.dependencies]` pins `arrayvec`, which chunk
    M3 wrote in this phase. Report a discrepancy and stop if the pin is absent. Add
-   `arrayvec = { workspace = true }` to `crates/duet-dsp/Cargo.toml` and run
+   `arrayvec = { workspace = true }` to `crates/bc_audio/duet-dsp/lang_rust/Cargo.toml` and run
    `cargo build --workspace`, which settles `Cargo.lock` (SM5 rule 3).
 3. Write the failing test `buffer_pool_claims_and_releases_each_class` in `src/pool.rs`, inside a
    `#[cfg(test)] mod tests`. Run
@@ -351,7 +351,7 @@ arguments.
 
 Every test lives in a `#[cfg(test)] mod tests` in the same file, and every assert carries a message.
 
-`crates/duet-dsp/src/pool.rs`
+`crates/bc_audio/duet-dsp/lang_rust/src/pool.rs`
 
 - `buffer_pool_claims_and_releases_each_class` — asserts that a claim of each class gives a distinct
   handle, and that a release makes the handle available again.
@@ -361,7 +361,7 @@ Every test lives in a `#[cfg(test)] mod tests` in the same file, and every asser
   class stays full, which is the B120 class critic C20-N3 added.
 - `buffer_pool_samples_refuse_a_foreign_handle` — asserts `DspError::PoolSlotMissing`.
 
-`crates/duet-dsp/src/slot.rs`
+`crates/bc_audio/duet-dsp/lang_rust/src/slot.rs`
 
 - `slot_state_processes_every_arm` — builds one `SlotState` per arm and asserts that `process`
   answers a `SlotMeasure` for each one, which proves the match is exhaustive.
@@ -370,7 +370,7 @@ Every test lives in a `#[cfg(test)] mod tests` in the same file, and every asser
 - `slot_state_size_is_within_b51` — asserts `size_of::<SlotState>()` is at or below 232 bytes, which
   is B51 and which the `variant_size_differences` expectation cites.
 
-`crates/duet-dsp/src/voice.rs`
+`crates/bc_audio/duet-dsp/lang_rust/src/voice.rs`
 
 - `monitor_voice_sounds_a_note_on` — asserts that the rendered block is not silent after `note_on`.
 - `monitor_voice_stops_after_note_off` — asserts silence after the release time.
@@ -378,17 +378,17 @@ Every test lives in a `#[cfg(test)] mod tests` in the same file, and every asser
   8.2 step 1 needs.
 - `monitor_voice_follows_the_velocity` — asserts a larger peak at velocity 127 than at velocity 40.
 
-`crates/duet-dsp/src/dynamics/delay.rs`
+`crates/bc_audio/duet-dsp/lang_rust/src/dynamics/delay.rs`
 
 - `delay_repeats_after_the_delay_frames` — asserts that an impulse reappears at `delay_frames`.
 - `delay_feedback_decays` — asserts that each repeat is smaller than the one before it.
 
-`crates/duet-dsp/src/dynamics/reverb.rs`
+`crates/bc_audio/duet-dsp/lang_rust/src/dynamics/reverb.rs`
 
 - `reverb_tail_decays_to_silence` — asserts that the tail falls below 0.001 inside the decay time.
 - `reverb_damping_cuts_the_high_band` — asserts less high-band energy at a larger damping value.
 
-`crates/duet-dsp/src/peaks/builder.rs`
+`crates/bc_audio/duet-dsp/lang_rust/src/peaks/builder.rs`
 
 - `pyramid_builder_closes_a_bin_per_level` — appends 4096 frames and asserts the bin count of each
   level against the B68 layout.
@@ -433,9 +433,10 @@ builder`.
   inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are
   required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every
   `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the
   root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no
   pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with
   Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this

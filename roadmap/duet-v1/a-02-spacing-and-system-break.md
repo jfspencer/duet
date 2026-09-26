@@ -3,8 +3,8 @@ id: A2
 line: A
 depends_on: [M3, A1]
 write_scope:
-  - crates/duet-engrave/src/spacing.rs
-  - crates/duet-engrave/src/system.rs
+  - crates/bc_notation/duet-engrave/lang_rust/src/spacing.rs
+  - crates/bc_notation/duet-engrave/lang_rust/src/system.rs
 parallelism: independent
 completion: "cargo nextest run -p duet-engrave -E 'test(spacing)' --no-tests=fail"
 ---
@@ -23,9 +23,9 @@ already holds every dependency this chunk needs, from chunk A1.
 
 ## Files
 
-- `crates/duet-engrave/src/spacing.rs` — modify. The column widths, the minimum gap, and the
+- `crates/bc_notation/duet-engrave/lang_rust/src/spacing.rs` — modify. The column widths, the minimum gap, and the
   justification.
-- `crates/duet-engrave/src/system.rs` — modify. The system break and the vertical system order.
+- `crates/bc_notation/duet-engrave/lang_rust/src/system.rs` — modify. The system break and the vertical system order.
 
 ## Types and signatures
 
@@ -132,7 +132,7 @@ system, then `system_size`. Chunk A1 declared `engrave`, and this chunk changes 
 
 ## Steps
 
-1. Read `crates/duet-engrave/src/spacing.rs` and `crates/duet-engrave/src/system.rs`. Confirm that
+1. Read `crates/bc_notation/duet-engrave/lang_rust/src/spacing.rs` and `crates/bc_notation/duet-engrave/lang_rust/src/system.rs`. Confirm that
    each one holds a `//!` line and nothing else. Report a discrepancy and stop if the state differs.
 2. Write the failing test `spacing_width_follows_the_duration_curve` in `src/spacing.rs`, inside a
    `#[cfg(test)] mod tests`. Run
@@ -170,7 +170,7 @@ system, then `system_size`. Chunk A1 declared `engrave`, and this chunk changes 
 
 Every test lives in a `#[cfg(test)] mod tests` in the same file, and every assert carries a message.
 
-`crates/duet-engrave/src/spacing.rs`
+`crates/bc_notation/duet-engrave/lang_rust/src/spacing.rs`
 
 - `spacing_width_follows_the_duration_curve` — asserts the five widths design contract 2.3 prints:
   9.2 sp for a whole note, 6.1 sp for a half, 4.0 sp for a quarter, 2.6 sp for an eighth, and 1.7 sp
@@ -186,7 +186,7 @@ Every test lives in a `#[cfg(test)] mod tests` in the same file, and every asser
 - `spacing_is_monotone` — asserts that the returned `SystemXMap` is strictly increasing, which is
   the property `SystemXMap::new` enforces.
 
-`crates/duet-engrave/src/system.rs`
+`crates/bc_notation/duet-engrave/lang_rust/src/system.rs`
 
 - `system_breaks_at_the_page_width` — engraves twelve measures at a page width that fits four, and
   asserts three systems with contiguous, ordered tick ranges.
@@ -229,9 +229,10 @@ subject such as `feat(engrave): space the columns and break the score into syste
   inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are
   required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every
   `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the
   root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no
   pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with
   Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this

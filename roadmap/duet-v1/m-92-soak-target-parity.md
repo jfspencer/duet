@@ -3,7 +3,7 @@ id: M92
 line: M
 depends_on: [M0, T1, M91]
 write_scope:
-  - crates/duet-time/tests/proptest_large.rs
+  - crates/bc_time/duet-time/lang_rust/tests/proptest_large.rs
 parallelism: independent
 completion: "cargo nextest run -p duet-time --run-ignored ignored-only -E 'test(proptest_large_convert_i24_round_trip_is_lossless)' --no-tests=fail passes, and the same command fails before the chunk because no test of that name exists; the step-4 revert proof shows that same command RED against a scratch UNIT_TO_I24_SCALE of 8_388_607.0 and green again after the restore, and the chunk report quotes both outputs; cargo nextest run -p duet-time --no-tests=fail passes; cargo clippy -p duet-time --all-targets -- -D warnings is clean; cargo nextest run -p duet-time --run-ignored ignored-only -E 'test(proptest_large)' --no-tests=fail reports 6 tests run and 6 passed, which is the one command that EXECUTES the widened properties: property 1 with the three added constant refusals and property 6 over both meter fixtures; commit SHA on a branch chunk/m92-soak-target-parity"
 ---
@@ -19,8 +19,8 @@ section 14 (the `soak.yml` row and the selected-test table). It writes one test 
 no policy file and no crate source.
 
 **Duet is a lossless editing system, and the soak target does not say so.**
-`crates/duet-time/tests/proptest_large.rs` opens with a module doc that claims parity with
-`crates/duet-time/tests/kernel.rs`: it names six properties and states that the gate proves each one
+`crates/bc_time/duet-time/lang_rust/tests/proptest_large.rs` opens with a module doc that claims parity with
+`crates/bc_time/duet-time/lang_rust/tests/kernel.rs`: it names six properties and states that the gate proves each one
 and that this target proves it again at the soak case count. The 24-bit property breaks that claim.
 `kernel.rs` asserts `unit_to_i24(i24_to_f32(sample)).get() == raw` for every drawn sample. The soak
 file asserts that the drift stays inside one least significant bit, and then asserts equality only
@@ -37,7 +37,7 @@ An engineer executes this chunk. Chunk M91 repaired the code half, so the exact 
 true; this chunk makes the soak target assert it.
 
 **This chunk CARRIES the `depends_on` edge to M91, and the guard accepts it.**
-`tools/xtask/src/check_plan_graph.rs` refuses a same-phase link only when the DEPENDENCY id does not
+`tools/bc_repo_guard/xtask/lang_rust/src/check_plan_graph.rs` refuses a same-phase link only when the DEPENDENCY id does not
 begin with `M`: the test is `if there == here && !dep.starts_with('M')`. `M91` begins with `M`, so
 `depends_on: [M0, T1, M91]` is a clean run of both `cargo xtask check-plan-graph roadmap/duet-v1`
 and `roadmap/duet-v1/tools/plan_graph_check.py`. **The narrower reading, that only the opening
@@ -48,7 +48,7 @@ the source of truth.
 **The edge is the order, and step 1 is the backup.** M92 asserts
 `unit_to_i24(i24_to_f32(sample)).get() == raw` over the whole drawn range, and that statement is
 true only at a scale factor of two to the power 23, which chunk M91 installs. Step 1 of this chunk
-REREADS `crates/duet-time/src/convert.rs` and STOPS when `UNIT_TO_I24_SCALE` is not `8_388_608.0`.
+REREADS `crates/bc_time/duet-time/lang_rust/src/convert.rs` and STOPS when `UNIT_TO_I24_SCALE` is not `8_388_608.0`.
 That check now backs up an encoded edge rather than standing in for a missing one, and it costs
 nothing: it catches a tree that carries the edge and not the code, which no scheduler can see. The
 two commits that landed the M91 repair are `de3ada1` and `0982f97`, and the constant is the check
@@ -58,7 +58,7 @@ that does not rest on a commit identifier.
 
 | Path | Action |
 |---|---|
-| `crates/duet-time/tests/proptest_large.rs` | modify (one module doc block, one renamed test, one repaired body, one new fixture helper, one widened property, three added assertions) |
+| `crates/bc_time/duet-time/lang_rust/tests/proptest_large.rs` | modify (one module doc block, one renamed test, one repaired body, one new fixture helper, one widened property, three added assertions) |
 
 ## Types and signatures
 
@@ -72,12 +72,12 @@ pub fn unit_to_i24(value: Unit) -> I24;
 
 ## Steps
 
-1. Read `crates/duet-time/tests/proptest_large.rs` and `crates/duet-time/tests/kernel.rs`. Confirm
+1. Read `crates/bc_time/duet-time/lang_rust/tests/proptest_large.rs` and `crates/bc_time/duet-time/lang_rust/tests/kernel.rs`. Confirm
    that `proptest_large_convert_i24_round_trip` binds `drift`, asserts `drift.abs() <= 1`, and
    carries an `if i64::from(raw).abs() <= 4_194_304` branch. Confirm that `convert_i24_round_trip`
    in `kernel.rs` asserts `prop_assert_eq!(unit_to_i24(i24_to_f32(sample)).get(), raw, "the 24-bit
    round trip answers itself")`. **Confirm that chunk M91 has landed**: read
-   `crates/duet-time/src/convert.rs` and confirm that it declares
+   `crates/bc_time/duet-time/lang_rust/src/convert.rs` and confirm that it declares
    `const UNIT_TO_I24_SCALE: f64 = 8_388_608.0;`. Report a discrepancy and stop; a value of
    `8_388_607.0` means M91 is not on the branch and every assertion this chunk installs is red on
    correct work.
@@ -130,17 +130,17 @@ pub fn unit_to_i24(value: Unit) -> I24;
    the answer, and ADR-0008 decision 5 with chunk M91 step 17 is the precedent: revert, observe,
    restore, and quote both outputs.
 
-   1. In the working tree, change `UNIT_TO_I24_SCALE` in `crates/duet-time/src/convert.rs` back to
+   1. In the working tree, change `UNIT_TO_I24_SCALE` in `crates/bc_time/duet-time/lang_rust/src/convert.rs` back to
       `8_388_607.0`, which is the pre-M91 value.
    2. Run
       `cargo nextest run -p duet-time --run-ignored ignored-only -E 'test(proptest_large_convert_i24_round_trip_is_lossless)' --no-tests=fail`
       and confirm that it goes RED. The failure names the assertion message
       `the 24-bit round trip answers itself`.
    3. Restore `UNIT_TO_I24_SCALE` to `8_388_608.0`, and confirm that
-      `crates/duet-time/src/convert.rs` matches its committed state again.
+      `crates/bc_time/duet-time/lang_rust/src/convert.rs` matches its committed state again.
    4. Quote the RED output and the restored constant in the chunk report.
 
-   **The revert is a scratch edit and it is NEVER committed.** `crates/duet-time/src/convert.rs` is
+   **The revert is a scratch edit and it is NEVER committed.** `crates/bc_time/duet-time/lang_rust/src/convert.rs` is
    not in this chunk's write scope, and a commit that carries it is a write-scope breach the
    Orchestrator returns. The step exists because no `cargo` command over the committed tree can go
    red for this repair: chunk M91 already landed the lossless scale factor, so the weaker assertion
@@ -151,9 +151,9 @@ pub fn unit_to_i24(value: Unit) -> I24;
    that claims parity a file does not have is the defect this chunk exists to remove.
 
    **Property 6 asserts over ONE map where the gate asserts over TWO.**
-   `crates/duet-time/tests/kernel.rs` line 1537 loops `for map in [quarter_meter_map(),
+   `crates/bc_time/duet-time/lang_rust/tests/kernel.rs` line 1537 loops `for map in [quarter_meter_map(),
    three_meter_map()]` and ends its message with "and across a segment boundary".
-   `crates/duet-time/tests/proptest_large.rs` uses `three_meter_map()` alone and carries the
+   `crates/bc_time/duet-time/lang_rust/tests/proptest_large.rs` uses `three_meter_map()` alone and carries the
    shorter message. Widen the soak property; do not weaken the doc.
 
    1. Add the `quarter_meter_map` helper beside `three_meter_map` in `proptest_large.rs`, copied
@@ -322,7 +322,7 @@ pub fn unit_to_i24(value: Unit) -> I24;
 
 ## Tests
 
-Every test of this chunk lives in `crates/duet-time/tests/proptest_large.rs`, inside the existing
+Every test of this chunk lives in `crates/bc_time/duet-time/lang_rust/tests/proptest_large.rs`, inside the existing
 `#[cfg(test)] mod tests`. Every assert carries a message.
 
 | Test | What it asserts | Where |
@@ -399,9 +399,10 @@ suppression. The doc test run is green. Then commit on a branch `chunk/m92-soak-
   inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are
   required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every
   `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the
   root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no
   pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with
   Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this

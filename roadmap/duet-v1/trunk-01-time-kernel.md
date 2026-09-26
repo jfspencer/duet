@@ -3,19 +3,19 @@ id: T1
 line: trunk
 depends_on: [M0]
 write_scope:
-  - crates/duet-time/Cargo.toml
-  - crates/duet-time/src/lib.rs
-  - crates/duet-time/src/units.rs
-  - crates/duet-time/src/convert.rs
-  - crates/duet-time/src/position.rs
-  - crates/duet-time/src/span.rs
-  - crates/duet-time/src/finite.rs
-  - crates/duet-time/src/bbt.rs
-  - crates/duet-time/src/tempo.rs
-  - crates/duet-time/src/tuplet.rs
-  - crates/duet-time/src/error.rs
-  - crates/duet-time/tests/kernel.rs
-  - crates/duet-time/tests/proptest_large.rs
+  - crates/bc_time/duet-time/lang_rust/Cargo.toml
+  - crates/bc_time/duet-time/lang_rust/src/lib.rs
+  - crates/bc_time/duet-time/lang_rust/src/units.rs
+  - crates/bc_time/duet-time/lang_rust/src/convert.rs
+  - crates/bc_time/duet-time/lang_rust/src/position.rs
+  - crates/bc_time/duet-time/lang_rust/src/span.rs
+  - crates/bc_time/duet-time/lang_rust/src/finite.rs
+  - crates/bc_time/duet-time/lang_rust/src/bbt.rs
+  - crates/bc_time/duet-time/lang_rust/src/tempo.rs
+  - crates/bc_time/duet-time/lang_rust/src/tuplet.rs
+  - crates/bc_time/duet-time/lang_rust/src/error.rs
+  - crates/bc_time/duet-time/lang_rust/tests/kernel.rs
+  - crates/bc_time/duet-time/lang_rust/tests/proptest_large.rs
   - Cargo.lock
 parallelism: serial-only: T1 is the only line chunk of phase 0, and section 13.4 puts M0 before it.
 completion: "cargo nextest run -p duet-time --no-tests=fail passes; cargo clippy -p duet-time --all-targets -- -D warnings is clean; commit SHA on a branch chunk/t1-time-kernel"
@@ -35,7 +35,7 @@ nightly proptest target. It implements architecture sections 2.1, 2.2, 2.3, 2.4,
 Completion command. Section 14 selects `proptest_large` for the `soak.yml` workflow, so this chunk
 writes that target and marks it `#[ignore]`.
 
-Chunk M0 creates the `crates/duet-time` skeleton (SM1 rule 2), so the crate root and the member
+Chunk M0 creates the `crates/bc_time/duet-time/lang_rust` skeleton (SM1 rule 2), so the crate root and the member
 manifest already exist. This chunk adds the module files, the dependency entries, and the code.
 Dispatch: **Duet Engineer**.
 
@@ -43,19 +43,19 @@ Dispatch: **Duet Engineer**.
 
 | Path | Action |
 |---|---|
-| `crates/duet-time/Cargo.toml` | modify (add `[dependencies]` and `[dev-dependencies]`) |
-| `crates/duet-time/src/lib.rs` | modify (add the `mod` and `pub use` lines) |
-| `crates/duet-time/src/units.rs` | create |
-| `crates/duet-time/src/convert.rs` | create |
-| `crates/duet-time/src/position.rs` | create |
-| `crates/duet-time/src/span.rs` | create |
-| `crates/duet-time/src/finite.rs` | create |
-| `crates/duet-time/src/bbt.rs` | create |
-| `crates/duet-time/src/tempo.rs` | create |
-| `crates/duet-time/src/tuplet.rs` | create |
-| `crates/duet-time/src/error.rs` | create |
-| `crates/duet-time/tests/kernel.rs` | create |
-| `crates/duet-time/tests/proptest_large.rs` | create |
+| `crates/bc_time/duet-time/lang_rust/Cargo.toml` | modify (add `[dependencies]` and `[dev-dependencies]`) |
+| `crates/bc_time/duet-time/lang_rust/src/lib.rs` | modify (add the `mod` and `pub use` lines) |
+| `crates/bc_time/duet-time/lang_rust/src/units.rs` | create |
+| `crates/bc_time/duet-time/lang_rust/src/convert.rs` | create |
+| `crates/bc_time/duet-time/lang_rust/src/position.rs` | create |
+| `crates/bc_time/duet-time/lang_rust/src/span.rs` | create |
+| `crates/bc_time/duet-time/lang_rust/src/finite.rs` | create |
+| `crates/bc_time/duet-time/lang_rust/src/bbt.rs` | create |
+| `crates/bc_time/duet-time/lang_rust/src/tempo.rs` | create |
+| `crates/bc_time/duet-time/lang_rust/src/tuplet.rs` | create |
+| `crates/bc_time/duet-time/lang_rust/src/error.rs` | create |
+| `crates/bc_time/duet-time/lang_rust/tests/kernel.rs` | create |
+| `crates/bc_time/duet-time/lang_rust/tests/proptest_large.rs` | create |
 | `Cargo.lock` | modify (SM5 rule 2) |
 
 ## Types and signatures
@@ -472,12 +472,12 @@ last entry takes the remainder.
 
 ## Steps
 
-1. Read `crates/duet-time/Cargo.toml` and `crates/duet-time/src/lib.rs`. Confirm that M0 created
+1. Read `crates/bc_time/duet-time/lang_rust/Cargo.toml` and `crates/bc_time/duet-time/lang_rust/src/lib.rs`. Confirm that M0 created
    both, that the manifest holds `[lints] workspace = true`, a `description`, and every
    `*.workspace = true` package field, and that it holds no `[dependencies]` section. Confirm that
    `src/lib.rs` holds the `//!` crate documentation and `#![forbid(unsafe_code)]`. Report a
    discrepancy and stop if any one of these is false.
-2. Add the dependency entries to `crates/duet-time/Cargo.toml`, in one commit with the code that
+2. Add the dependency entries to `crates/bc_time/duet-time/lang_rust/Cargo.toml`, in one commit with the code that
    uses them (SM1). The section 1.2 row for `duet-time` names three crates, and Appendix B.3 names
    the dev-dependency.
 
@@ -495,7 +495,7 @@ last entry takes the remainder.
    gains the four edges.
 4. Create `src/error.rs` with `TimeError`. Add `mod error;` and `pub use error::TimeError;` to
    `src/lib.rs`. Run `cargo check -p duet-time`. Expected result: it succeeds.
-5. Write the failing `Finite` proptest in `crates/duet-time/tests/kernel.rs`. It asserts the five
+5. Write the failing `Finite` proptest in `crates/bc_time/duet-time/lang_rust/tests/kernel.rs`. It asserts the five
    properties of section 2.6a. Run `cargo nextest run -p duet-time -E 'test(finite)' --no-tests=fail`.
    Expected result: the run fails, because `finite.rs` does not exist.
 6. Create `src/finite.rs` with the `Finite` declaration, the two constructors, `get`, `ZERO`, and the
@@ -512,7 +512,7 @@ last entry takes the remainder.
    that site and carries the exact reason text of Appendix B.1. Add `pub mod convert;` to
    `src/lib.rs`. Run the same command. Expected result: the run passes.
 10. Run `cargo xtask check-conversions`. Expected result: exit 0. The guard proves that no cast and
-    no cast suppression sits outside `crates/duet-time/src/convert.rs` (CG3, CG6, CG7).
+    no cast suppression sits outside `crates/bc_time/duet-time/lang_rust/src/convert.rs` (CG3, CG6, CG7).
 11. Write the failing round-trip tests for `i16_to_f32`, `i24_to_f32`, `i32_to_f32`, `unit_to_i24`,
     and `unit_to_i32` in `tests/kernel.rs`, and the failing range tests for `f64_to_f32` and
     `ticks_to_f64`. Run `cargo nextest run -p duet-time --no-tests=fail`. Expected result: the new
@@ -537,7 +537,7 @@ last entry takes the remainder.
     fails.
 18. Create `src/tuplet.rs` with `Tuplet` and `split_tuplet`. Add `mod tuplet;` and the `pub use`
     line. Run the same command. Expected result: the run passes.
-19. Create `crates/duet-time/tests/proptest_large.rs`. It holds the same four proptest properties as
+19. Create `crates/bc_time/duet-time/lang_rust/tests/proptest_large.rs`. It holds the same four proptest properties as
     `tests/kernel.rs` at 1,000,000 cases (B78), and every test in it carries `#[ignore]`. Section 14
     selects this target for `soak.yml`, which chunk M7 writes. Run
     `cargo nextest run -p duet-time --run-ignored ignored-only -E 'test(proptest_large)' --no-tests=fail`.
@@ -606,7 +606,8 @@ the commit lands only when every gate passes.
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

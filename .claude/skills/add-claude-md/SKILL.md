@@ -72,8 +72,8 @@ Frontmatter every CLAUDE.md carries: `scope:`, `audience:` (`every-session` for 
 
    Match to the target file:
    - **Entire workspace** → root `/CLAUDE.md`
-   - **Single crate** → `crates/<name>/CLAUDE.md` or `tools/<name>/CLAUDE.md`
-   - **Dense invariants in one module tree** → `crates/<crate>/src/<module>/CLAUDE.md` (create the file when it doesn't exist, but only if there are ≥3 invariants; otherwise put it in the crate file)
+   - **Single crate** → the unit directory `crates/bc_<context>/<package>/CLAUDE.md` or `tools/bc_<context>/<package>/CLAUDE.md` (beside `lang_rust/`, never inside it)
+   - **Dense invariants in one module tree** → `crates/bc_<context>/<package>/lang_rust/src/<module>/CLAUDE.md` (create the file when it doesn't exist, but only if there are ≥3 invariants; otherwise put it in the crate file)
    - **The agent system** (`.claude/agents`, hooks, plan store) → root `/CLAUDE.md` POINTER + the owning README or agent file
    - **Crosses many directories with no single home** → root `/CLAUDE.md` POINTER + a skill that owns the procedural detail
 
@@ -101,7 +101,7 @@ Frontmatter every CLAUDE.md carries: `scope:`, `audience:` (`every-session` for 
 
 7. **Draft in Shape 1 (Hard Constraint).** Draft the rule using Shape 1 verbatim. The four required markers are `**Rule:**`, `**Why:**`, `**How to apply:**`, `**Enforced by:**`, each on its own line under an `## <terse rule name>` heading. The root `CLAUDE.md` carries worked instances; mirror their register.
 
-   State the rule's scope explicitly in the `**Rule:**` line: name the class of files or call sites it governs (e.g. "every view under `crates/duet/src/**`"), not a single example. The model follows instructions literally and will not widen a rule from one instance to its class, so a rule phrased around a lone example is read as binding only on that example.
+   State the rule's scope explicitly in the `**Rule:**` line: name the class of files or call sites it governs (e.g. "every view under `crates/bc_app/duet/lang_rust/src/**`"), not a single example. The model follows instructions literally and will not widen a rule from one instance to its class, so a rule phrased around a lone example is read as binding only on that example.
 
    When the rule cannot be assigned an Enforced-by, that is a yellow flag. Most invariants have at least an advisory backstop: a test that exercises the happy path, a skill that documents the procedure, or a clippy lint that catches the common shape. When genuinely none exists, write `advisory` and flag for `claude-md-audit` to revisit.
 
@@ -178,7 +178,7 @@ Frontmatter every CLAUDE.md carries: `scope:`, `audience:` (`every-session` for 
 - Step 4 (Q3): Blast radius = the agent system (every Hypervisor, Orchestrator, hook, and companion). Root `/CLAUDE.md` POINTER + the owning README `.claude/plan-coordination/README.md`.
 - Step 5 (Q4): Load-bearing? YES. The store is the fleet's only coordination substrate; a split store means two orchestrators never see each other's work items and both dispatch the same slice.
 - Step 6: Grep existing CLAUDE.md and the plan-coordination README → the README's plan-key section already states it. The canonical home is the README; root gets a one-line pointer if it lacks one.
-- Step 7: Draft Shape 1. Why = the split-store failure; How = always `roadmap/<plan>`; Enforced by = `plan-db`'s root/outside rejection (`tools/plan-db/src/main.rs` `plan_key`) + `tools/plan-db/tests/roundtrip.rs` (advisory for the `.`-from-a-worktree case).
+- Step 7: Draft Shape 1. Why = the split-store failure; How = always `roadmap/<plan>`; Enforced by = `plan-db`'s root/outside rejection (`tools/bc_plan_store/plan-db/lang_rust/src/main.rs` `plan_key`) + `tools/bc_plan_store/plan-db/lang_rust/tests/roundtrip.rs` (advisory for the `.`-from-a-worktree case).
 - Steps 8-12: Proceed normally.
 - **Result:** Rule stays in `.claude/plan-coordination/README.md`, root `CLAUDE.md` carries the pointer. `verified:` bumped to today.
 

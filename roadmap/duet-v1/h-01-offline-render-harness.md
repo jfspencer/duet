@@ -3,17 +3,17 @@ id: H1
 line: H
 depends_on: [C1, C3, M7]
 write_scope:
-  - crates/duet-export/Cargo.toml
-  - crates/duet-export/src/lib.rs
-  - crates/duet-export/src/render.rs
-  - crates/duet-export/src/loudness.rs
-  - crates/duet-export/src/encode.rs
-  - crates/duet-export/src/preset.rs
-  - crates/duet-export/src/loudness/analyse.rs
-  - crates/duet-export/src/loudness/limit.rs
-  - crates/duet-export/src/encode/wav.rs
-  - crates/duet-export/src/encode/flac.rs
-  - crates/duet-export/src/encode/promote.rs
+  - crates/bc_audio/duet-export/lang_rust/Cargo.toml
+  - crates/bc_audio/duet-export/lang_rust/src/lib.rs
+  - crates/bc_audio/duet-export/lang_rust/src/render.rs
+  - crates/bc_audio/duet-export/lang_rust/src/loudness.rs
+  - crates/bc_audio/duet-export/lang_rust/src/encode.rs
+  - crates/bc_audio/duet-export/lang_rust/src/preset.rs
+  - crates/bc_audio/duet-export/lang_rust/src/loudness/analyse.rs
+  - crates/bc_audio/duet-export/lang_rust/src/loudness/limit.rs
+  - crates/bc_audio/duet-export/lang_rust/src/encode/wav.rs
+  - crates/bc_audio/duet-export/lang_rust/src/encode/flac.rs
+  - crates/bc_audio/duet-export/lang_rust/src/encode/promote.rs
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-export -E 'test(offline_render)' --no-tests=fail passes; commit SHA on a branch chunk/h1-offline-render-harness"
@@ -27,18 +27,18 @@ Links `C1 before H1` and `C3 before H1` of section 13.4 state the reason: the of
 
 ## Files
 
-- `crates/duet-export/Cargo.toml` — modify. Add the `{ workspace = true }` entries this chunk uses.
+- `crates/bc_audio/duet-export/lang_rust/Cargo.toml` — modify. Add the `{ workspace = true }` entries this chunk uses.
 - `Cargo.lock` — modify. Commit it in the same commit as the manifest (SM5).
-- `crates/duet-export/src/lib.rs` — modify. Add every `mod` line of the line.
-- `crates/duet-export/src/render.rs` — create.
-- `crates/duet-export/src/loudness.rs` — create as a stub.
-- `crates/duet-export/src/encode.rs` — create as a stub.
-- `crates/duet-export/src/preset.rs` — create as a stub.
-- `crates/duet-export/src/loudness/analyse.rs` — create as a stub.
-- `crates/duet-export/src/loudness/limit.rs` — create as a stub.
-- `crates/duet-export/src/encode/wav.rs` — create as a stub.
-- `crates/duet-export/src/encode/flac.rs` — create as a stub.
-- `crates/duet-export/src/encode/promote.rs` — create as a stub.
+- `crates/bc_audio/duet-export/lang_rust/src/lib.rs` — modify. Add every `mod` line of the line.
+- `crates/bc_audio/duet-export/lang_rust/src/render.rs` — create.
+- `crates/bc_audio/duet-export/lang_rust/src/loudness.rs` — create as a stub.
+- `crates/bc_audio/duet-export/lang_rust/src/encode.rs` — create as a stub.
+- `crates/bc_audio/duet-export/lang_rust/src/preset.rs` — create as a stub.
+- `crates/bc_audio/duet-export/lang_rust/src/loudness/analyse.rs` — create as a stub.
+- `crates/bc_audio/duet-export/lang_rust/src/loudness/limit.rs` — create as a stub.
+- `crates/bc_audio/duet-export/lang_rust/src/encode/wav.rs` — create as a stub.
+- `crates/bc_audio/duet-export/lang_rust/src/encode/flac.rs` — create as a stub.
+- `crates/bc_audio/duet-export/lang_rust/src/encode/promote.rs` — create as a stub.
 
 A stub holds the `//!` module documentation and nothing else (SM2). A later chunk of line H modifies a stub and creates no file.
 
@@ -152,10 +152,10 @@ Cancellation is a polled flag: the worker reads an `AtomicBool` between units of
 
 ## Steps
 
-1. Read `crates/duet-export/Cargo.toml` and `crates/duet-export/src/lib.rs`. Confirm the M7 skeleton: the `*.workspace = true` package fields, a `description`, `[lints] workspace = true`, no `[dependencies]` section, and a `src/lib.rs` that holds the `//!` crate documentation and `#![forbid(unsafe_code)]`. Report a discrepancy and stop.
+1. Read `crates/bc_audio/duet-export/lang_rust/Cargo.toml` and `crates/bc_audio/duet-export/lang_rust/src/lib.rs`. Confirm the M7 skeleton: the `*.workspace = true` package fields, a `description`, `[lints] workspace = true`, no `[dependencies]` section, and a `src/lib.rs` that holds the `//!` crate documentation and `#![forbid(unsafe_code)]`. Report a discrepancy and stop.
 2. Create every module file of the write scope as a stub. Add one `mod` line per stub to `src/lib.rs`, and one `mod` line per child stub to its parent module file.
 3. Run `cargo check -p duet-export`. Confirm that the crate builds with the stub tree.
-4. Add to `crates/duet-export/Cargo.toml` the entries this chunk uses: `duet-time`, `duet-dsp`, `duet-analysis`, `duet-media`, `duet-command`, `duet-engine`, `rubato`, `thiserror`, and `tracing`, each `{ workspace = true }`. Run `cargo build --workspace` and commit `Cargo.lock` with the manifest.
+4. Add to `crates/bc_audio/duet-export/lang_rust/Cargo.toml` the entries this chunk uses: `duet-time`, `duet-dsp`, `duet-analysis`, `duet-media`, `duet-command`, `duet-engine`, `rubato`, `thiserror`, and `tracing`, each `{ workspace = true }`. Run `cargo build --workspace` and commit `Cargo.lock` with the manifest.
 5. Write `RenderJob` and `ExportError` in `src/lib.rs`, with `#[from]` on each wrapping arm, and the `From<ExportError> for UpstreamFailure` impl.
 6. Write the failing test `offline_render_produces_the_expected_frame_count` in `src/render.rs`. Run `cargo nextest run -p duet-export -E 'test(offline_render)' --no-tests=fail` and confirm that it fails to compile.
 7. Write the render harness in `src/render.rs`. It builds a `DummyBackend` in `Freewheel` mode, opens a stream with the graph `duet-engine` built, and runs the cycle until the span is rendered. It reads `cycle.frames()` each cycle and sizes no buffer from a constant. Run the test and confirm that it passes.
@@ -196,7 +196,7 @@ All tests of this chunk are unit tests in a `#[cfg(test)] mod tests` at the bott
 3. `cargo clippy -p duet-export --all-targets -- -D warnings` prints nothing.
 4. `cargo doc -p duet-export` is clean with `-D warnings`.
 5. `cargo machete` reports no unused dependency of `duet-export`.
-6. One commit on the branch `chunk/h1-offline-render-harness` passes the native git hook. The commit carries `crates/duet-export/Cargo.toml` and `Cargo.lock` together.
+6. One commit on the branch `chunk/h1-offline-render-harness` passes the native git hook. The commit carries `crates/bc_audio/duet-export/lang_rust/Cargo.toml` and `Cargo.lock` together.
 
 ## Constraints
 
@@ -205,7 +205,8 @@ All tests of this chunk are unit tests in a `#[cfg(test)] mod tests` at the bott
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

@@ -3,11 +3,11 @@ id: F2
 line: F
 depends_on: [F1]
 write_scope:
-  - crates/duet-project/src/store/manifest.rs
-  - crates/duet-project/src/store/content.rs
-  - crates/duet-project/src/store/gc.rs
-  - crates/duet-project/src/recent.rs
-  - crates/duet-project/Cargo.toml
+  - crates/bc_project/duet-project/lang_rust/src/store/manifest.rs
+  - crates/bc_project/duet-project/lang_rust/src/store/content.rs
+  - crates/bc_project/duet-project/lang_rust/src/store/gc.rs
+  - crates/bc_project/duet-project/lang_rust/src/recent.rs
+  - crates/bc_project/duet-project/lang_rust/Cargo.toml
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-project -E 'test(content_store) + test(recent_list)' --no-tests=fail passes; commit SHA on a branch chunk/f2-content-store-and-recents"
@@ -19,11 +19,11 @@ Verify the current state of the files in the write scope; report a discrepancy a
 
 ## Files
 
-- `crates/duet-project/src/store/manifest.rs` — modify. Chunk F1 created the stub.
-- `crates/duet-project/src/store/content.rs` — modify.
-- `crates/duet-project/src/store/gc.rs` — modify.
-- `crates/duet-project/src/recent.rs` — modify.
-- `crates/duet-project/Cargo.toml` — modify. Add the `blake3` entry.
+- `crates/bc_project/duet-project/lang_rust/src/store/manifest.rs` — modify. Chunk F1 created the stub.
+- `crates/bc_project/duet-project/lang_rust/src/store/content.rs` — modify.
+- `crates/bc_project/duet-project/lang_rust/src/store/gc.rs` — modify.
+- `crates/bc_project/duet-project/lang_rust/src/recent.rs` — modify.
+- `crates/bc_project/duet-project/lang_rust/Cargo.toml` — modify. Add the `blake3` entry.
 - `Cargo.lock` — modify. Commit it in the same commit as the manifest (SM5).
 
 ## Types and signatures
@@ -144,8 +144,8 @@ The store bounds of section 4.1 that this chunk enforces:
 
 ## Steps
 
-1. Read every file of the write scope and `crates/duet-project/Cargo.toml`. Confirm that chunk F1 left each one a stub and that the manifest holds the entries F1 added. Report a discrepancy and stop.
-2. Add to `crates/duet-project/Cargo.toml` the entry `blake3 = { workspace = true }`. Run `cargo build --workspace` and keep `Cargo.lock` for the same commit.
+1. Read every file of the write scope and `crates/bc_project/duet-project/lang_rust/Cargo.toml`. Confirm that chunk F1 left each one a stub and that the manifest holds the entries F1 added. Report a discrepancy and stop.
+2. Add to `crates/bc_project/duet-project/lang_rust/Cargo.toml` the entry `blake3 = { workspace = true }`. Run `cargo build --workspace` and keep `Cargo.lock` for the same commit.
 3. Write the failing test `content_store_names_every_object_in_lowercase_hexadecimal` in `src/store/content.rs`. Run `cargo nextest run -p duet-project -E 'test(content_store)' --no-tests=fail` and confirm that it fails to compile.
 4. Write `src/store/content.rs`: hash a file with BLAKE3, print the digest as 64 lowercase hexadecimal characters, and place the object at `media/<hh>/<hash>.wav`. The store reads and writes nothing outside `media/`. Run the test and confirm that it passes.
 5. Write `ManifestEntry` in `src/store/manifest.rs` with the `#[expect]` attribute above it, and the reader and the writer of `media.manifest`. The file is sorted by hash, one entry per line, and it is tracked text.
@@ -187,7 +187,7 @@ All tests of this chunk are unit tests in a `#[cfg(test)] mod tests` at the bott
 2. `cargo nextest run -p duet-project --no-tests=fail` passes.
 3. `cargo clippy -p duet-project --all-targets -- -D warnings` prints nothing.
 4. `cargo machete` reports no unused dependency of `duet-project`.
-5. One commit on the branch `chunk/f2-content-store-and-recents` passes the native git hook. The commit carries `crates/duet-project/Cargo.toml` and `Cargo.lock` together.
+5. One commit on the branch `chunk/f2-content-store-and-recents` passes the native git hook. The commit carries `crates/bc_project/duet-project/lang_rust/Cargo.toml` and `Cargo.lock` together.
 
 ## Constraints
 
@@ -196,7 +196,8 @@ All tests of this chunk are unit tests in a `#[cfg(test)] mod tests` at the bott
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

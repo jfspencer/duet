@@ -3,13 +3,13 @@ id: K6
 line: K
 depends_on: [K5, T3, F1, F2]
 write_scope:
-  - crates/duet/src/shell/title_bar.rs
-  - crates/duet/src/shell/sidebar.rs
-  - crates/duet/src/shell/inspector.rs
-  - crates/duet/src/shell/status_bar.rs
-  - crates/duet/src/shell/history_sheet.rs
-  - crates/duet/src/shell/start.rs
-  - crates/duet/src/shell/view_state.rs
+  - crates/bc_app/duet/lang_rust/src/shell/title_bar.rs
+  - crates/bc_app/duet/lang_rust/src/shell/sidebar.rs
+  - crates/bc_app/duet/lang_rust/src/shell/inspector.rs
+  - crates/bc_app/duet/lang_rust/src/shell/status_bar.rs
+  - crates/bc_app/duet/lang_rust/src/shell/history_sheet.rs
+  - crates/bc_app/duet/lang_rust/src/shell/start.rs
+  - crates/bc_app/duet/lang_rust/src/shell/view_state.rs
 parallelism: "serial-only: phase 14 holds one chunk, because line K has six chunks and no cross-line dependency exists after phase 11 (section 13.3)"
 completion: "cargo nextest run -p duet -E 'test(sidebar) + test(start_view) + test(view_state_store)' --no-tests=fail passes; cargo clippy -p duet --all-targets -- -D warnings is clean; commit SHA on a branch chunk/k6-shell-surfaces"
 ---
@@ -28,13 +28,13 @@ This chunk writes no element file at all (section 10.3). It modifies seven files
 
 ## Files
 
-- `crates/duet/src/shell/title_bar.rs` — modify. `TitleBar`.
-- `crates/duet/src/shell/sidebar.rs` — modify. `Sidebar`.
-- `crates/duet/src/shell/inspector.rs` — modify. `Inspector`.
-- `crates/duet/src/shell/status_bar.rs` — modify. `StatusBar`.
-- `crates/duet/src/shell/history_sheet.rs` — modify. `HistorySheet`.
-- `crates/duet/src/shell/start.rs` — modify. `StartView`.
-- `crates/duet/src/shell/view_state.rs` — modify. `ViewStateStore`.
+- `crates/bc_app/duet/lang_rust/src/shell/title_bar.rs` — modify. `TitleBar`.
+- `crates/bc_app/duet/lang_rust/src/shell/sidebar.rs` — modify. `Sidebar`.
+- `crates/bc_app/duet/lang_rust/src/shell/inspector.rs` — modify. `Inspector`.
+- `crates/bc_app/duet/lang_rust/src/shell/status_bar.rs` — modify. `StatusBar`.
+- `crates/bc_app/duet/lang_rust/src/shell/history_sheet.rs` — modify. `HistorySheet`.
+- `crates/bc_app/duet/lang_rust/src/shell/start.rs` — modify. `StartView`.
+- `crates/bc_app/duet/lang_rust/src/shell/view_state.rs` — modify. `ViewStateStore`.
 
 This chunk writes no member manifest and no lock file.
 
@@ -256,8 +256,8 @@ Architecture section 10.7 rung three items 8 and 10.
    passes and selects at least one test per term.
 2. `cargo nextest run -p duet --no-tests=fail` passes, so every earlier K chunk test still passes.
 3. `cargo clippy -p duet --all-targets -- -D warnings` prints no warning.
-4. `git status` shows no change under `crates/duet/src/element/`, `crates/duet/src/compose/`,
-   `crates/duet/src/record/`, `crates/duet/src/mix/` or `crates/duet/src/master/`.
+4. `git status` shows no change under `crates/bc_app/duet/lang_rust/src/element/`, `crates/bc_app/duet/lang_rust/src/compose/`,
+   `crates/bc_app/duet/lang_rust/src/record/`, `crates/bc_app/duet/lang_rust/src/mix/` or `crates/bc_app/duet/lang_rust/src/master/`.
 5. One commit on a branch named `chunk/k6-shell-surfaces`. The native git hook runs `scripts/dod.sh`.
    Quote the command output before any claim of success, per the `verification-before-completion`
    skill.
@@ -269,7 +269,8 @@ Architecture section 10.7 rung three items 8 and 10.
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

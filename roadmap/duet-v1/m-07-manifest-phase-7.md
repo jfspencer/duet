@@ -6,10 +6,10 @@ write_scope:
   - Cargo.toml
   - Cargo.lock
   - .github/workflows/soak.yml
-  - crates/duet-export/Cargo.toml
-  - crates/duet-export/src/lib.rs
-  - crates/duet-core/Cargo.toml
-  - crates/duet-core/src/lib.rs
+  - crates/bc_audio/duet-export/lang_rust/Cargo.toml
+  - crates/bc_audio/duet-export/lang_rust/src/lib.rs
+  - crates/bc_gateway/duet-core/lang_rust/Cargo.toml
+  - crates/bc_gateway/duet-core/lang_rust/src/lib.rs
 parallelism: serial-only: SM1 runs the manifest chunk alone before every line chunk of its phase, and SM4 makes the workflow file an Orchestrator adjudication.
 completion: "cargo check -p duet-export -p duet-core --locked exits 0; commit SHA on a branch chunk/m7-manifest-phase-7"
 ---
@@ -53,10 +53,10 @@ and phase 8 each have a manifest chunk, so this chunk pins the phase-7 set alone
 | `Cargo.toml` | modify (`[workspace.dependencies]` only) |
 | `Cargo.lock` | modify |
 | `.github/workflows/soak.yml` | create |
-| `crates/duet-export/Cargo.toml` | create |
-| `crates/duet-export/src/lib.rs` | create |
-| `crates/duet-core/Cargo.toml` | create |
-| `crates/duet-core/src/lib.rs` | create |
+| `crates/bc_audio/duet-export/lang_rust/Cargo.toml` | create |
+| `crates/bc_audio/duet-export/lang_rust/src/lib.rs` | create |
+| `crates/bc_gateway/duet-core/lang_rust/Cargo.toml` | create |
+| `crates/bc_gateway/duet-core/lang_rust/src/lib.rs` | create |
 
 ## Types and signatures
 
@@ -78,8 +78,8 @@ here: chunk M4 pinned it in phase 4, and this chunk confirms that entry and adds
 ### The two internal path entries (SM1 rule 4)
 
 ```toml
-duet-core = { path = "crates/duet-core" }
-duet-export = { path = "crates/duet-export" }
+duet-core = { path = "crates/bc_gateway/duet-core/lang_rust" }
+duet-export = { path = "crates/bc_audio/duet-export/lang_rust" }
 ```
 
 A member crate reaches an internal crate with `duet-<crate> = { workspace = true }`, and that entry
@@ -165,13 +165,13 @@ failure here blocks a merge by review and never by a hook (section 14).
 
 ## Steps
 
-1. Confirm that C3, F3, G3, and X3 landed. Confirm that `crates/duet-engine/tests/soak.rs` exists
+1. Confirm that C3, F3, G3, and X3 landed. Confirm that `crates/bc_audio/duet-engine/lang_rust/tests/soak.rs` exists
    and that `cargo nextest run -p duet-engine --run-ignored ignored-only -E 'test(soak)' --no-tests=fail`
-   passes. Confirm that `crates/duet-time/tests/proptest_large.rs` exists and that
+   passes. Confirm that `crates/bc_time/duet-time/lang_rust/tests/proptest_large.rs` exists and that
    `cargo nextest run -p duet-time --run-ignored ignored-only -E 'test(proptest_large)' --no-tests=fail`
    passes. **Report a discrepancy and stop if either filter matches nothing**, because SM3 rule 1
    forbids a filtered run with no match.
-2. Confirm that `crates/duet-export` and `crates/duet-core` do not exist. Report a discrepancy and
+2. Confirm that `crates/bc_audio/duet-export/lang_rust` and `crates/bc_gateway/duet-core/lang_rust` do not exist. Report a discrepancy and
    stop if either one does.
 3. Add the two pins and the two internal path entries `duet-core` and `duet-export` (SM1 rule 4) to
    `[workspace.dependencies]` of the root `Cargo.toml`, in alphabetical order with the entries the
@@ -242,7 +242,8 @@ Then commit on a branch named `chunk/m7-manifest-phase-7`. The native git hook r
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

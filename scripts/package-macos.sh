@@ -56,8 +56,8 @@ duet_contents="$duet_bundle/Contents"
 
 mkdir -p "$duet_contents/MacOS" "$duet_contents/Resources"
 cp "$duet_executable" "$duet_contents/MacOS/duet"
-cp crates/duet/assets/icons/duet.icns "$duet_contents/Resources/duet.icns"
-cp crates/duet/packaging/macos/Info.plist "$duet_contents/Info.plist"
+cp crates/bc_app/duet/assets/icons/duet.icns "$duet_contents/Resources/duet.icns"
+cp crates/bc_app/duet/packaging/macos/Info.plist "$duet_contents/Info.plist"
 plutil -replace CFBundleShortVersionString -string "$duet_version" "$duet_contents/Info.plist"
 plutil -replace CFBundleVersion -string "$duet_version" "$duet_contents/Info.plist"
 plutil -lint "$duet_contents/Info.plist" >&2

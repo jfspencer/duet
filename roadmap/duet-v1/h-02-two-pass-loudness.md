@@ -3,8 +3,8 @@ id: H2
 line: H
 depends_on: [H1, D2, E3, M8]
 write_scope:
-  - crates/duet-export/src/loudness/analyse.rs
-  - crates/duet-export/src/loudness/limit.rs
+  - crates/bc_audio/duet-export/lang_rust/src/loudness/analyse.rs
+  - crates/bc_audio/duet-export/lang_rust/src/loudness/limit.rs
 parallelism: independent
 completion: "cargo nextest run -p duet-export -E 'test(two_pass) + test(cancel_cleanup)' --no-tests=fail passes; commit SHA on a branch chunk/h2-two-pass-loudness"
 ---
@@ -15,12 +15,12 @@ Verify the current state of the files in the write scope; report a discrepancy a
 
 **The limiter kernel is the ONE implementation the live master chain and this render both call**, so the monitor and the file agree. Chunk D2 wrote that kernel, and this chunk calls it. Links `D2 before H2` and `E3 before H2` of section 13.4 state both reasons.
 
-**This chunk writes no member manifest**, so it names neither `crates/duet-export/Cargo.toml` nor `Cargo.lock` in its write scope, and its Completion command carries no `--locked` flag (SM3 rule 4, SM5).
+**This chunk writes no member manifest**, so it names neither `crates/bc_audio/duet-export/lang_rust/Cargo.toml` nor `Cargo.lock` in its write scope, and its Completion command carries no `--locked` flag (SM3 rule 4, SM5).
 
 ## Files
 
-- `crates/duet-export/src/loudness/analyse.rs` — modify. Chunk H1 created the stub.
-- `crates/duet-export/src/loudness/limit.rs` — modify.
+- `crates/bc_audio/duet-export/lang_rust/src/loudness/analyse.rs` — modify. Chunk H1 created the stub.
+- `crates/bc_audio/duet-export/lang_rust/src/loudness/limit.rs` — modify.
 
 ## Types and signatures
 
@@ -135,7 +135,7 @@ All tests of this chunk are unit tests in a `#[cfg(test)] mod tests` at the bott
 1. `cargo nextest run -p duet-export -E 'test(two_pass) + test(cancel_cleanup)' --no-tests=fail` passes on macOS and on Linux. It fails before this chunk, because no test of either name exists.
 2. `cargo nextest run -p duet-export --no-tests=fail` passes.
 3. `cargo clippy -p duet-export --all-targets -- -D warnings` prints nothing.
-4. `git status` inside `crates/duet-export` shows no change to `Cargo.toml` and no change to `Cargo.lock`, because this chunk adds no dependency.
+4. `git status` inside `crates/bc_audio/duet-export/lang_rust` shows no change to `Cargo.toml` and no change to `Cargo.lock`, because this chunk adds no dependency.
 5. One commit on the branch `chunk/h2-two-pass-loudness` passes the native git hook.
 
 ## Constraints
@@ -145,7 +145,8 @@ All tests of this chunk are unit tests in a `#[cfg(test)] mod tests` at the bott
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

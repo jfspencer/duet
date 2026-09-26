@@ -3,8 +3,8 @@ id: I4
 line: I
 depends_on: [I3, F2, H2, H3]
 write_scope:
-  - crates/duet-core/src/gateway.rs
-  - crates/duet-core/Cargo.toml
+  - crates/bc_gateway/duet-core/lang_rust/src/gateway.rs
+  - crates/bc_gateway/duet-core/lang_rust/Cargo.toml
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-core -E 'test(export_arm) + test(gc_arm)' --no-tests=fail passes; cargo clippy -p duet-core --all-targets -- -D warnings is clean; commit SHA on a branch chunk/i4-export-and-gc-arms"
@@ -26,8 +26,8 @@ own write scope, which is the contract that lets phases run in parallel (critic 
 
 ## Files
 
-- `crates/duet-core/src/gateway.rs` — modify. The three arms and the guard test.
-- `crates/duet-core/Cargo.toml` — modify. The `duet-export` entry.
+- `crates/bc_gateway/duet-core/lang_rust/src/gateway.rs` — modify. The three arms and the guard test.
+- `crates/bc_gateway/duet-core/lang_rust/Cargo.toml` — modify. The `duet-export` entry.
 - `Cargo.lock` — modify (SM5 rule 2).
 
 ## Types and signatures
@@ -84,11 +84,11 @@ exists when the worker returns.
 
 ## Steps
 
-1. Read `crates/duet-core/src/gateway.rs`. Confirm that exactly three arms answer
+1. Read `crates/bc_gateway/duet-core/lang_rust/src/gateway.rs`. Confirm that exactly three arms answer
    `GatewayError::NotYetImplemented` and that chunk I1's test
    `dispatch_answers_not_yet_implemented_for_exactly_three_verbs` passes. Stop and report a
    discrepancy.
-2. Add the `duet-export` entry to `crates/duet-core/Cargo.toml` with `{ workspace = true }`. SM1
+2. Add the `duet-export` entry to `crates/bc_gateway/duet-core/lang_rust/Cargo.toml` with `{ workspace = true }`. SM1
    makes the chunk that uses a dependency add the entry in the same commit as the code that uses it.
    Run `cargo build --workspace` and commit the `Cargo.lock` it produces.
 3. Write the failing test `no_verb_is_unimplemented` in `src/gateway.rs`. It drives every `Verb` arm
@@ -117,7 +117,7 @@ exists when the worker returns.
 
 ## Tests
 
-Every test lives in a `#[cfg(test)] mod tests` in `crates/duet-core/src/gateway.rs`. Every assert
+Every test lives in a `#[cfg(test)] mod tests` in `crates/bc_gateway/duet-core/lang_rust/src/gateway.rs`. Every assert
 carries a message.
 
 | Test | What it asserts |
@@ -150,7 +150,8 @@ carries a message.
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

@@ -3,12 +3,12 @@ id: N1
 line: N
 depends_on: [M3, T3, D1]
 write_scope:
-  - crates/duet-media/Cargo.toml
-  - crates/duet-media/src/lib.rs
-  - crates/duet-media/src/wav.rs
-  - crates/duet-media/src/rf64.rs
-  - crates/duet-media/src/flac.rs
-  - crates/duet-media/src/decode.rs
+  - crates/bc_audio/duet-media/lang_rust/Cargo.toml
+  - crates/bc_audio/duet-media/lang_rust/src/lib.rs
+  - crates/bc_audio/duet-media/lang_rust/src/wav.rs
+  - crates/bc_audio/duet-media/lang_rust/src/rf64.rs
+  - crates/bc_audio/duet-media/lang_rust/src/flac.rs
+  - crates/bc_audio/duet-media/lang_rust/src/decode.rs
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-media -E 'test(wav)' --no-tests=fail"
@@ -19,7 +19,7 @@ completion: "cargo nextest run -p duet-media -E 'test(wav)' --no-tests=fail"
 Verify the current state of the files in the write scope; report a discrepancy and stop, instead of
 proceeding. This chunk opens line N over the crate `duet-media`. The line is `N`, and the manifest
 chunks are `M`, so no prefix is shared (section 13.2). Chunk M3 creates the crate skeleton in phase
-3, so `crates/duet-media/Cargo.toml` and `crates/duet-media/src/lib.rs` exist before this chunk
+3, so `crates/bc_audio/duet-media/lang_rust/Cargo.toml` and `crates/bc_audio/duet-media/lang_rust/src/lib.rs` exist before this chunk
 starts and this chunk modifies both. Every other file of the write scope does not exist yet, and this
 chunk creates it. The chunk declares `SourceReader`, `TakeWriter`, and `MediaError`, it reads and
 writes WAV through `hound`, and it implements `duet_dsp::SampleSource` for the reader. It implements
@@ -34,13 +34,13 @@ invariant it protects: an audio source file is read and written in exactly one p
 
 ## Files
 
-- `crates/duet-media/Cargo.toml` — modify. Add the `{ workspace = true }` entries this chunk uses.
-- `crates/duet-media/src/lib.rs` — modify. Add the four `mod` lines, `SourceReader`, `TakeWriter`,
+- `crates/bc_audio/duet-media/lang_rust/Cargo.toml` — modify. Add the `{ workspace = true }` entries this chunk uses.
+- `crates/bc_audio/duet-media/lang_rust/src/lib.rs` — modify. Add the four `mod` lines, `SourceReader`, `TakeWriter`,
   and `MediaError`.
-- `crates/duet-media/src/wav.rs` — create and fill. The WAV read path and the WAV write path.
-- `crates/duet-media/src/rf64.rs` — create as a stub. Chunk N2 fills it.
-- `crates/duet-media/src/flac.rs` — create as a stub. Chunk N3 fills it.
-- `crates/duet-media/src/decode.rs` — create as a stub. Chunk N3 fills it.
+- `crates/bc_audio/duet-media/lang_rust/src/wav.rs` — create and fill. The WAV read path and the WAV write path.
+- `crates/bc_audio/duet-media/lang_rust/src/rf64.rs` — create as a stub. Chunk N2 fills it.
+- `crates/bc_audio/duet-media/lang_rust/src/flac.rs` — create as a stub. Chunk N3 fills it.
+- `crates/bc_audio/duet-media/lang_rust/src/decode.rs` — create as a stub. Chunk N3 fills it.
 - `Cargo.lock` — modify. SM5 rule 2 puts it in the write scope of every chunk that writes a member
   manifest.
 
@@ -52,7 +52,7 @@ them for the crate and both readers and both writers of line N share them.
 ### Manifest
 
 ```toml
-# crates/duet-media/Cargo.toml, [dependencies]
+# crates/bc_audio/duet-media/lang_rust/Cargo.toml, [dependencies]
 duet-time = { workspace = true }
 duet-dsp = { workspace = true }
 duet-session = { workspace = true }
@@ -251,7 +251,7 @@ it; report the discrepancy to the Architect if `cargo xtask check-placement` ref
 
 ## Steps
 
-1. Read `crates/duet-media/Cargo.toml` and `crates/duet-media/src/lib.rs`. Confirm that chunk M3
+1. Read `crates/bc_audio/duet-media/lang_rust/Cargo.toml` and `crates/bc_audio/duet-media/lang_rust/src/lib.rs`. Confirm that chunk M3
    created both, that the manifest carries `[lints] workspace = true`, a `description`, and no
    `[dependencies]` section, and that `lib.rs` carries the `//!` crate documentation and
    `#![forbid(unsafe_code)]`. Report a discrepancy and stop if the state differs.
@@ -261,7 +261,7 @@ it; report the discrepancy to the Architect if `cargo xtask check-placement` ref
 3. Create the four module files. Fill `wav.rs`. Leave `rf64.rs`, `flac.rs`, and `decode.rs` at one
    `//!` line each.
 4. Add the four `mod` lines to `src/lib.rs` and declare `MediaError`.
-5. Add the five `{ workspace = true }` entries to `crates/duet-media/Cargo.toml`. Run
+5. Add the five `{ workspace = true }` entries to `crates/bc_audio/duet-media/lang_rust/Cargo.toml`. Run
    `cargo build --workspace`, which settles `Cargo.lock` (SM5 rule 3).
 6. Write the failing test `wav_round_trips_one_block` in `src/wav.rs`, inside a
    `#[cfg(test)] mod tests`. Section 13.2 gives this chunk no `tests/` file, so every test of this
@@ -290,7 +290,7 @@ chunk no `tests/` file. Every assert carries a message. Every test owns one scra
 it builds from `std::env::temp_dir` plus a unique name and removes at the end, so two tests never
 share a path. A test may unwrap, expect, print, and index, which `clippy.toml` allows.
 
-`crates/duet-media/src/wav.rs`
+`crates/bc_audio/duet-media/lang_rust/src/wav.rs`
 
 - `wav_round_trips_one_block` — writes 4800 stereo frames, finishes, reopens, reads them back, and
   asserts sample equality within one least significant bit of 24 bits.
@@ -310,7 +310,7 @@ share a path. A test may unwrap, expect, print, and index, which `clippy.toml` a
   `finish`, calls `repair_header`, reopens, and asserts that every written sample survives, which
   section 4.10 requires.
 
-`crates/duet-media/src/lib.rs`
+`crates/bc_audio/duet-media/lang_rust/src/lib.rs`
 
 - `wav_sample_source_wraps_a_read_failure` — deletes the file under an open reader and asserts
   `DspError::SourceRead`.
@@ -352,9 +352,10 @@ subject such as `feat(media): read and write WAV takes through one reader and on
   inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are
   required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every
   `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the
   root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no
   pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with
   Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this

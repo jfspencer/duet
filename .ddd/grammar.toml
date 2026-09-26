@@ -1,0 +1,7 @@
+version = 1
+
+[shell.rust]
+source = [{ literal = "src" }]
+extra_source_roots = [ [{ literal = "benches" }] ]
+test = [{ any_of = ["tests", "proptest-regressions"] }]
+test_kind = "integration"

@@ -41,7 +41,7 @@ use serde_json::Value;
 use crate::Outcome;
 
 /// The one member that may hold a cast (`CG7`).
-const EXEMPT_MEMBER: [&str; 2] = ["crates", "duet-time"];
+const EXEMPT_MEMBER: [&str; 4] = ["crates", "bc_time", "duet-time", "lang_rust"];
 
 /// The one file inside that member that may hold a cast (`CG7`).
 const EXEMPT_FILE: [&str; 2] = ["src", "convert.rs"];

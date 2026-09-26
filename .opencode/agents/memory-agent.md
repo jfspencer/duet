@@ -30,12 +30,12 @@ The store is an **LMDB** environment at the GLOBAL, plan-keyed path
 `~/.claude/plan-dbs/<plan-key>/`, **outside any worktree**, so every
 worktree / session / process on the same plan shares one store. The canonical
 plan-key resolver, env layout, and access CLI all live in the Rust `plan-db` crate
-(`tools/plan-db/src/main.rs`), launched as `.claude/plan-coordination/db.sh` (see
+(`tools/bc_plan_store/plan-db/lang_rust/src/main.rs`), launched as `.claude/plan-coordination/db.sh` (see
 `.claude/plan-coordination/README.md`). Initialize/resume
 idempotently with `.claude/plan-coordination/db.sh init <plan-dir>`. **LMDB is a flat
 ordered KV store — there is NO SQL and there are NO tables.** Lookups are prefix
 `scan`s plus explicit `idx:*` index keys. The keyspace below is mirrored in
-`tools/plan-db/src/main.rs` EXACTLY — if you change one, change both.
+`tools/bc_plan_store/plan-db/lang_rust/src/main.rs` EXACTLY — if you change one, change both.
 
 `db.sh init` is the **unified entry point** across the whole plan-DB lifecycle —
 create-if-absent, open-if-present: **genesis** (the DB is set up in the SAME plan

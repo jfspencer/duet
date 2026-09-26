@@ -3,9 +3,9 @@ id: M91
 line: M
 depends_on: [M0, T1]
 write_scope:
-  - crates/duet-time/src/convert.rs
-  - crates/duet-time/src/units.rs
-  - crates/duet-time/tests/kernel.rs
+  - crates/bc_time/duet-time/lang_rust/src/convert.rs
+  - crates/bc_time/duet-time/lang_rust/src/units.rs
+  - crates/bc_time/duet-time/lang_rust/tests/kernel.rs
 parallelism: independent
 completion: "cargo nextest run -p duet-time -E 'test(lossless)' --no-tests=fail passes; cargo nextest run -p duet-time --no-tests=fail passes; cargo clippy -p duet-time --all-targets -- -D warnings is clean; commit SHA on a branch chunk/m91-time-kernel-repairs"
 ---
@@ -42,14 +42,14 @@ and chunks D1 and T2 consume `duet-time` in the same phase.
 
 | Path | Action |
 |---|---|
-| `crates/duet-time/src/convert.rs` | modify (two scale constants, one body, FIVE `#[expect]` reasons, one doc block) |
-| `crates/duet-time/src/units.rs` | modify (`non_zero` and `non_zero_u32`) |
-| `crates/duet-time/tests/kernel.rs` | modify (one new test, one new constant value, FOUR repaired tests) |
+| `crates/bc_time/duet-time/lang_rust/src/convert.rs` | modify (two scale constants, one body, FIVE `#[expect]` reasons, one doc block) |
+| `crates/bc_time/duet-time/lang_rust/src/units.rs` | modify (`non_zero` and `non_zero_u32`) |
+| `crates/bc_time/duet-time/lang_rust/tests/kernel.rs` | modify (one new test, one new constant value, FOUR repaired tests) |
 
 ## Types and signatures
 
 No signature changes. Every public item keeps its current shape. Two module constants of
-`crates/duet-time/src/convert.rs` change value, and their documentation changes with them.
+`crates/bc_time/duet-time/lang_rust/src/convert.rs` change value, and their documentation changes with them.
 
 ```rust
 /// The scale that maps a unit sample onto the 24-bit range.
@@ -68,14 +68,14 @@ const UNIT_TO_I32_SCALE: f64 = 32_768.0 * 65_536.0;
 
 ## Steps
 
-1. Read `crates/duet-time/src/convert.rs`, `crates/duet-time/src/units.rs`, and
-   `crates/duet-time/tests/kernel.rs`. Confirm that `I24_SCALE` is `8_388_608.0`, that
+1. Read `crates/bc_time/duet-time/lang_rust/src/convert.rs`, `crates/bc_time/duet-time/lang_rust/src/units.rs`, and
+   `crates/bc_time/duet-time/lang_rust/tests/kernel.rs`. Confirm that `I24_SCALE` is `8_388_608.0`, that
    `UNIT_TO_I24_SCALE` is `8_388_607.0`, that `UNIT_TO_I32_SCALE` is `2_147_483_647.0`, that
    `non_zero` and `non_zero_u32` each answer `None` with a `MIN` value, and that
    `I32_ROUND_TRIP_DRIFT` is 130. Report a discrepancy and stop.
 
 2. Write the failing test for the exact 24-bit round trip. Add it to
-   `crates/duet-time/tests/kernel.rs`, beside `convert_i24_round_trip_at_the_boundaries`. It walks
+   `crates/bc_time/duet-time/lang_rust/tests/kernel.rs`, beside `convert_i24_round_trip_at_the_boundaries`. It walks
    every value from `I24::MIN` to `I24::MAX` and asserts equality. Name it
    `convert_i24_round_trip_is_lossless_over_every_sample`.
 
@@ -152,7 +152,7 @@ const UNIT_TO_I32_SCALE: f64 = 32_768.0 * 65_536.0;
    )]
    ```
 
-6. Repair `I24_BOUNDARY_ROUND_TRIPS` in `crates/duet-time/tests/kernel.rs`. Every pair becomes an
+6. Repair `I24_BOUNDARY_ROUND_TRIPS` in `crates/bc_time/duet-time/lang_rust/tests/kernel.rs`. Every pair becomes an
    identity, and the doc comment states the new reason.
 
    ```rust
@@ -314,7 +314,7 @@ const UNIT_TO_I32_SCALE: f64 = 32_768.0 * 65_536.0;
     item. **FU-4 is NOT promoted into this act**; it stays in the plan store and this step is the
     site that names it. ADR-0008 records the same debt at its decision 5.
 
-15. Repair `non_zero` in `crates/duet-time/src/units.rs`. Architecture section 1.6 mandates the body
+15. Repair `non_zero` in `crates/bc_time/duet-time/lang_rust/src/units.rs`. Architecture section 1.6 mandates the body
     character for character, and section 12.3 house form 5 requires the `# Panics` section in the
     crate.
 
@@ -368,7 +368,7 @@ const UNIT_TO_I32_SCALE: f64 = 32_768.0 * 65_536.0;
 
 ## Tests
 
-Every test lives in `crates/duet-time/tests/kernel.rs`, inside the existing `#[cfg(test)] mod tests`.
+Every test lives in `crates/bc_time/duet-time/lang_rust/tests/kernel.rs`, inside the existing `#[cfg(test)] mod tests`.
 Every assert carries a message.
 
 | Test | What it asserts | Where |
@@ -430,9 +430,10 @@ Appendix B.1 `b1-convert` holds all seven. Then commit on a branch `chunk/m91-ti
   inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are
   required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every
   `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the
   root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no
   pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with
   Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this

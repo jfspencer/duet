@@ -1,23 +1,23 @@
 ---
 id: T3
 line: trunk
-depends_on: [M2, T2]
+depends_on: [M2, T2, M94]
 write_scope:
-  - crates/duet-session/Cargo.toml
-  - crates/duet-session/src/lib.rs
-  - crates/duet-session/src/session.rs
-  - crates/duet-session/src/track.rs
-  - crates/duet-session/src/take.rs
-  - crates/duet-session/src/region.rs
-  - crates/duet-session/src/location.rs
-  - crates/duet-session/src/mix.rs
-  - crates/duet-session/src/curve.rs
-  - crates/duet-session/src/slot.rs
-  - crates/duet-session/src/calibration.rs
-  - crates/duet-session/src/command.rs
-  - crates/duet-session/src/event.rs
-  - crates/duet-session/src/error.rs
-  - crates/duet-session/tests/session.rs
+  - crates/bc_document/duet-session/lang_rust/Cargo.toml
+  - crates/bc_document/duet-session/lang_rust/src/lib.rs
+  - crates/bc_document/duet-session/lang_rust/src/session.rs
+  - crates/bc_document/duet-session/lang_rust/src/track.rs
+  - crates/bc_document/duet-session/lang_rust/src/take.rs
+  - crates/bc_document/duet-session/lang_rust/src/region.rs
+  - crates/bc_document/duet-session/lang_rust/src/location.rs
+  - crates/bc_document/duet-session/lang_rust/src/mix.rs
+  - crates/bc_document/duet-session/lang_rust/src/curve.rs
+  - crates/bc_document/duet-session/lang_rust/src/slot.rs
+  - crates/bc_document/duet-session/lang_rust/src/calibration.rs
+  - crates/bc_document/duet-session/lang_rust/src/command.rs
+  - crates/bc_document/duet-session/lang_rust/src/event.rs
+  - crates/bc_document/duet-session/lang_rust/src/error.rs
+  - crates/bc_document/duet-session/lang_rust/tests/session.rs
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-session --no-tests=fail passes; cargo clippy -p duet-session --all-targets -- -D warnings is clean; commit SHA on a branch chunk/t3-session"
@@ -35,28 +35,28 @@ locations, calibrations, the mix document with its strips, slots, sends and curv
 
 Section 13.4 puts `T2 before T3`: `Track` names one `PartId` and one `StaffId`, `BusRole::Part`
 names a `PartId`, and T3 adds the `{ workspace = true }` path entry for `duet-score` (SM1, SM8).
-Chunk M2 creates the `crates/duet-session` skeleton, so the crate root and the member manifest
+Chunk M2 creates the `crates/bc_document/duet-session/lang_rust` skeleton, so the crate root and the member manifest
 already exist. Dispatch: **Duet Engineer**.
 
 ## Files
 
 | Path | Action |
 |---|---|
-| `crates/duet-session/Cargo.toml` | modify (add `[dependencies]`) |
-| `crates/duet-session/src/lib.rs` | modify (add the `mod` and `pub use` lines) |
-| `crates/duet-session/src/session.rs` | create |
-| `crates/duet-session/src/track.rs` | create |
-| `crates/duet-session/src/take.rs` | create |
-| `crates/duet-session/src/region.rs` | create |
-| `crates/duet-session/src/location.rs` | create |
-| `crates/duet-session/src/mix.rs` | create |
-| `crates/duet-session/src/curve.rs` | create |
-| `crates/duet-session/src/slot.rs` | create |
-| `crates/duet-session/src/calibration.rs` | create |
-| `crates/duet-session/src/command.rs` | create |
-| `crates/duet-session/src/event.rs` | create |
-| `crates/duet-session/src/error.rs` | create |
-| `crates/duet-session/tests/session.rs` | create |
+| `crates/bc_document/duet-session/lang_rust/Cargo.toml` | modify (add `[dependencies]`) |
+| `crates/bc_document/duet-session/lang_rust/src/lib.rs` | modify (add the `mod` and `pub use` lines) |
+| `crates/bc_document/duet-session/lang_rust/src/session.rs` | create |
+| `crates/bc_document/duet-session/lang_rust/src/track.rs` | create |
+| `crates/bc_document/duet-session/lang_rust/src/take.rs` | create |
+| `crates/bc_document/duet-session/lang_rust/src/region.rs` | create |
+| `crates/bc_document/duet-session/lang_rust/src/location.rs` | create |
+| `crates/bc_document/duet-session/lang_rust/src/mix.rs` | create |
+| `crates/bc_document/duet-session/lang_rust/src/curve.rs` | create |
+| `crates/bc_document/duet-session/lang_rust/src/slot.rs` | create |
+| `crates/bc_document/duet-session/lang_rust/src/calibration.rs` | create |
+| `crates/bc_document/duet-session/lang_rust/src/command.rs` | create |
+| `crates/bc_document/duet-session/lang_rust/src/event.rs` | create |
+| `crates/bc_document/duet-session/lang_rust/src/error.rs` | create |
+| `crates/bc_document/duet-session/lang_rust/tests/session.rs` | create |
 | `Cargo.lock` | modify (SM5 rule 2) |
 
 ## Types and signatures
@@ -597,17 +597,17 @@ pub enum MixError {
 
 ## Steps
 
-1. Read `crates/duet-session/Cargo.toml` and `crates/duet-session/src/lib.rs`. Confirm that M2
+1. Read `crates/bc_document/duet-session/lang_rust/Cargo.toml` and `crates/bc_document/duet-session/lang_rust/src/lib.rs`. Confirm that M2
    created both and that the manifest holds no `[dependencies]` section. Confirm that `duet-time`
    exports `MAX_STRIPS`, `MAX_PARAMS`, `MAX_SLOTS`, and `MAX_SENDS`, and that `duet-score` exports
    `PartId` and `StaffId`. Report a discrepancy and stop if any one is false.
-2. Add the dependency entries to `crates/duet-session/Cargo.toml`. The section 1.2 row for
+2. Add the dependency entries to `crates/bc_document/duet-session/lang_rust/Cargo.toml`. The section 1.2 row for
    `duet-session` names two third-party crates, and section 1.3 gives the two internal edges.
 
    ```toml
    [dependencies]
-   duet-time = { path = "../duet-time" }
-   duet-score = { path = "../duet-score" }
+   duet-time = { workspace = true }
+   duet-score = { workspace = true }
    serde = { workspace = true }
    thiserror = { workspace = true }
    ```
@@ -639,7 +639,7 @@ pub enum MixError {
    fails.
 10. Create `src/curve.rs` with `CurvePoints`, `Curve`, `Interpolation`, and the five `Curve`
     methods. Add the `mod` line. Run the same command. Expected result: the run passes.
-11. Write the failing mix tests in `crates/duet-session/tests/session.rs`. They cover the B86 strip
+11. Write the failing mix tests in `crates/bc_document/duet-session/lang_rust/tests/session.rs`. They cover the B86 strip
     refusal, the B90 parameter refusal, the `MAX_SLOTS` refusal, the `MAX_SENDS` refusal, the
     routing-cycle refusal, and the reserved-role refusal. Run
     `cargo nextest run -p duet-session --test session --no-tests=fail`. Expected result: the run
@@ -707,7 +707,8 @@ commit lands only when every gate passes.
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

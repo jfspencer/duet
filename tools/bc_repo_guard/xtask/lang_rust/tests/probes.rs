@@ -43,6 +43,101 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
     use std::{env, fs};
 
+    /// The repository root: the nearest ancestor of this crate that holds the
+    /// workspace lockfile. The guard binary resolves its own root the same way.
+    fn repository_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .find(|dir| dir.join("Cargo.lock").is_file())
+            .expect("an ancestor of the xtask crate holds the workspace lockfile")
+            .to_path_buf()
+    }
+
+    /// The path of this crate relative to the repository root, with `/` separators.
+    fn crate_path_in_repository() -> String {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .strip_prefix(repository_root())
+            .expect("the xtask crate sits inside the repository root")
+            .components()
+            .map(|part| part.as_os_str().to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+            .join("/")
+    }
+
+    /// The CI changed-path filter names the directory that holds this crate.
+    ///
+    /// The `plan-lint` job runs only when the filter matches a changed path, so a
+    /// filter that names a directory which no longer exists skips every guard
+    /// probe in CI and still reports green.
+    #[test]
+    fn gate_filter_ci_names_the_guard_crate() {
+        let workflow = fs::read_to_string(repository_root().join(".github/workflows/ci.yml"))
+            .expect("the CI workflow opens");
+        let crate_path = crate_path_in_repository();
+        let filter = workflow
+            .lines()
+            .find(|line| line.contains("grep -qE '^roadmap/|"))
+            .expect("the CI workflow holds the plan changed-path filter");
+        let pattern = filter
+            .split("grep -qE '")
+            .nth(1)
+            .and_then(|rest| rest.split('\'').next())
+            .expect("the filter holds one quoted pattern");
+        assert!(
+            filter_names_path(pattern, &crate_path),
+            "the CI filter `{pattern}` names no prefix of the guard crate path `{crate_path}`"
+        );
+    }
+
+    /// Whether one non-empty alternative of a changed-path pattern is a prefix of a path.
+    ///
+    /// An empty alternative matches every string, so it names no path.
+    fn filter_names_path(pattern: &str, path: &str) -> bool {
+        let with_slash = format!("{path}/");
+        pattern
+            .split('|')
+            .map(|alternative| alternative.trim_start_matches('^'))
+            .filter(|prefix| !prefix.is_empty())
+            .any(|prefix| with_slash.starts_with(prefix))
+    }
+
+    #[test]
+    fn gate_filter_empty_alternative_names_no_path() {
+        assert!(
+            !filter_names_path("^roadmap/|", "tools/bc_repo_guard/xtask/lang_rust"),
+            "an empty alternative is not a prefix of the guard crate path"
+        );
+        assert!(
+            filter_names_path(
+                "^roadmap/|^tools/bc_repo_guard/",
+                "tools/bc_repo_guard/xtask/lang_rust"
+            ),
+            "a non-empty alternative that is a prefix names the guard crate path"
+        );
+    }
+
+    /// The Definition of Done gate runs the reason-text half of `check-conversions` when the
+    /// one exempt file changes, so its changed-path pattern names that file.
+    #[test]
+    fn gate_filter_dod_names_the_exempt_conversion_file() {
+        let root = repository_root();
+        let dod = fs::read_to_string(root.join("scripts/dod.sh")).expect("the DoD script opens");
+        let line = dod
+            .lines()
+            .find(|line| line.contains("touches '^roadmap/|") && line.contains("convert"))
+            .expect("the DoD script holds the conversion changed-path filter");
+        let pattern = line
+            .split("|^")
+            .nth(1)
+            .and_then(|rest| rest.split('$').next())
+            .expect("the filter names one anchored file after `roadmap/`");
+        let file = pattern.replace("\\.", ".");
+        assert!(
+            root.join(&file).is_file(),
+            "the DoD conversion filter names `{file}`, and no such file exists"
+        );
+    }
+
     /// A library file with no cast and no suppression.
     const CLEAN_LIB: &str = "//! A probe member.\n";
 
@@ -425,7 +520,7 @@ path = "other/lib.rs"
         vec![
             (
                 "a1.md",
-                chunk("A1", "core", &[], &["crates/alpha/src/a.rs"]),
+                chunk("A1", "core", &[], &["crates/bc_x/alpha/lang_rust/src/a.rs"]),
             ),
             ("b2.md", chunk("B2", "core", &["A1"], &[scope])),
         ]
@@ -816,9 +911,9 @@ path = "other/lib.rs"
     fn conversion_cg7_only_the_exempt_file_may_hold_a_cast() {
         let (code, report) = conversions(
             "cg7-exempt",
-            &root_manifest(&["crates/*"], &[]),
+            &root_manifest(&["crates/*/*/lang_rust"], &[]),
             &[Member::lib(
-                "crates/duet-time",
+                "crates/bc_time/duet-time/lang_rust",
                 "duet-time",
                 &[
                     ("src/lib.rs", CLEAN_LIB),
@@ -837,7 +932,7 @@ path = "other/lib.rs"
             "only the sibling reports: {report}"
         );
         assert!(
-            report.contains("  CAST: crates/duet-time/src/other.rs: line 2"),
+            report.contains("  CAST: crates/bc_time/duet-time/lang_rust/src/other.rs: line 2"),
             "the finding names the sibling file: {report}"
         );
     }
@@ -846,9 +941,9 @@ path = "other/lib.rs"
     fn conversion_cg7_a_suppression_inside_the_exempt_file_is_exempt() {
         let (code, report) = conversions(
             "cg7-exempt-suppression",
-            &root_manifest(&["crates/*"], &[]),
+            &root_manifest(&["crates/*/*/lang_rust"], &[]),
             &[Member::lib(
-                "crates/duet-time",
+                "crates/bc_time/duet-time/lang_rust",
                 "duet-time",
                 &[
                     ("src/lib.rs", CLEAN_LIB),
@@ -929,7 +1024,7 @@ pub fn alpha(value: u64) -> u64 { value }
     /// The one member every `CG9` probe builds: the exempt file and its crate.
     fn exempt_member(convert: &str) -> Member {
         Member::lib(
-            "crates/duet-time",
+            "crates/bc_time/duet-time/lang_rust",
             "duet-time",
             &[("src/lib.rs", CLEAN_LIB), ("src/convert.rs", convert)],
         )
@@ -947,7 +1042,7 @@ pub fn alpha(value: u64) -> u64 { value }
     ) -> (i32, String) {
         let root = workspace(
             label,
-            &root_manifest(&["crates/*"], &[]),
+            &root_manifest(&["crates/*/*/lang_rust"], &[]),
             &[exempt_member(convert)],
         );
         let document = root.join("roadmap").join("duet-v1").join("architecture.md");
@@ -1166,11 +1261,16 @@ pub fn alpha(value: u64) -> u64 { value }
             &[
                 (
                     "a1.md",
-                    chunk("A1", "core", &[], &["crates/alpha/src/a.rs"]),
+                    chunk("A1", "core", &[], &["crates/bc_x/alpha/lang_rust/src/a.rs"]),
                 ),
                 (
                     "b2.md",
-                    chunk("B2", "core", &["A1"], &["crates/beta/src/b.rs"]),
+                    chunk(
+                        "B2",
+                        "core",
+                        &["A1"],
+                        &["crates/bc_x/beta/lang_rust/src/b.rs"],
+                    ),
                 ),
             ],
         );
@@ -1189,7 +1289,12 @@ pub fn alpha(value: u64) -> u64 { value }
             &arch,
             &[(
                 "a1.md",
-                chunk("A1", "core", &["Z9"], &["crates/alpha/src/a.rs"]),
+                chunk(
+                    "A1",
+                    "core",
+                    &["Z9"],
+                    &["crates/bc_x/alpha/lang_rust/src/a.rs"],
+                ),
             )],
         );
         assert_eq!(code, 1, "an unknown dependency is a finding: {report}");
@@ -1202,7 +1307,7 @@ pub fn alpha(value: u64) -> u64 { value }
     #[test]
     fn plan_graph_vocabulary_duplicate_chunk_id_is_a_finding() {
         let arch = architecture(&[(1, "none", "A1")], &[]);
-        let body = chunk("A1", "core", &[], &["crates/alpha/src/a.rs"]);
+        let body = chunk("A1", "core", &[], &["crates/bc_x/alpha/lang_rust/src/a.rs"]);
         let (code, report) = plan_graph(
             "pg-duplicate",
             &arch,
@@ -1244,11 +1349,21 @@ pub fn alpha(value: u64) -> u64 { value }
             &[
                 (
                     "a1.md",
-                    chunk("A1", "core", &["B1"], &["crates/alpha/src/a.rs"]),
+                    chunk(
+                        "A1",
+                        "core",
+                        &["B1"],
+                        &["crates/bc_x/alpha/lang_rust/src/a.rs"],
+                    ),
                 ),
                 (
                     "b1.md",
-                    chunk("B1", "edge", &["A1"], &["crates/beta/src/b.rs"]),
+                    chunk(
+                        "B1",
+                        "edge",
+                        &["A1"],
+                        &["crates/bc_x/beta/lang_rust/src/b.rs"],
+                    ),
                 ),
             ],
         );
@@ -1268,9 +1383,17 @@ pub fn alpha(value: u64) -> u64 { value }
             &[
                 (
                     "a1.md",
-                    chunk("A1", "core", &["B2"], &["crates/alpha/src/a.rs"]),
+                    chunk(
+                        "A1",
+                        "core",
+                        &["B2"],
+                        &["crates/bc_x/alpha/lang_rust/src/a.rs"],
+                    ),
                 ),
-                ("b2.md", chunk("B2", "edge", &[], &["crates/beta/src/b.rs"])),
+                (
+                    "b2.md",
+                    chunk("B2", "edge", &[], &["crates/bc_x/beta/lang_rust/src/b.rs"]),
+                ),
             ],
         );
         assert_eq!(code, 1, "a backward link is a finding: {report}");
@@ -1283,7 +1406,7 @@ pub fn alpha(value: u64) -> u64 { value }
     #[test]
     fn plan_graph_shared_write_scope_inside_one_phase_is_a_finding() {
         let arch = architecture(&[(1, "none", "A1, B1")], &[]);
-        let shared = "crates/shared/src/lib.rs";
+        let shared = "crates/bc_x/shared/lang_rust/src/lib.rs";
         let (code, report) = plan_graph(
             "pg-scope",
             &arch,
@@ -1313,9 +1436,12 @@ pub fn alpha(value: u64) -> u64 { value }
             &[
                 (
                     "a1.md",
-                    chunk("A1", "core", &[], &["crates/alpha/src/a.rs"]),
+                    chunk("A1", "core", &[], &["crates/bc_x/alpha/lang_rust/src/a.rs"]),
                 ),
-                ("b1.md", chunk("B1", "core", &[], &["crates/beta/src/b.rs"])),
+                (
+                    "b1.md",
+                    chunk("B1", "core", &[], &["crates/bc_x/beta/lang_rust/src/b.rs"]),
+                ),
             ],
         );
         assert_eq!(
@@ -1336,7 +1462,7 @@ pub fn alpha(value: u64) -> u64 { value }
             &arch,
             &[(
                 "a1.md",
-                chunk("A1", "core", &[], &["crates/alpha/src/a.rs"]),
+                chunk("A1", "core", &[], &["crates/bc_x/alpha/lang_rust/src/a.rs"]),
             )],
         );
         assert_eq!(
@@ -1358,9 +1484,12 @@ pub fn alpha(value: u64) -> u64 { value }
             &[
                 (
                     "a1.md",
-                    chunk("A1", "core", &[], &["crates/alpha/src/a.rs"]),
+                    chunk("A1", "core", &[], &["crates/bc_x/alpha/lang_rust/src/a.rs"]),
                 ),
-                ("b2.md", chunk("B2", "edge", &[], &["crates/beta/src/b.rs"])),
+                (
+                    "b2.md",
+                    chunk("B2", "edge", &[], &["crates/bc_x/beta/lang_rust/src/b.rs"]),
+                ),
             ],
         );
         assert_eq!(
@@ -1396,7 +1525,7 @@ pub fn alpha(value: u64) -> u64 { value }
         let root = plan(
             "pg-manifest-clean",
             &manifest_architecture(),
-            &manifest_chunks("crates/beta/src/b.rs"),
+            &manifest_chunks("crates/bc_x/beta/lang_rust/src/b.rs"),
         );
         let (written, write_report) = plan_graph_run(&root, &["--write-manifest"]);
         let (code, report) = plan_graph_run(&root, &["--check-manifest"]);
@@ -1421,12 +1550,18 @@ pub fn alpha(value: u64) -> u64 { value }
         let root = plan(
             "pg-manifest-drift",
             &manifest_architecture(),
-            &manifest_chunks("crates/beta/src/b.rs"),
+            &manifest_chunks("crates/bc_x/beta/lang_rust/src/b.rs"),
         );
         let (written, write_report) = plan_graph_run(&root, &["--write-manifest"]);
         write_bytes(
             &root.join("b2.md"),
-            chunk("B2", "core", &["A1"], &["crates/beta/src/moved.rs"]).as_bytes(),
+            chunk(
+                "B2",
+                "core",
+                &["A1"],
+                &["crates/bc_x/beta/lang_rust/src/moved.rs"],
+            )
+            .as_bytes(),
         );
         let (code, report) = plan_graph_run(&root, &["--check-manifest"]);
         clean(&root);
@@ -1450,7 +1585,7 @@ pub fn alpha(value: u64) -> u64 { value }
         let root = plan(
             "pg-manifest-edited",
             &manifest_architecture(),
-            &manifest_chunks("crates/beta/src/b.rs"),
+            &manifest_chunks("crates/bc_x/beta/lang_rust/src/b.rs"),
         );
         let (written, write_report) = plan_graph_run(&root, &["--write-manifest"]);
         let manifest = root.join("plan-graph.md");
@@ -1474,7 +1609,7 @@ pub fn alpha(value: u64) -> u64 { value }
         let root = plan(
             "pg-manifest-absent",
             &manifest_architecture(),
-            &manifest_chunks("crates/beta/src/b.rs"),
+            &manifest_chunks("crates/bc_x/beta/lang_rust/src/b.rs"),
         );
         let (code, report) = plan_graph_run(&root, &["--check-manifest"]);
         clean(&root);
@@ -1496,7 +1631,12 @@ pub fn alpha(value: u64) -> u64 { value }
             &arch,
             &[(
                 "a1.md",
-                chunk("A1", "core", &["Z9"], &["crates/alpha/src/a.rs"]),
+                chunk(
+                    "A1",
+                    "core",
+                    &["Z9"],
+                    &["crates/bc_x/alpha/lang_rust/src/a.rs"],
+                ),
             )],
         );
         let (code, report) = plan_graph_run(&root, &["--check-manifest"]);
@@ -1517,7 +1657,7 @@ pub fn alpha(value: u64) -> u64 { value }
         let root = plan(
             "pg-manifest-both",
             &manifest_architecture(),
-            &manifest_chunks("crates/beta/src/b.rs"),
+            &manifest_chunks("crates/bc_x/beta/lang_rust/src/b.rs"),
         );
         let (code, report) = plan_graph_run(&root, &["--write-manifest", "--check-manifest"]);
         let written = root.join("plan-graph.md").exists();
@@ -1539,7 +1679,7 @@ pub fn alpha(value: u64) -> u64 { value }
             &[
                 (
                     "a1.md",
-                    chunk("A1", "core", &[], &["crates/alpha/src/a.rs"]),
+                    chunk("A1", "core", &[], &["crates/bc_x/alpha/lang_rust/src/a.rs"]),
                 ),
                 (
                     "broken.md",
@@ -1570,7 +1710,7 @@ pub fn alpha(value: u64) -> u64 { value }
             &[
                 (
                     "a1.md",
-                    chunk("A1", "core", &[], &["crates/alpha/src/a.rs"]),
+                    chunk("A1", "core", &[], &["crates/bc_x/alpha/lang_rust/src/a.rs"]),
                 ),
                 (
                     "notes.md",
@@ -1601,7 +1741,7 @@ pub fn alpha(value: u64) -> u64 { value }
             &[
                 (
                     "a1.md",
-                    chunk("A1", "core", &[], &["crates/alpha/src/a.rs"]),
+                    chunk("A1", "core", &[], &["crates/bc_x/alpha/lang_rust/src/a.rs"]),
                 ),
                 (
                     "partial.md",
@@ -1633,7 +1773,7 @@ pub fn alpha(value: u64) -> u64 { value }
             &[
                 (
                     "a1.md",
-                    chunk("A1", "core", &[], &["crates/alpha/src/a.rs"]),
+                    chunk("A1", "core", &[], &["crates/bc_x/alpha/lang_rust/src/a.rs"]),
                 ),
                 (
                     "notes.md",
@@ -1655,6 +1795,108 @@ pub fn alpha(value: u64) -> u64 { value }
     /// guard runs holds its own stack, so the depth reaches a verdict.
     const DEEP_CHAIN: usize = 40_000;
 
+    /// Run the plan-graph guard over one chunk whose write scope holds one path.
+    fn plan_graph_scope(label: &str, path: &str) -> (i32, String) {
+        let arch = architecture(&[(1, "none", "A1")], &[]);
+        plan_graph(
+            label,
+            &arch,
+            &[("a1.md", chunk("A1", "core", &[], &[path]))],
+        )
+    }
+
+    /// The finding check 9 prints for one chunk and one path.
+    fn scope_shape_finding(path: &str) -> String {
+        format!(
+            "FINDING: A1 writes {path}, which is not `<crates|tools>/bc_<context>/<package>/` \
+followed by `lang_rust/` or a unit sibling"
+        )
+    }
+
+    #[test]
+    fn plan_graph_check9_path_under_lang_rust_is_clean() {
+        let (code, report) = plan_graph_scope("pg9-rust", "crates/bc_x/duet-aa/lang_rust/src/x.rs");
+        assert_eq!(
+            code, 0,
+            "a path under `lang_rust/` is in the unit shape: {report}"
+        );
+    }
+
+    #[test]
+    fn plan_graph_check9_unit_sibling_is_clean() {
+        let (code, report) = plan_graph_scope("pg9-asset", "crates/bc_x/duet-aa/assets/y.otf");
+        assert_eq!(
+            code, 0,
+            "a path under `assets/` is a unit sibling: {report}"
+        );
+    }
+
+    #[test]
+    fn plan_graph_check9_path_with_no_context_is_a_finding() {
+        let path = "crates/duet-aa/src/x.rs";
+        let (code, report) = plan_graph_scope("pg9-old", path);
+        assert_eq!(
+            code, 1,
+            "a path with no context directory is a finding: {report}"
+        );
+        assert!(
+            report.contains(&scope_shape_finding(path)),
+            "the finding names the chunk and the path: {report}"
+        );
+    }
+
+    #[test]
+    fn plan_graph_check9_source_outside_lang_rust_is_a_finding() {
+        let path = "crates/bc_x/duet-aa/src/x.rs";
+        let (code, report) = plan_graph_scope("pg9-src", path);
+        assert_eq!(
+            code, 1,
+            "a source file beside `lang_rust/` is a finding: {report}"
+        );
+        assert!(
+            report.contains(&scope_shape_finding(path)),
+            "the finding names the chunk and the path: {report}"
+        );
+    }
+
+    #[test]
+    fn plan_graph_check9_tool_with_no_context_is_a_finding() {
+        let path = "tools/xtask/src/x.rs";
+        let (code, report) = plan_graph_scope("pg9-tool", path);
+        assert_eq!(
+            code, 1,
+            "a tool path with no context directory is a finding: {report}"
+        );
+        assert!(
+            report.contains(&scope_shape_finding(path)),
+            "the finding names the chunk and the path: {report}"
+        );
+    }
+
+    #[test]
+    fn plan_graph_check9_dot_slash_path_with_no_context_is_a_finding() {
+        let path = "./crates/duet-aa/src/x.rs";
+        let (code, report) = plan_graph_scope("pg9-dot", path);
+        assert_eq!(
+            code, 1,
+            "a `./` path with no context directory is a finding: {report}"
+        );
+        assert!(
+            report.contains(&scope_shape_finding(path)),
+            "the finding names the chunk and the path as written: {report}"
+        );
+    }
+
+    #[test]
+    fn plan_graph_check9_dot_slash_path_under_lang_rust_is_clean() {
+        let (code, report) =
+            plan_graph_scope("pg9-dot-rust", "./crates/bc_x/duet-aa/lang_rust/src/x.rs");
+        assert_eq!(
+            code, 0,
+            "a `./` path under `lang_rust/` is in the unit shape: {report}"
+        );
+    }
+
     #[test]
     fn plan_graph_deep_dependency_chain_reaches_a_verdict() {
         let root = scratch("pg-deep");
@@ -1669,7 +1911,7 @@ pub fn alpha(value: u64) -> u64 { value }
             } else {
                 String::new()
             };
-            let scope = format!("crates/c{index}/src/lib.rs");
+            let scope = format!("crates/bc_x/c{index}/lang_rust/src/lib.rs");
             let text = format!(
                 "---\nid: D{index}\nline: core\ndepends_on: [{depends}]\n\
                  write_scope: [{scope}]\nparallelism: independent\n\
@@ -1769,15 +2011,11 @@ pub fn alpha(value: u64) -> u64 { value }
 
     /// The repository the closure guard resolves at compile time.
     ///
-    /// The guard reads `.claude/plan-coordination/db.sh` of the repository two
-    /// levels above its own crate, so a probe of `CL1c` resolves the same
-    /// launcher the same way.
+    /// The guard reads `.claude/plan-coordination/db.sh` of the repository
+    /// that holds the workspace lockfile above its own crate, so a probe of
+    /// `CL1c` resolves the same launcher the same way.
     fn guard_repo() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .ancestors()
-            .nth(2)
-            .expect("the repository root sits two levels above this crate")
-            .to_path_buf()
+        repository_root()
     }
 
     /// A run token no other closure probe shares.
@@ -2515,6 +2753,23 @@ pub fn alpha(value: u64) -> u64 { value }
         "ACDEFGHJKLMNOPQR"
             .chars()
             .map(|mark| mark.to_string())
+            .collect()
+    }
+
+    /// The path every line chunk of the fixture writes, in the unit shape.
+    const PLACEMENT_SCOPE: &str = "`crates/bc_app/duet/lang_rust/src/lib.rs`";
+
+    /// The chunk row A1 of the fixture, as the baseline states it.
+    const PLACEMENT_A1_ROW: &str = "| A1 | 0 | a synthetic chunk | `crates/bc_app/duet/lang_rust/src/lib.rs` | a synthetic gate |";
+
+    /// Every crate of the fixture and the bounded context that holds it.
+    fn placement_context_map() -> Vec<String> {
+        placement_crates()
+            .iter()
+            .map(|name| {
+                let context = if name == "duet" { "app" } else { "synth" };
+                format!("{name} {context}")
+            })
             .collect()
     }
 
@@ -3335,6 +3590,13 @@ pub fn alpha(value: u64) -> u64 { value }
                     .collect(),
             ),
             pblock(
+                "context-map",
+                "The bounded context map",
+                "text",
+                "crate-name",
+                placement_context_map(),
+            ),
+            pblock(
                 "phase-pair-exempt",
                 "Every same-phase crate edge that does not bind",
                 "text",
@@ -3368,6 +3630,9 @@ pub fn alpha(value: u64) -> u64 { value }
         found
     }
 
+    /// The row floor the guard register states for the `rule-blocks` block.
+    const RULE_BLOCK_FLOOR: usize = 34;
+
     /// Every registered block of the fixture, with its two self-describing rows.
     fn placement_register() -> Vec<PlacementBlock> {
         let mut found = placement_blocks_plan();
@@ -3380,7 +3645,7 @@ pub fn alpha(value: u64) -> u64 { value }
             .collect();
         let ids: Vec<String> = found.iter().map(|entry| entry.id.to_owned()).collect();
         let groups: Vec<String> = ids.chunks(2).map(md_spans).collect();
-        let rows: Vec<String> = (0..33_usize)
+        let rows: Vec<String> = (0..RULE_BLOCK_FLOOR)
             .map(|index| {
                 let cell = groups
                     .get(index)
@@ -3396,7 +3661,7 @@ pub fn alpha(value: u64) -> u64 { value }
             }
             if entry.id == "rule-blocks" {
                 entry.body = md_table(&["Rule", "Blocks"], rows.clone());
-                entry.minimum = 33;
+                entry.minimum = RULE_BLOCK_FLOOR;
             }
         }
         found
@@ -3469,7 +3734,7 @@ pub fn alpha(value: u64) -> u64 { value }
                 let scope = if chunk == "M1" {
                     manifest.clone()
                 } else {
-                    "the workspace".to_owned()
+                    PLACEMENT_SCOPE.to_owned()
                 };
                 md_row(&[
                     chunk,
@@ -3597,6 +3862,7 @@ pub fn alpha(value: u64) -> u64 { value }
             "### 13.3 The phases\n".to_owned(),
             render("phase-table"),
             render("line-map"),
+            render("context-map"),
             render("phase-pair-exempt"),
             format!("**Per-phase `Cargo.lock` writer counts, phases 0 to 15: {zeros}**\n"),
             "**The plan is longer and narrower than revision 5's.** sixteen phases replace \
@@ -3769,7 +4035,7 @@ suppressions, four `missing_copy_implementations` expectations, and three \
         let (code, report) = placement("pg-base", &placement_document());
         assert_eq!(code, 0, "the synthetic document holds no breach: {report}");
         assert!(
-            report.contains("BLOCKS:          51     BLOCK BAD: 0"),
+            report.contains("BLOCKS:          52     BLOCK BAD: 0"),
             "every registered block reads: {report}"
         );
         assert!(
@@ -3777,7 +4043,7 @@ suppressions, four `missing_copy_implementations` expectations, and three \
             "the placement rules find nothing: {report}"
         );
         assert!(
-            report.contains("MEMBER ROWS: 1363     MEMBER BAD: 0"),
+            report.contains("MEMBER ROWS: 1381     MEMBER BAD: 0"),
             "every row of every block names a referent: {report}"
         );
         assert!(
@@ -4743,23 +5009,179 @@ declares the function"
         );
     }
 
-    #[test]
-    fn placement_pg40_chunk_that_writes_outside_its_line_is_a_finding() {
+    /// The fixture with chunk row A1 writing one other path, run through the guard.
+    fn placement_pg40_row(label: &str, path: &str) -> (i32, String) {
         let text = plant(
             &placement_document(),
-            "| A1 | 0 | a synthetic chunk | the workspace | a synthetic gate |",
-            "| A1 | 0 | a synthetic chunk | writes crates/duet-aa/src/one.rs | a synthetic gate |",
+            PLACEMENT_A1_ROW,
+            &format!("| A1 | 0 | a synthetic chunk | writes {path} | a synthetic gate |"),
         );
-        let (code, report) = placement("pg40", &text);
+        placement(label, &text)
+    }
+
+    #[test]
+    fn placement_pg40_baseline_parses_every_chunk_path() {
+        let (code, report) = placement("pg40-base", &placement_document());
+        assert_eq!(code, 0, "every chunk path of the fixture parses: {report}");
+        assert!(
+            report.contains("LINE CHUNKS:     64     CHUNK PATHS: 63     CHUNK CRATE BAD: 0"),
+            "the guard prints the chunk rows and the parsed paths it decided: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg40_chunk_that_writes_outside_its_line_is_a_finding() {
+        let (code, report) =
+            placement_pg40_row("pg40", "`crates/bc_synth/duet-aa/lang_rust/src/one.rs`");
         assert_eq!(
             code, 1,
             "a chunk that writes outside its own line is a finding: {report}"
         );
         assert!(
             report.contains(
-                "CHUNK CRATE:A1: the row writes under `crates/duet-aa/` and line `A` owns `duet`"
+                "CHUNK CRATE:A1: the row writes into crate `duet-aa` and line `A` owns `duet` (PG40)"
             ),
-            "the guard names the chunk, the path, and the owning line: {report}"
+            "the guard names the chunk, the crate, and the owning line: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg40_path_in_the_old_shape_is_a_finding() {
+        let (code, report) = placement_pg40_row("pg40-old", "`crates/duet-aa/src/one.rs`");
+        assert_eq!(
+            code, 1,
+            "a path that skips the context directory is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "CHUNK CRATE:A1: the row names `crates/duet-aa/src/one.rs`, a path outside the \
+`crates/bc_<context>/<crate>/` shape (PG40)"
+            ),
+            "the guard names the chunk and the path that does not parse: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg40_path_under_the_wrong_context_is_a_finding() {
+        let (code, report) = placement_pg40_row(
+            "pg40-context",
+            "`crates/bc_synth/duet/lang_rust/src/one.rs`",
+        );
+        assert_eq!(
+            code, 1,
+            "a crate under a context the map does not give it is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "CHUNK CRATE:A1: the row names `crates/bc_synth/duet/lang_rust/src/one.rs` under \
+context `bc_synth` and the `context-map` block puts `duet` in `bc_app` (PG40)"
+            ),
+            "the guard names the path and both contexts: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg40_context_map_that_omits_a_crate_is_a_finding() {
+        let text = plant(
+            &placement_document(),
+            "\nduet-ao synth\n",
+            "\nduet-zz synth\n",
+        );
+        let (code, report) = placement("pg40-map", &text);
+        assert_eq!(
+            code, 1,
+            "a context map that omits a crate is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "CHUNK CRATE:<context-map>: the `crate-table` block names `duet-ao` and the \
+`context-map` block carries no row for it (PG40)"
+            ),
+            "the guard names the crate the map omits: {report}"
+        );
+        assert!(
+            report.contains(
+                "CHUNK CRATE:<context-map>: the `context-map` block names `duet-zz` and the \
+`crate-table` block does not (PG40)"
+            ),
+            "the guard names the crate the map holds and the table does not: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg40_no_parsed_path_fails_closed() {
+        let text = placement_document().replace(PLACEMENT_SCOPE, "the workspace");
+        let (code, report) = placement("pg40-zero", &text);
+        assert_eq!(
+            code, 1,
+            "a rule with no path to decide is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "CHUNK CRATE:PG40: the rule scanned 64 chunk rows and parsed no `crates/` path; \
+a rule with no path to decide is a silent pass (PG40)"
+            ),
+            "the guard names the zero denominator: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg40_bold_path_in_the_old_shape_is_a_finding() {
+        let (code, report) = placement_pg40_row("pg40-bold", "**crates/duet-aa/Cargo.toml**");
+        assert_eq!(
+            code, 1,
+            "a bold path that skips the context directory is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "CHUNK CRATE:A1: the row names `crates/duet-aa/Cargo.toml`, a path outside the \
+`crates/bc_<context>/<crate>/` shape (PG40)"
+            ),
+            "the guard names the path without its emphasis marks: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg40_dot_slash_path_in_the_old_shape_is_a_finding() {
+        let (code, report) = placement_pg40_row("pg40-dot", "`./crates/duet-aa/Cargo.toml`");
+        assert_eq!(
+            code, 1,
+            "a `./` path that skips the context directory is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "CHUNK CRATE:A1: the row names `crates/duet-aa/Cargo.toml`, a path outside the \
+`crates/bc_<context>/<crate>/` shape (PG40)"
+            ),
+            "the guard names the path without its `./` prefix: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg40_source_outside_lang_rust_is_a_finding() {
+        let (code, report) = placement_pg40_row("pg40-rest", "`crates/bc_app/duet/src/lib.rs`");
+        assert_eq!(
+            code, 1,
+            "a source file beside `lang_rust/` is a finding: {report}"
+        );
+        assert!(
+            report.contains(
+                "CHUNK CRATE:A1: the row names `crates/bc_app/duet/src/lib.rs`, whose path after \
+the crate directory is not `lang_rust/` or a unit sibling (PG40)"
+            ),
+            "the guard names the path whose rest breaks the unit shape: {report}"
+        );
+    }
+
+    #[test]
+    fn placement_pg40_unit_siblings_and_a_bare_unit_are_clean() {
+        let (code, report) = placement_pg40_row(
+            "pg40-sibling",
+            "`crates/bc_app/duet/assets/y.otf` `crates/bc_app/duet/CLAUDE.md` `crates/bc_app/duet/`",
+        );
+        assert_eq!(
+            code, 0,
+            "a unit sibling and a bare unit directory are in the shape: {report}"
         );
     }
 
@@ -5139,12 +5561,7 @@ opt-level = 3
 
     /// The workflow directory of this repository.
     fn workflow_directory() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .ancestors()
-            .nth(2)
-            .expect("the crate manifest sits two levels under the repository root")
-            .join(".github")
-            .join("workflows")
+        repository_root().join(".github").join("workflows")
     }
 
     /// The line the skipped half of `check-roster` prints and the full run never does.

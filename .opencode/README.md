@@ -15,7 +15,7 @@ The `.claude` tree holds the canonical repository instructions, skills, and agen
 |---|---|
 | File name | The agent identifier (`automated-orchestrator`, `duet-engineer`, ...). |
 | `name`, `emoji`, `vibe` | Removed. opencode passes an unknown field to the model provider as a model option. |
-| `model: opus` | `model: openrouter/deepseek/deepseek-v4.1-flash` (the `OPENCODE_MODEL` constant in `tools/xtask/src/sync_agents.rs`). |
+| `model: opus` | `model: openrouter/deepseek/deepseek-v4.1-flash` (the `OPENCODE_MODEL` constant in `tools/bc_repo_guard/xtask/lang_rust/src/sync_agents.rs`). |
 | `color: <name>` | The CSS hex value of that name. |
 | No Claude field | `mode: all` for the five root actors (`automated-orchestrator`, `hypervisor`, `hypervisor-turn`, `orchestrator`, `orchestrator-turn`). `mode: subagent` for every other agent. |
 | `description` | The same text, quoted as JSON so an unquoted colon parses. |

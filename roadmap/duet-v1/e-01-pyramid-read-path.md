@@ -1,15 +1,15 @@
 ---
 id: E1
 line: E
-depends_on: [M2, D1]
+depends_on: [M2, D1, M94]
 write_scope:
-  - crates/duet-analysis/Cargo.toml
-  - crates/duet-analysis/src/lib.rs
-  - crates/duet-analysis/src/peaks.rs
-  - crates/duet-analysis/src/pyin.rs
-  - crates/duet-analysis/src/loudness.rs
-  - crates/duet-analysis/src/pyin/candidates.rs
-  - crates/duet-analysis/src/pyin/decode.rs
+  - crates/bc_audio/duet-analysis/lang_rust/Cargo.toml
+  - crates/bc_audio/duet-analysis/lang_rust/src/lib.rs
+  - crates/bc_audio/duet-analysis/lang_rust/src/peaks.rs
+  - crates/bc_audio/duet-analysis/lang_rust/src/pyin.rs
+  - crates/bc_audio/duet-analysis/lang_rust/src/loudness.rs
+  - crates/bc_audio/duet-analysis/lang_rust/src/pyin/candidates.rs
+  - crates/bc_audio/duet-analysis/lang_rust/src/pyin/decode.rs
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-analysis -E 'test(pyramid_read)' --no-tests=fail"
@@ -19,7 +19,7 @@ completion: "cargo nextest run -p duet-analysis -E 'test(pyramid_read)' --no-tes
 
 Verify the current state of the files in the write scope; report a discrepancy and stop, instead of
 proceeding. This chunk opens line E over the crate `duet-analysis`. Chunk M2 creates the crate
-skeleton in phase 2, so `crates/duet-analysis/Cargo.toml` and `crates/duet-analysis/src/lib.rs` exist
+skeleton in phase 2, so `crates/bc_audio/duet-analysis/lang_rust/Cargo.toml` and `crates/bc_audio/duet-analysis/lang_rust/src/lib.rs` exist
 before this chunk starts and this chunk modifies both. Every other file of the write scope does not
 exist yet, and this chunk creates it. The chunk declares `AnalysisError` and the peak read path that
 turns a `SampleSource` into the `Pyramid` levels a lane draws. It implements architecture sections
@@ -35,14 +35,14 @@ chunk E2 declares it and this chunk does not.
 
 ## Files
 
-- `crates/duet-analysis/Cargo.toml` — modify. Add the `{ workspace = true }` entries this chunk uses.
-- `crates/duet-analysis/src/lib.rs` — modify. Add the three `mod` lines and `AnalysisError`.
-- `crates/duet-analysis/src/peaks.rs` — create and fill. The pyramid read path.
-- `crates/duet-analysis/src/pyin.rs` — create. The sibling file of the `pyin/` directory, which
+- `crates/bc_audio/duet-analysis/lang_rust/Cargo.toml` — modify. Add the `{ workspace = true }` entries this chunk uses.
+- `crates/bc_audio/duet-analysis/lang_rust/src/lib.rs` — modify. Add the three `mod` lines and `AnalysisError`.
+- `crates/bc_audio/duet-analysis/lang_rust/src/peaks.rs` — create and fill. The pyramid read path.
+- `crates/bc_audio/duet-analysis/lang_rust/src/pyin.rs` — create. The sibling file of the `pyin/` directory, which
   `clippy::mod_module_files` requires (SM2). It holds the two `mod` lines and nothing else.
-- `crates/duet-analysis/src/loudness.rs` — create as a stub. Chunk E3 fills it.
-- `crates/duet-analysis/src/pyin/candidates.rs` — create as a stub. Chunk E2 fills it.
-- `crates/duet-analysis/src/pyin/decode.rs` — create as a stub. Chunk E2 fills it.
+- `crates/bc_audio/duet-analysis/lang_rust/src/loudness.rs` — create as a stub. Chunk E3 fills it.
+- `crates/bc_audio/duet-analysis/lang_rust/src/pyin/candidates.rs` — create as a stub. Chunk E2 fills it.
+- `crates/bc_audio/duet-analysis/lang_rust/src/pyin/decode.rs` — create as a stub. Chunk E2 fills it.
 - `Cargo.lock` — modify. SM5 rule 2 puts it in the write scope of every chunk that writes a member
   manifest.
 
@@ -51,7 +51,7 @@ chunk E2 declares it and this chunk does not.
 ### Manifest
 
 ```toml
-# crates/duet-analysis/Cargo.toml, [dependencies]
+# crates/bc_audio/duet-analysis/lang_rust/Cargo.toml, [dependencies]
 duet-time = { workspace = true }
 duet-dsp = { workspace = true }
 thiserror = { workspace = true }
@@ -145,7 +145,7 @@ pub fn bin_extent(bin: PeakBin) -> (Finite, Finite);
 
 ## Steps
 
-1. Read `crates/duet-analysis/Cargo.toml` and `crates/duet-analysis/src/lib.rs`. Confirm that chunk
+1. Read `crates/bc_audio/duet-analysis/lang_rust/Cargo.toml` and `crates/bc_audio/duet-analysis/lang_rust/src/lib.rs`. Confirm that chunk
    M2 created both, that the manifest carries `[lints] workspace = true`, a `description`, and no
    `[dependencies]` section, and that `lib.rs` carries the `//!` crate documentation and
    `#![forbid(unsafe_code)]`. Report a discrepancy and stop if the state differs.
@@ -155,7 +155,7 @@ pub fn bin_extent(bin: PeakBin) -> (Finite, Finite);
    `pyin/candidates.rs`, and `pyin/decode.rs` at one `//!` line each.
 4. Add the three `mod` lines to `src/lib.rs` and declare `AnalysisError` with its `#[expect]`
    attribute.
-5. Add the three `{ workspace = true }` entries to `crates/duet-analysis/Cargo.toml`. Run
+5. Add the three `{ workspace = true }` entries to `crates/bc_audio/duet-analysis/lang_rust/Cargo.toml`. Run
    `cargo build --workspace`, which settles `Cargo.lock` (SM5 rule 3).
 6. Write the failing test `pyramid_read_picks_the_level_for_the_span` in `src/peaks.rs`, inside a
    `#[cfg(test)] mod tests`. Run
@@ -182,7 +182,7 @@ Every test lives in a `#[cfg(test)] mod tests` in the same file, and every asser
 A test double implements `duet_dsp::SampleSource` over a byte vector, so the crate stays pure and
 opens no file; section 1.4 names `duet-analysis` a pure crate for that reason.
 
-`crates/duet-analysis/src/peaks.rs`
+`crates/bc_audio/duet-analysis/lang_rust/src/peaks.rs`
 
 - `pyramid_read_picks_the_level_for_the_span` — asserts level 0 for 64 frames across 64 pixels, and
   level 4 for 65,536 frames across 64 pixels, against the B68 layout.
@@ -231,9 +231,10 @@ such as `feat(analysis): read one peak pyramid level per drawn span`.
   inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are
   required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every
   `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the
   root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no
   pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with
   Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this

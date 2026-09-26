@@ -3,10 +3,10 @@ id: F5
 line: F
 depends_on: [F4, M8]
 write_scope:
-  - crates/duet-project/src/watch/debounce.rs
-  - crates/duet-project/src/watch/ledger.rs
-  - crates/duet-project/src/lock.rs
-  - crates/duet-project/Cargo.toml
+  - crates/bc_project/duet-project/lang_rust/src/watch/debounce.rs
+  - crates/bc_project/duet-project/lang_rust/src/watch/ledger.rs
+  - crates/bc_project/duet-project/lang_rust/src/lock.rs
+  - crates/bc_project/duet-project/lang_rust/Cargo.toml
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-project -E 'test(writer_ledger) + test(writer_lock)' --no-tests=fail passes; commit SHA on a branch chunk/f5-watcher-and-writer-lock"
@@ -20,10 +20,10 @@ The watcher runs `notify` 8.2.0 with `notify-debouncer-full` 0.7.0 on the thread
 
 ## Files
 
-- `crates/duet-project/src/watch/debounce.rs` — modify. Chunk F1 created the stub.
-- `crates/duet-project/src/watch/ledger.rs` — modify.
-- `crates/duet-project/src/lock.rs` — modify.
-- `crates/duet-project/Cargo.toml` — modify. Add the `notify` and `notify-debouncer-full` entries.
+- `crates/bc_project/duet-project/lang_rust/src/watch/debounce.rs` — modify. Chunk F1 created the stub.
+- `crates/bc_project/duet-project/lang_rust/src/watch/ledger.rs` — modify.
+- `crates/bc_project/duet-project/lang_rust/src/lock.rs` — modify.
+- `crates/bc_project/duet-project/lang_rust/Cargo.toml` — modify. Add the `notify` and `notify-debouncer-full` entries.
 - `Cargo.lock` — modify. Commit it in the same commit as the manifest (SM5).
 
 ## Types and signatures
@@ -84,8 +84,8 @@ The liveness check is one of the two platform-specific facilities of this crate 
 
 ## Steps
 
-1. Read every file of the write scope and `crates/duet-project/Cargo.toml`. Confirm that chunk F1 left each one a stub and that chunk F4 has landed. Confirm that chunk M8 has landed. Report a discrepancy and stop.
-2. Add to `crates/duet-project/Cargo.toml` the entries `notify = { workspace = true }` and `notify-debouncer-full = { workspace = true }`. Run `cargo build --workspace` and keep `Cargo.lock` for the same commit.
+1. Read every file of the write scope and `crates/bc_project/duet-project/lang_rust/Cargo.toml`. Confirm that chunk F1 left each one a stub and that chunk F4 has landed. Confirm that chunk M8 has landed. Report a discrepancy and stop.
+2. Add to `crates/bc_project/duet-project/lang_rust/Cargo.toml` the entries `notify = { workspace = true }` and `notify-debouncer-full = { workspace = true }`. Run `cargo build --workspace` and keep `Cargo.lock` for the same commit.
 3. Write the failing test `writer_ledger_drops_our_own_save` in `src/watch/ledger.rs`. Run `cargo nextest run -p duet-project -E 'test(writer_ledger)' --no-tests=fail` and confirm that it fails to compile.
 4. Write `WriterLedger` in `src/watch/ledger.rs` with the declaration above, plus the record and the compare operations. Run the test and confirm that it passes.
 5. Write the failing test `writer_ledger_keeps_a_foreign_edit`. Run it and confirm that it fails, then confirm that it passes.
@@ -95,7 +95,7 @@ The liveness check is one of the two platform-specific facilities of this crate 
 9. Write the failing test `writer_lock_refuses_a_live_process_with_project_busy`. Run it and confirm that it fails, then implement the B25 retry and the `GatewayError::ProjectBusy` refusal and confirm that it passes.
 10. Write the failing test `writer_lock_lost_stops_every_write`. Run it and confirm that it fails.
 11. Implement the lock-lost path: every write refuses with `ProjectError::LockLost`, and the outcome value reports that the transport must stop and the open take must be flushed and hashed into `media/incoming/`. `duet-project` touches no core state, so it reports and never acts on the transport. Run the test and confirm that it passes.
-12. Call the platform liveness check through the trait chunk F1 declared. **`crates/duet-project/src/platform_macos.rs` and `crates/duet-project/src/platform_linux.rs` are outside this chunk's write scope**, and chunk F1 wrote both modules in full, so this chunk consumes the trait and edits neither file. When either module holds no liveness check, report the discrepancy and stop.
+12. Call the platform liveness check through the trait chunk F1 declared. **`crates/bc_project/duet-project/lang_rust/src/platform_macos.rs` and `crates/bc_project/duet-project/lang_rust/src/platform_linux.rs` are outside this chunk's write scope**, and chunk F1 wrote both modules in full, so this chunk consumes the trait and edits neither file. When either module holds no liveness check, report the discrepancy and stop.
 13. Run `cargo clippy -p duet-project --all-targets -- -D warnings` on macOS and on Linux. Fix every finding in the code.
 14. Commit on the branch `chunk/f5-watcher-and-writer-lock`. The native git hook runs `scripts/dod.sh`.
 
@@ -125,7 +125,7 @@ All tests of this chunk are unit tests in a `#[cfg(test)] mod tests` at the bott
 3. `cargo clippy -p duet-project --all-targets -- -D warnings` prints nothing on both platforms.
 4. `cargo machete` reports no unused dependency of `duet-project`.
 5. `cargo deny check` passes with the `notify` and `notify-debouncer-full` pins.
-6. One commit on the branch `chunk/f5-watcher-and-writer-lock` passes the native git hook. The commit carries `crates/duet-project/Cargo.toml` and `Cargo.lock` together.
+6. One commit on the branch `chunk/f5-watcher-and-writer-lock` passes the native git hook. The commit carries `crates/bc_project/duet-project/lang_rust/Cargo.toml` and `Cargo.lock` together.
 
 ## Constraints
 
@@ -134,7 +134,8 @@ All tests of this chunk are unit tests in a `#[cfg(test)] mod tests` at the bott
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

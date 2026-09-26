@@ -9,8 +9,12 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/*", "tools/*"]
-default-members = ["crates/duet", "tools/plan-db", "tools/xtask"]
+members = ["crates/*/*/lang_rust", "tools/*/*/lang_rust"]
+default-members = [
+  "crates/bc_app/duet/lang_rust",
+  "tools/bc_plan_store/plan-db/lang_rust",
+  "tools/bc_repo_guard/xtask/lang_rust",
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -40,15 +44,15 @@ toml = "1.1.6"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 # Internal crates
-duet-dsp = { path = "crates/duet-dsp" }
-duet-score = { path = "crates/duet-score" }
-duet-time = { path = "crates/duet-time" }
+duet-dsp = { path = "crates/bc_audio/duet-dsp/lang_rust" }
+duet-score = { path = "crates/bc_document/duet-score/lang_rust" }
+duet-time = { path = "crates/bc_time/duet-time/lang_rust" }
 
 # ---------------------------------------------------------------------------
 # Lints
 # ---------------------------------------------------------------------------
 [workspace.lints.rust]
-# `deny`, not `forbid`, so `tools/plan-db` can `#[expect(unsafe_code)]` the ONE
+# `deny`, not `forbid`, so `plan-db` can `#[expect(unsafe_code)]` the ONE
 # unsafe call the LMDB binding requires (`EnvOpenOptions::open`). The app crate
 # re-tightens this to `#![forbid(unsafe_code)]` in its root.
 unsafe_code = "deny"

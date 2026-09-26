@@ -3,30 +3,30 @@ id: D1
 line: D
 depends_on: [M1, T1]
 write_scope:
-  - crates/duet-dsp/Cargo.toml
-  - crates/duet-dsp/src/lib.rs
-  - crates/duet-dsp/src/buffer.rs
-  - crates/duet-dsp/src/source.rs
-  - crates/duet-dsp/src/fft.rs
-  - crates/duet-dsp/src/align.rs
-  - crates/duet-dsp/src/gain.rs
-  - crates/duet-dsp/src/filter.rs
-  - crates/duet-dsp/src/meter.rs
-  - crates/duet-dsp/src/meter_law.rs
-  - crates/duet-dsp/src/dynamics.rs
-  - crates/duet-dsp/src/slot.rs
-  - crates/duet-dsp/src/voice.rs
-  - crates/duet-dsp/src/peaks.rs
-  - crates/duet-dsp/src/pool.rs
-  - crates/duet-dsp/src/dynamics/compressor.rs
-  - crates/duet-dsp/src/dynamics/gate.rs
-  - crates/duet-dsp/src/dynamics/deesser.rs
-  - crates/duet-dsp/src/dynamics/limiter.rs
-  - crates/duet-dsp/src/dynamics/delay.rs
-  - crates/duet-dsp/src/dynamics/reverb.rs
-  - crates/duet-dsp/src/peaks/format.rs
-  - crates/duet-dsp/src/peaks/builder.rs
-  - crates/duet-dsp/src/peaks/reader.rs
+  - crates/bc_audio/duet-dsp/lang_rust/Cargo.toml
+  - crates/bc_audio/duet-dsp/lang_rust/src/lib.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/buffer.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/source.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/fft.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/align.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/gain.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/filter.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/meter.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/meter_law.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/dynamics.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/slot.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/voice.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/peaks.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/pool.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/dynamics/compressor.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/dynamics/gate.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/dynamics/deesser.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/dynamics/limiter.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/dynamics/delay.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/dynamics/reverb.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/peaks/format.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/peaks/builder.rs
+  - crates/bc_audio/duet-dsp/lang_rust/src/peaks/reader.rs
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-dsp -E 'test(align) + test(meter_law) + test(fader_taper)' --no-tests=fail"
@@ -36,7 +36,7 @@ completion: "cargo nextest run -p duet-dsp -E 'test(align) + test(meter_law) + t
 
 Verify the current state of the files in the write scope; report a discrepancy and stop, instead of
 proceeding. This chunk opens line D over the crate `duet-dsp`. Chunk M1 creates the crate skeleton in
-phase 1, so `crates/duet-dsp/Cargo.toml` and `crates/duet-dsp/src/lib.rs` exist before this chunk
+phase 1, so `crates/bc_audio/duet-dsp/lang_rust/Cargo.toml` and `crates/bc_audio/duet-dsp/lang_rust/src/lib.rs` exist before this chunk
 starts and this chunk modifies both. Every other file of the write scope does not exist yet, and
 this chunk creates it. The chunk declares the block helpers, `SampleSource`, the transform module,
 the loopback alignment, the gain and pan stages, the biquad filters, `OverMark` and the meter value
@@ -48,37 +48,37 @@ depth as a stub, so chunks D2 and D3 modify a stub and create no source file.
 
 ## Files
 
-- `crates/duet-dsp/Cargo.toml` — modify. Add the `{ workspace = true }` entries this chunk uses.
-- `crates/duet-dsp/src/lib.rs` — modify. Add one `mod` line per top-level module, and the five
+- `crates/bc_audio/duet-dsp/lang_rust/Cargo.toml` — modify. Add the `{ workspace = true }` entries this chunk uses.
+- `crates/bc_audio/duet-dsp/lang_rust/src/lib.rs` — modify. Add one `mod` line per top-level module, and the five
   shared constants of section 1.6 that sit at the crate root.
-- `crates/duet-dsp/src/buffer.rs` — create and fill. Block helpers that allocate nothing, and
+- `crates/bc_audio/duet-dsp/lang_rust/src/buffer.rs` — create and fill. Block helpers that allocate nothing, and
   `PoolSlot`, the pool handle index.
-- `crates/duet-dsp/src/source.rs` — create and fill. `SampleSource`.
-- `crates/duet-dsp/src/fft.rs` — create and fill. The real transform over `realfft` and `rustfft`.
-- `crates/duet-dsp/src/align.rs` — create and fill. The loopback cross-correlation.
-- `crates/duet-dsp/src/gain.rs` — create and fill. `GainState`, the gain ramp, and the pan law.
-- `crates/duet-dsp/src/filter.rs` — create and fill. `BiquadState` and `EqualizerState`.
-- `crates/duet-dsp/src/meter.rs` — create and fill. `MeterLaw`, `MeterReading`, `MeterState`,
+- `crates/bc_audio/duet-dsp/lang_rust/src/source.rs` — create and fill. `SampleSource`.
+- `crates/bc_audio/duet-dsp/lang_rust/src/fft.rs` — create and fill. The real transform over `realfft` and `rustfft`.
+- `crates/bc_audio/duet-dsp/lang_rust/src/align.rs` — create and fill. The loopback cross-correlation.
+- `crates/bc_audio/duet-dsp/lang_rust/src/gain.rs` — create and fill. `GainState`, the gain ramp, and the pan law.
+- `crates/bc_audio/duet-dsp/lang_rust/src/filter.rs` — create and fill. `BiquadState` and `EqualizerState`.
+- `crates/bc_audio/duet-dsp/lang_rust/src/meter.rs` — create and fill. `MeterLaw`, `MeterReading`, `MeterState`,
   `OverMark`, `HeldMarks`, `MeterView`, `SlotMeasure`.
-- `crates/duet-dsp/src/meter_law.rs` — create and fill. The five scale functions and the eleven
+- `crates/bc_audio/duet-dsp/lang_rust/src/meter_law.rs` — create and fill. The five scale functions and the eleven
   scale constants.
-- `crates/duet-dsp/src/dynamics.rs` — create. The sibling file of the `dynamics/` directory, which
+- `crates/bc_audio/duet-dsp/lang_rust/src/dynamics.rs` — create. The sibling file of the `dynamics/` directory, which
   `clippy::mod_module_files` requires (SM2). It holds the six `mod` lines and nothing else.
-- `crates/duet-dsp/src/slot.rs` — create as a stub. Chunk D3 fills it.
-- `crates/duet-dsp/src/voice.rs` — create as a stub. Chunk D3 fills it.
-- `crates/duet-dsp/src/peaks.rs` — create. The sibling file of the `peaks/` directory. It holds the
+- `crates/bc_audio/duet-dsp/lang_rust/src/slot.rs` — create as a stub. Chunk D3 fills it.
+- `crates/bc_audio/duet-dsp/lang_rust/src/voice.rs` — create as a stub. Chunk D3 fills it.
+- `crates/bc_audio/duet-dsp/lang_rust/src/peaks.rs` — create. The sibling file of the `peaks/` directory. It holds the
   three `mod` lines and nothing else.
-- `crates/duet-dsp/src/pool.rs` — create as a stub. Chunk D3 fills it.
-- `crates/duet-dsp/src/dynamics/compressor.rs` — create as a stub. Chunk D2 fills it.
-- `crates/duet-dsp/src/dynamics/gate.rs` — create as a stub. Chunk D2 fills it.
-- `crates/duet-dsp/src/dynamics/deesser.rs` — create as a stub. Chunk D2 fills it.
-- `crates/duet-dsp/src/dynamics/limiter.rs` — create as a stub. Chunk D2 fills it.
-- `crates/duet-dsp/src/dynamics/delay.rs` — create as a stub. Chunk D3 fills it.
-- `crates/duet-dsp/src/dynamics/reverb.rs` — create as a stub. Chunk D3 fills it.
-- `crates/duet-dsp/src/peaks/format.rs` — create and fill. `PeakBin`, `PyramidHeader`, and the level
+- `crates/bc_audio/duet-dsp/lang_rust/src/pool.rs` — create as a stub. Chunk D3 fills it.
+- `crates/bc_audio/duet-dsp/lang_rust/src/dynamics/compressor.rs` — create as a stub. Chunk D2 fills it.
+- `crates/bc_audio/duet-dsp/lang_rust/src/dynamics/gate.rs` — create as a stub. Chunk D2 fills it.
+- `crates/bc_audio/duet-dsp/lang_rust/src/dynamics/deesser.rs` — create as a stub. Chunk D2 fills it.
+- `crates/bc_audio/duet-dsp/lang_rust/src/dynamics/limiter.rs` — create as a stub. Chunk D2 fills it.
+- `crates/bc_audio/duet-dsp/lang_rust/src/dynamics/delay.rs` — create as a stub. Chunk D3 fills it.
+- `crates/bc_audio/duet-dsp/lang_rust/src/dynamics/reverb.rs` — create as a stub. Chunk D3 fills it.
+- `crates/bc_audio/duet-dsp/lang_rust/src/peaks/format.rs` — create and fill. `PeakBin`, `PyramidHeader`, and the level
   layout of B68.
-- `crates/duet-dsp/src/peaks/builder.rs` — create as a stub. Chunk D3 fills it with `PyramidBuilder`.
-- `crates/duet-dsp/src/peaks/reader.rs` — create and fill. `Pyramid` and `Pyramid::load_level`.
+- `crates/bc_audio/duet-dsp/lang_rust/src/peaks/builder.rs` — create as a stub. Chunk D3 fills it with `PyramidBuilder`.
+- `crates/bc_audio/duet-dsp/lang_rust/src/peaks/reader.rs` — create and fill. `Pyramid` and `Pyramid::load_level`.
 - `Cargo.lock` — modify. SM5 rule 2 puts it in the write scope of every chunk that writes a member
   manifest.
 
@@ -94,7 +94,7 @@ them in two phases, so one writer holds each file at a time.
 ### Manifest
 
 ```toml
-# crates/duet-dsp/Cargo.toml, [dependencies]
+# crates/bc_audio/duet-dsp/lang_rust/Cargo.toml, [dependencies]
 duet-time = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
@@ -457,7 +457,7 @@ pub fn measure(state: &mut MeterState, block: &[f32], law: MeterLaw);
 
 ## Steps
 
-1. Read `crates/duet-dsp/Cargo.toml` and `crates/duet-dsp/src/lib.rs`. Confirm that chunk M1 created
+1. Read `crates/bc_audio/duet-dsp/lang_rust/Cargo.toml` and `crates/bc_audio/duet-dsp/lang_rust/src/lib.rs`. Confirm that chunk M1 created
    both, that the manifest carries `[lints] workspace = true`, a `description`, and no
    `[dependencies]` section, and that `lib.rs` carries the `//!` crate documentation and
    `#![forbid(unsafe_code)]`. Report a discrepancy and stop if the state differs.
@@ -469,7 +469,7 @@ pub fn measure(state: &mut MeterState, block: &[f32], law: MeterLaw);
    `dynamics/reverb.rs`, and `peaks/builder.rs`.
 4. Add the `mod` lines to `src/lib.rs`, the fourteen constants, and the `DspError` enum. Add the six
    `mod` lines to `src/dynamics.rs` and the three `mod` lines to `src/peaks.rs`.
-5. Add the five `{ workspace = true }` entries to `crates/duet-dsp/Cargo.toml`. Run
+5. Add the five `{ workspace = true }` entries to `crates/bc_audio/duet-dsp/lang_rust/Cargo.toml`. Run
    `cargo build --workspace`, which settles `Cargo.lock` (SM5 rule 3).
 6. Write the failing tests `meter_law_floor_reaches_zero`, `meter_law_ceiling_reaches_one`, and
    `meter_law_mid_reaches_the_mid_fraction` in `src/meter_law.rs`, inside a `#[cfg(test)] mod tests`.
@@ -515,7 +515,7 @@ pub fn measure(state: &mut MeterState, block: &[f32], law: MeterLaw);
     `roadmap/duet-v1/architecture.md` states the rule: a `[workspace.dependencies]` entry that no
     member declares reaches neither the resolved graph nor `Cargo.lock`, so `cargo tree -i` exits 101
     at the manifest chunk. Step 5 of this chunk adds both `{ workspace = true }` entries to
-    `crates/duet-dsp/Cargo.toml`, so this commit is the first one that puts either crate in the
+    `crates/bc_audio/duet-dsp/lang_rust/Cargo.toml`, so this commit is the first one that puts either crate in the
     graph. Chunk M1 confirmed each feature name with `cargo info`, and both pins take the default
     feature set. **Confirm that each tree shows the default set**; report a discrepancy to the
     Architect and stop if either one shows a feature the root pin does not state.
@@ -528,7 +528,7 @@ No test name of this chunk holds the word `pyramid`, `dynamics`, `monitor_voice`
 because chunks D2 and D3 select those terms and a filterset union must not match a test an earlier
 chunk wrote (SM3 rule 2).
 
-`crates/duet-dsp/src/meter_law.rs`
+`crates/bc_audio/duet-dsp/lang_rust/src/meter_law.rs`
 
 - `meter_law_floor_reaches_zero` — asserts `db_to_fraction(METER_FLOOR_DB)` equals zero.
 - `meter_law_ceiling_reaches_one` — asserts `db_to_fraction(METER_CEILING_DB)` equals one.
@@ -548,7 +548,7 @@ chunk wrote (SM3 rule 2).
 - `fader_taper_round_trips` — asserts that `fader_db_to_fraction(fader_fraction_to_db(f))` equals
   `f` within 0.001 for forty fractions between `FADER_SILENCE_FRACTION` and one.
 
-`crates/duet-dsp/src/align.rs`
+`crates/bc_audio/duet-dsp/lang_rust/src/align.rs`
 
 - `align_finds_a_known_offset` — builds a chirp, delays a copy by 137 frames, and asserts that
   `best_offset` returns 137.
@@ -557,28 +557,28 @@ chunk wrote (SM3 rule 2).
 - `align_is_stable_under_noise` — adds noise at 20 decibels below the chirp and asserts the same
   offset.
 
-`crates/duet-dsp/src/buffer.rs`
+`crates/bc_audio/duet-dsp/lang_rust/src/buffer.rs`
 
 - `buffer_silence_clears_every_sample` — asserts that every sample reads zero.
 - `buffer_add_into_refuses_a_length_mismatch` — asserts `DspError::BlockTooLong`.
 - `pool_slot_index_round_trips` — builds a `PoolSlot`, reads the index back, and asserts equality.
   The name holds no term that a later chunk of line D selects: chunk D3 selects `buffer_pool`.
 
-`crates/duet-dsp/src/gain.rs`
+`crates/bc_audio/duet-dsp/lang_rust/src/gain.rs`
 
 - `gain_ramp_reaches_the_target` — asserts that the state reaches the target after the stated frame
   count and never passes it.
 - `gain_pan_holds_constant_power` — asserts that the sum of the squares of the two channel gains
   stays within 0.001 of one across eleven pan positions.
 
-`crates/duet-dsp/src/filter.rs`
+`crates/bc_audio/duet-dsp/lang_rust/src/filter.rs`
 
 - `filter_high_pass_removes_direct_current` — asserts that a constant block falls below 0.001 after
   one second of frames.
 - `filter_peaking_lifts_its_own_band` — asserts a larger output at the centre frequency than at one
   octave below it.
 
-`crates/duet-dsp/src/meter.rs`
+`crates/bc_audio/duet-dsp/lang_rust/src/meter.rs`
 
 - `meter_peak_follows_the_largest_sample` — asserts the peak value of a known block.
 - `meter_over_mark_latches_and_never_clears` — asserts that one sample at full scale sets the mark,
@@ -586,13 +586,13 @@ chunk wrote (SM3 rule 2).
 - `meter_view_silent_holds_no_mark` — asserts that `MeterView::silent` reports no held mark and a
   live count of zero.
 
-`crates/duet-dsp/src/peaks/format.rs`
+`crates/bc_audio/duet-dsp/lang_rust/src/peaks/format.rs`
 
 - `peak_format_bin_is_six_bytes` — asserts `size_of::<PeakBin>()` equals 6.
 - `peak_format_level_layout_follows_b68` — asserts that level 0 covers 64 frames per bin and that
   level 4 covers 1024.
 
-`crates/duet-dsp/src/peaks/reader.rs`
+`crates/bc_audio/duet-dsp/lang_rust/src/peaks/reader.rs`
 
 - `level_read_returns_the_requested_span` — asserts the bin count and the first bin value.
 - `level_read_refuses_a_bad_magic` — asserts `DspError::PyramidFormat`.
@@ -637,9 +637,10 @@ conventional subject such as `feat(dsp): add the block helpers, the transforms, 
   inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are
   required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every
   `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the
   root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no
   pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with
   Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this

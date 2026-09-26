@@ -6,8 +6,8 @@ write_scope:
   - Cargo.toml
   - Cargo.lock
   - .github/workflows/audio-smoke.yml
-  - crates/duet-agent/Cargo.toml
-  - crates/duet-agent/src/lib.rs
+  - crates/bc_gateway/duet-agent/lang_rust/Cargo.toml
+  - crates/bc_gateway/duet-agent/lang_rust/src/lib.rs
 parallelism: serial-only: SM1 runs the manifest chunk alone before every line chunk of its phase, and SM4 makes the workflow file an Orchestrator adjudication.
 completion: "cargo check -p duet-agent --locked exits 0; commit SHA on a branch chunk/m8-manifest-phase-8"
 ---
@@ -32,7 +32,7 @@ after all six land.
 file under SM4, and CLAUDE.md makes a gate-adjacent edit an adjudication. No engineer may edit it.
 
 **`audio-smoke.yml` belongs to this chunk because C4 lands in phase 7** (section 13.1 decision 3).
-The workflow runs `pipewire_smoke`, which chunk C4 writes in `crates/duet-engine/src/cpal/stream.rs`.
+The workflow runs `pipewire_smoke`, which chunk C4 writes in `crates/bc_audio/duet-engine/lang_rust/src/cpal/stream.rs`.
 A workflow that runs the filter before the cpal backend exists is a filtered run with no match, and
 SM3 rule 1 forbids it. M8 is the first manifest chunk that runs after C4.
 
@@ -43,8 +43,8 @@ SM3 rule 1 forbids it. M8 is the first manifest chunk that runs after C4.
 | `Cargo.toml` | modify (`[workspace.dependencies]` only) |
 | `Cargo.lock` | modify |
 | `.github/workflows/audio-smoke.yml` | create |
-| `crates/duet-agent/Cargo.toml` | create |
-| `crates/duet-agent/src/lib.rs` | create |
+| `crates/bc_gateway/duet-agent/lang_rust/Cargo.toml` | create |
+| `crates/bc_gateway/duet-agent/lang_rust/src/lib.rs` | create |
 
 ## Types and signatures
 
@@ -79,7 +79,7 @@ capabilities with the resolved version reports the discrepancy instead of procee
 ### The internal path entry (SM1 rule 4)
 
 ```toml
-duet-agent = { path = "crates/duet-agent" }
+duet-agent = { path = "crates/bc_gateway/duet-agent/lang_rust" }
 ```
 
 A member crate reaches an internal crate with `duet-<crate> = { workspace = true }`, and that entry
@@ -139,21 +139,21 @@ failure here blocks a merge by review and never by a hook (section 11.6, section
 ## Steps
 
 1. Confirm that M7, C4, F4, G4, H1, and I1 landed. Confirm that
-   `crates/duet-engine/src/cpal/stream.rs` holds a `pipewire_smoke` test and that
+   `crates/bc_audio/duet-engine/lang_rust/src/cpal/stream.rs` holds a `pipewire_smoke` test and that
    `cargo nextest run -p duet-engine --run-ignored ignored-only -E 'test(pipewire_smoke)' --no-tests=fail`
    matches it. **Report a discrepancy and stop if the filter matches nothing**, because SM3 rule 1
    forbids a filtered run with no match.
-2. Confirm that `crates/duet-agent` does not exist, and that the root `[workspace.dependencies]`
+2. Confirm that `crates/bc_gateway/duet-agent/lang_rust` does not exist, and that the root `[workspace.dependencies]`
    table already holds `clap` with `features = ["derive"]`. Report a discrepancy and stop if either
    is false.
 3. Read the `rmcp` 3.4.0 manifest. Resolve the server feature name and the stream transport feature
    name, and resolve the `tokio` version that `rmcp` 3.4.0 requires. Record both readings.
 4. Add the three pins and the one internal path entry
-   `duet-agent = { path = "crates/duet-agent" }` (SM1 rule 4) to `[workspace.dependencies]` of the
+   `duet-agent = { path = "crates/bc_gateway/duet-agent/lang_rust" }` (SM1 rule 4) to `[workspace.dependencies]` of the
    root `Cargo.toml`, with the resolved feature lists and the resolved `tokio` version, in
    alphabetical order with the entries the table already holds. Confirm that the `clap` entry stays
    as it is. Edit no other table (SM4).
-5. Create `crates/duet-agent/Cargo.toml` and `crates/duet-agent/src/lib.rs` with the two blocks the
+5. Create `crates/bc_gateway/duet-agent/lang_rust/Cargo.toml` and `crates/bc_gateway/duet-agent/lang_rust/src/lib.rs` with the two blocks the
    section above gives.
 6. Run `cargo build --workspace` (SM5 rule 3). Expected result: the build succeeds and `Cargo.lock`
    gains the `duet-agent` package entry and the transitive tree of the three new pins.
@@ -171,7 +171,7 @@ failure here blocks a merge by review and never by a hook (section 11.6, section
     `cargo tree -e features -i tokio-util` in this chunk.** No member declares any of the three at
     this commit, so `cargo tree` exits 101 and prints `error: package ID specification` with the
     crate name. **Chunk J1 records the resolved tree of all three**, because J1 adds the three
-    `{ workspace = true }` entries to `crates/duet-agent/Cargo.toml` (Appendix B.3, Appendix B.5).
+    `{ workspace = true }` entries to `crates/bc_gateway/duet-agent/lang_rust/Cargo.toml` (Appendix B.3, Appendix B.5).
 11. Run the Completion command: `cargo check -p duet-agent --locked`. Expected result: exit 0. The
     command fails before this chunk, because `cargo` reports an unknown package.
 12. `git add` the write scope and `git commit`. The native hook runs `scripts/dod.sh`.
@@ -180,7 +180,7 @@ failure here blocks a merge by review and never by a hook (section 11.6, section
 
 This chunk writes no test. It SELECTS one test that chunk C4 wrote, and SM7 binds the selection:
 section 14 holds one row for `pipewire_smoke` (chunk C4, phase 7,
-`crates/duet-engine/src/cpal/stream.rs`, `#[ignore]`), and C4 lands one phase before this chunk.
+`crates/bc_audio/duet-engine/lang_rust/src/cpal/stream.rs`, `#[ignore]`), and C4 lands one phase before this chunk.
 Step 1 runs the filter once and proves the match.
 
 Its Completion command is the check (SM3): `cargo check -p duet-agent --locked` fails before the
@@ -216,7 +216,8 @@ Then commit on a branch named `chunk/m8-manifest-phase-8`. The native git hook r
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

@@ -3,15 +3,15 @@ id: G1
 line: G
 depends_on: [T4, M4]
 write_scope:
-  - crates/duet-midi/Cargo.toml
-  - crates/duet-midi/src/lib.rs
-  - crates/duet-midi/src/presence.rs
-  - crates/duet-midi/src/stream.rs
-  - crates/duet-midi/src/portmap.rs
-  - crates/duet-midi/src/bind.rs
-  - crates/duet-midi/src/entry.rs
-  - crates/duet-midi/src/platform_macos.rs
-  - crates/duet-midi/src/platform_linux.rs
+  - crates/bc_midi/duet-midi/lang_rust/Cargo.toml
+  - crates/bc_midi/duet-midi/lang_rust/src/lib.rs
+  - crates/bc_midi/duet-midi/lang_rust/src/presence.rs
+  - crates/bc_midi/duet-midi/lang_rust/src/stream.rs
+  - crates/bc_midi/duet-midi/lang_rust/src/portmap.rs
+  - crates/bc_midi/duet-midi/lang_rust/src/bind.rs
+  - crates/bc_midi/duet-midi/lang_rust/src/entry.rs
+  - crates/bc_midi/duet-midi/lang_rust/src/platform_macos.rs
+  - crates/bc_midi/duet-midi/lang_rust/src/platform_linux.rs
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-midi -E 'test(port_map) + test(midir_presence)' --no-tests=fail passes; commit SHA on a branch chunk/g1-port-map-and-streams"
@@ -25,16 +25,16 @@ Verify the current state of the files in the write scope; report a discrepancy a
 
 ## Files
 
-- `crates/duet-midi/Cargo.toml` — modify. Add the `{ workspace = true }` entries this chunk uses, including the two target tables of section 11.2.
+- `crates/bc_midi/duet-midi/lang_rust/Cargo.toml` — modify. Add the `{ workspace = true }` entries this chunk uses, including the two target tables of section 11.2.
 - `Cargo.lock` — modify. Commit it in the same commit as the manifest (SM5).
-- `crates/duet-midi/src/lib.rs` — modify. Add every `mod` line of the line.
-- `crates/duet-midi/src/presence.rs` — create.
-- `crates/duet-midi/src/stream.rs` — create.
-- `crates/duet-midi/src/portmap.rs` — create.
-- `crates/duet-midi/src/bind.rs` — create as a stub.
-- `crates/duet-midi/src/entry.rs` — create as a stub.
-- `crates/duet-midi/src/platform_macos.rs` — create as a stub.
-- `crates/duet-midi/src/platform_linux.rs` — create as a stub.
+- `crates/bc_midi/duet-midi/lang_rust/src/lib.rs` — modify. Add every `mod` line of the line.
+- `crates/bc_midi/duet-midi/lang_rust/src/presence.rs` — create.
+- `crates/bc_midi/duet-midi/lang_rust/src/stream.rs` — create.
+- `crates/bc_midi/duet-midi/lang_rust/src/portmap.rs` — create.
+- `crates/bc_midi/duet-midi/lang_rust/src/bind.rs` — create as a stub.
+- `crates/bc_midi/duet-midi/lang_rust/src/entry.rs` — create as a stub.
+- `crates/bc_midi/duet-midi/lang_rust/src/platform_macos.rs` — create as a stub.
+- `crates/bc_midi/duet-midi/lang_rust/src/platform_linux.rs` — create as a stub.
 
 A stub holds the `//!` module documentation and nothing else (SM2).
 
@@ -273,9 +273,9 @@ Link `T4 before G1` of section 13.4 states the reason: `MidiRecord`, `NoteEntry`
 
 ## Steps
 
-1. Read `crates/duet-midi/Cargo.toml` and `crates/duet-midi/src/lib.rs`. Confirm the M4 skeleton: the `*.workspace = true` package fields, a `description`, `[lints] workspace = true`, no `[dependencies]` section, and a `src/lib.rs` that holds the `//!` crate documentation and `#![forbid(unsafe_code)]`. Report a discrepancy and stop.
+1. Read `crates/bc_midi/duet-midi/lang_rust/Cargo.toml` and `crates/bc_midi/duet-midi/lang_rust/src/lib.rs`. Confirm the M4 skeleton: the `*.workspace = true` package fields, a `description`, `[lints] workspace = true`, no `[dependencies]` section, and a `src/lib.rs` that holds the `//!` crate documentation and `#![forbid(unsafe_code)]`. Report a discrepancy and stop.
 2. Create every module file of the write scope as a stub. Add one `mod` line per stub to `src/lib.rs`. The `platform_macos` and `platform_linux` `mod` lines sit behind `#[cfg(target_os = "macos")]` and `#[cfg(target_os = "linux")]` in the crate root, which is the one place a `cfg(target_os)` branch appears in this crate (section 11.2 rule 1). **No `cfg(target_os)` appears inside a function body** (rule 5).
-3. Write `crates/duet-midi/Cargo.toml` as the block above gives it. Run `cargo build --workspace` on macOS and on Linux, and keep `Cargo.lock` for the same commit.
+3. Write `crates/bc_midi/duet-midi/lang_rust/Cargo.toml` as the block above gives it. Run `cargo build --workspace` on macOS and on Linux, and keep `Cargo.lock` for the same commit.
 4. Run `cargo tree -i alsa` on Linux and record the result. cpal 0.18.2 pins `alsa` 0.11 and that pin is not optional; the PipeWire feature of cpal already brings `pipewire` 0.10.1, so the MIDI listener shares that exact version. **If `midir` brings a second `alsa` major**, reasons 1 and 2 of section 8.1 still decide the choice, and `deny.toml` reports the duplicate as a warning rather than a failure. Report the result to the Orchestrator either way.
 5. Write the failing test `port_map_mints_one_slot_per_distinct_identity` in `src/portmap.rs`. Run `cargo nextest run -p duet-midi -E 'test(port_map)' --no-tests=fail` and confirm that it fails to compile.
 6. Write `PlatformPort` and `MidiPortMap` in `src/portmap.rs`, with the five methods above. `insert` is the one place that turns a platform handle into a `MidiPortInfo`, and it pushes one `HotplugEvent` into the B100 queue. `retire` keeps the record, so a later return of the same identity reuses its slot. Run the test and confirm that it passes.
@@ -317,7 +317,7 @@ All tests of this chunk are unit tests in a `#[cfg(test)] mod tests` at the bott
 3. `cargo clippy -p duet-midi --all-targets -- -D warnings` prints nothing on both platforms.
 4. `cargo build --workspace` succeeds on macOS and on Linux with no feature flag (section 11.2 rule 6).
 5. `cargo deny check` passes, and the `cargo tree -i alsa` result of step 4 is reported to the Orchestrator.
-6. One commit on the branch `chunk/g1-port-map-and-streams` passes the native git hook. The commit carries `crates/duet-midi/Cargo.toml` and `Cargo.lock` together.
+6. One commit on the branch `chunk/g1-port-map-and-streams` passes the native git hook. The commit carries `crates/bc_midi/duet-midi/lang_rust/Cargo.toml` and `Cargo.lock` together.
 
 ## Constraints
 
@@ -326,7 +326,8 @@ All tests of this chunk are unit tests in a `#[cfg(test)] mod tests` at the bott
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

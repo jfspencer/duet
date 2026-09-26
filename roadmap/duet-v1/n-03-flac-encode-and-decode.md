@@ -3,9 +3,9 @@ id: N3
 line: N
 depends_on: [N2]
 write_scope:
-  - crates/duet-media/src/flac.rs
-  - crates/duet-media/src/decode.rs
-  - crates/duet-media/Cargo.toml
+  - crates/bc_audio/duet-media/lang_rust/src/flac.rs
+  - crates/bc_audio/duet-media/lang_rust/src/decode.rs
+  - crates/bc_audio/duet-media/lang_rust/Cargo.toml
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-media -E 'test(flac) + test(decode)' --no-tests=fail"
@@ -15,21 +15,21 @@ completion: "cargo nextest run -p duet-media -E 'test(flac) + test(decode)' --no
 
 Verify the current state of the files in the write scope; report a discrepancy and stop, instead of
 proceeding. Phase 5 carries no manifest chunk, so this chunk depends on chunk N2 alone (section
-13.3). Chunk N1 created `crates/duet-media/src/flac.rs` and `crates/duet-media/src/decode.rs` as
+13.3). Chunk N1 created `crates/bc_audio/duet-media/lang_rust/src/flac.rs` and `crates/bc_audio/duet-media/lang_rust/src/decode.rs` as
 stubs in phase 3, so each one holds a `//!` line alone. This chunk fills both. It encodes FLAC for
 the render path that chunk H3 calls, and it decodes an imported file in a format Duet does not write.
 It implements architecture sections 1.2, 7.5, and 15.9, and it carries the FLAC half of the product
 story MA-04.
 
-This chunk adds two dependencies, so SM1 puts `crates/duet-media/Cargo.toml` in its write scope and
+This chunk adds two dependencies, so SM1 puts `crates/bc_audio/duet-media/lang_rust/Cargo.toml` in its write scope and
 SM5 rule 2 puts `Cargo.lock` there beside it. Section 13.2 names both files in this chunk's Writes
 cell.
 
 ## Files
 
-- `crates/duet-media/src/flac.rs` — modify. The FLAC encoder.
-- `crates/duet-media/src/decode.rs` — modify. The decode path for an imported file.
-- `crates/duet-media/Cargo.toml` — modify. Add `flacenc` and `symphonia`.
+- `crates/bc_audio/duet-media/lang_rust/src/flac.rs` — modify. The FLAC encoder.
+- `crates/bc_audio/duet-media/lang_rust/src/decode.rs` — modify. The decode path for an imported file.
+- `crates/bc_audio/duet-media/lang_rust/Cargo.toml` — modify. Add `flacenc` and `symphonia`.
 - `Cargo.lock` — modify.
 
 ## Types and signatures
@@ -37,7 +37,7 @@ cell.
 ### Manifest
 
 ```toml
-# crates/duet-media/Cargo.toml, [dependencies], added by this chunk
+# crates/bc_audio/duet-media/lang_rust/Cargo.toml, [dependencies], added by this chunk
 flacenc = { workspace = true }
 symphonia = { workspace = true }
 ```
@@ -144,7 +144,7 @@ chunk N1 and `Rf64Sink` of chunk N2 are; report the discrepancy to the Architect
 
 ## Steps
 
-1. Read `crates/duet-media/src/flac.rs` and `crates/duet-media/src/decode.rs`. Confirm that each one
+1. Read `crates/bc_audio/duet-media/lang_rust/src/flac.rs` and `crates/bc_audio/duet-media/lang_rust/src/decode.rs`. Confirm that each one
    holds a `//!` line and nothing else. Report a discrepancy and stop if the state differs.
 2. Read the root `Cargo.toml`. Confirm that `[workspace.dependencies]` pins `flacenc` and
    `symphonia`, and that the `symphonia` line carries the decoder features Appendix B.5 names. Report
@@ -154,7 +154,7 @@ chunk N1 and `Rf64Sink` of chunk N2 are; report the discrepancy to the Architect
    chunk lives in the same file as the code it covers. Run
    `cargo nextest run -p duet-media -E 'test(flac)' --no-tests=fail` and confirm that the run fails
    to compile.
-4. Add the two entries to `crates/duet-media/Cargo.toml`. Run `cargo build --workspace`, which
+4. Add the two entries to `crates/bc_audio/duet-media/lang_rust/Cargo.toml`. Run `cargo build --workspace`, which
    settles `Cargo.lock` (SM5 rule 3).
 5. Declare `SUPPORTED_BIT_DEPTHS` and implement `encode` over `flacenc`. Refuse a bit depth the
    array does not hold with `MediaError::Format`. Convert every `I24` to the encoder's own sample
@@ -183,7 +183,7 @@ Every test lives in a `#[cfg(test)] mod tests` in the same file, because section
 chunk no `tests/` file. Every assert carries a message. Every test owns one scratch directory, which
 it builds from `std::env::temp_dir` plus a unique name and removes at the end.
 
-`crates/duet-media/src/flac.rs`
+`crates/bc_audio/duet-media/lang_rust/src/flac.rs`
 
 - `flac_round_trips_through_the_decoder` — encodes 4800 stereo frames at 24 bits, decodes the result
   with `crate::decode::decode_file`, and asserts exact sample equality, because FLAC is lossless.
@@ -196,7 +196,7 @@ it builds from `std::env::temp_dir` plus a unique name and removes at the end.
 - `flac_encode_is_deterministic` — encodes one buffer twice and asserts equal bytes, which the
   deterministic render of section 1.2 requires.
 
-`crates/duet-media/src/decode.rs`
+`crates/bc_audio/duet-media/lang_rust/src/decode.rs`
 
 - `decode_reads_a_flac_file` — encodes with `crate::flac::encode`, decodes, and asserts the rate, the
   channel count, and the frame count.
@@ -249,9 +249,10 @@ subject such as `feat(media): encode FLAC and decode an imported file`.
   inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are
   required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every
   `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the
   root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no
   pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with
   Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this

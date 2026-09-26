@@ -3,30 +3,30 @@ id: F1
 line: F
 depends_on: [T4, M4]
 write_scope:
-  - crates/duet-project/Cargo.toml
-  - crates/duet-project/src/lib.rs
-  - crates/duet-project/src/bundle.rs
-  - crates/duet-project/src/save.rs
-  - crates/duet-project/src/view.rs
-  - crates/duet-project/src/gitconfig.rs
-  - crates/duet-project/src/store.rs
-  - crates/duet-project/src/history.rs
-  - crates/duet-project/src/checkout.rs
-  - crates/duet-project/src/headwatch.rs
-  - crates/duet-project/src/watch.rs
-  - crates/duet-project/src/lock.rs
-  - crates/duet-project/src/templates.rs
-  - crates/duet-project/src/recent.rs
-  - crates/duet-project/src/platform_macos.rs
-  - crates/duet-project/src/platform_linux.rs
-  - crates/duet-project/src/store/manifest.rs
-  - crates/duet-project/src/store/content.rs
-  - crates/duet-project/src/store/gc.rs
-  - crates/duet-project/src/history/gix_impl.rs
-  - crates/duet-project/src/history/budget.rs
-  - crates/duet-project/src/watch/debounce.rs
-  - crates/duet-project/src/watch/ledger.rs
-  - crates/duet-project/src/templates/default.rs
+  - crates/bc_project/duet-project/lang_rust/Cargo.toml
+  - crates/bc_project/duet-project/lang_rust/src/lib.rs
+  - crates/bc_project/duet-project/lang_rust/src/bundle.rs
+  - crates/bc_project/duet-project/lang_rust/src/save.rs
+  - crates/bc_project/duet-project/lang_rust/src/view.rs
+  - crates/bc_project/duet-project/lang_rust/src/gitconfig.rs
+  - crates/bc_project/duet-project/lang_rust/src/store.rs
+  - crates/bc_project/duet-project/lang_rust/src/history.rs
+  - crates/bc_project/duet-project/lang_rust/src/checkout.rs
+  - crates/bc_project/duet-project/lang_rust/src/headwatch.rs
+  - crates/bc_project/duet-project/lang_rust/src/watch.rs
+  - crates/bc_project/duet-project/lang_rust/src/lock.rs
+  - crates/bc_project/duet-project/lang_rust/src/templates.rs
+  - crates/bc_project/duet-project/lang_rust/src/recent.rs
+  - crates/bc_project/duet-project/lang_rust/src/platform_macos.rs
+  - crates/bc_project/duet-project/lang_rust/src/platform_linux.rs
+  - crates/bc_project/duet-project/lang_rust/src/store/manifest.rs
+  - crates/bc_project/duet-project/lang_rust/src/store/content.rs
+  - crates/bc_project/duet-project/lang_rust/src/store/gc.rs
+  - crates/bc_project/duet-project/lang_rust/src/history/gix_impl.rs
+  - crates/bc_project/duet-project/lang_rust/src/history/budget.rs
+  - crates/bc_project/duet-project/lang_rust/src/watch/debounce.rs
+  - crates/bc_project/duet-project/lang_rust/src/watch/ledger.rs
+  - crates/bc_project/duet-project/lang_rust/src/templates/default.rs
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-project -E 'test(atomic_save) + test(view_json)' --no-tests=fail passes; commit SHA on a branch chunk/f1-bundle-and-atomic-save"
@@ -40,31 +40,31 @@ Verify the current state of the files in the write scope; report a discrepancy a
 
 ## Files
 
-- `crates/duet-project/Cargo.toml` — modify. Add the `{ workspace = true }` entries this chunk uses.
+- `crates/bc_project/duet-project/lang_rust/Cargo.toml` — modify. Add the `{ workspace = true }` entries this chunk uses.
 - `Cargo.lock` — modify. Commit it in the same commit as the manifest (SM5).
-- `crates/duet-project/src/lib.rs` — modify. Add every `mod` line of the line.
-- `crates/duet-project/src/bundle.rs` — create.
-- `crates/duet-project/src/save.rs` — create.
-- `crates/duet-project/src/view.rs` — create.
-- `crates/duet-project/src/gitconfig.rs` — create.
-- `crates/duet-project/src/templates.rs` — create.
-- `crates/duet-project/src/templates/default.rs` — create.
-- `crates/duet-project/src/store.rs` — create as a stub.
-- `crates/duet-project/src/store/manifest.rs` — create as a stub.
-- `crates/duet-project/src/store/content.rs` — create as a stub.
-- `crates/duet-project/src/store/gc.rs` — create as a stub.
-- `crates/duet-project/src/history.rs` — create as a stub.
-- `crates/duet-project/src/history/gix_impl.rs` — create as a stub.
-- `crates/duet-project/src/history/budget.rs` — create as a stub.
-- `crates/duet-project/src/checkout.rs` — create as a stub.
-- `crates/duet-project/src/headwatch.rs` — create as a stub.
-- `crates/duet-project/src/watch.rs` — create as a stub.
-- `crates/duet-project/src/watch/debounce.rs` — create as a stub.
-- `crates/duet-project/src/watch/ledger.rs` — create as a stub.
-- `crates/duet-project/src/lock.rs` — create as a stub.
-- `crates/duet-project/src/recent.rs` — create as a stub.
-- `crates/duet-project/src/platform_macos.rs` — create, with content.
-- `crates/duet-project/src/platform_linux.rs` — create, with content.
+- `crates/bc_project/duet-project/lang_rust/src/lib.rs` — modify. Add every `mod` line of the line.
+- `crates/bc_project/duet-project/lang_rust/src/bundle.rs` — create.
+- `crates/bc_project/duet-project/lang_rust/src/save.rs` — create.
+- `crates/bc_project/duet-project/lang_rust/src/view.rs` — create.
+- `crates/bc_project/duet-project/lang_rust/src/gitconfig.rs` — create.
+- `crates/bc_project/duet-project/lang_rust/src/templates.rs` — create.
+- `crates/bc_project/duet-project/lang_rust/src/templates/default.rs` — create.
+- `crates/bc_project/duet-project/lang_rust/src/store.rs` — create as a stub.
+- `crates/bc_project/duet-project/lang_rust/src/store/manifest.rs` — create as a stub.
+- `crates/bc_project/duet-project/lang_rust/src/store/content.rs` — create as a stub.
+- `crates/bc_project/duet-project/lang_rust/src/store/gc.rs` — create as a stub.
+- `crates/bc_project/duet-project/lang_rust/src/history.rs` — create as a stub.
+- `crates/bc_project/duet-project/lang_rust/src/history/gix_impl.rs` — create as a stub.
+- `crates/bc_project/duet-project/lang_rust/src/history/budget.rs` — create as a stub.
+- `crates/bc_project/duet-project/lang_rust/src/checkout.rs` — create as a stub.
+- `crates/bc_project/duet-project/lang_rust/src/headwatch.rs` — create as a stub.
+- `crates/bc_project/duet-project/lang_rust/src/watch.rs` — create as a stub.
+- `crates/bc_project/duet-project/lang_rust/src/watch/debounce.rs` — create as a stub.
+- `crates/bc_project/duet-project/lang_rust/src/watch/ledger.rs` — create as a stub.
+- `crates/bc_project/duet-project/lang_rust/src/lock.rs` — create as a stub.
+- `crates/bc_project/duet-project/lang_rust/src/recent.rs` — create as a stub.
+- `crates/bc_project/duet-project/lang_rust/src/platform_macos.rs` — create, with content.
+- `crates/bc_project/duet-project/lang_rust/src/platform_linux.rs` — create, with content.
 
 A stub holds the `//!` module documentation and nothing else (SM2). A later chunk of line F modifies a stub and creates no file.
 
@@ -205,12 +205,12 @@ Link `T4 before F1` of section 13.4 states the reason: the save path writes thro
 
 ## Steps
 
-1. Read `crates/duet-project/Cargo.toml` and `crates/duet-project/src/lib.rs`. Confirm the M4 skeleton: the `*.workspace = true` package fields, a `description`, `[lints] workspace = true`, no `[dependencies]` section, and a `src/lib.rs` that holds the `//!` crate documentation and `#![forbid(unsafe_code)]`. Report a discrepancy and stop.
+1. Read `crates/bc_project/duet-project/lang_rust/Cargo.toml` and `crates/bc_project/duet-project/lang_rust/src/lib.rs`. Confirm the M4 skeleton: the `*.workspace = true` package fields, a `description`, `[lints] workspace = true`, no `[dependencies]` section, and a `src/lib.rs` that holds the `//!` crate documentation and `#![forbid(unsafe_code)]`. Report a discrepancy and stop.
 2. Create every module file of the write scope as a stub. Each stub holds one `//!` line and nothing else. Add one `mod` line per stub to `src/lib.rs`, and one `mod` line per child stub to its parent module file. The `platform_macos` and `platform_linux` `mod` lines sit behind `#[cfg(target_os = "macos")]` and `#[cfg(target_os = "linux")]` in the crate root, which is the one place a `cfg(target_os)` branch appears in this crate (section 11.2 rule 1).
 3. Run `cargo check -p duet-project`. Confirm that the crate builds on macOS and on Linux with the stub tree.
-4. Add to `crates/duet-project/Cargo.toml` the entries this chunk uses: `duet-time`, `duet-session`, `duet-command`, `duet-media`, `serde`, `serde_json`, `thiserror`, and `tracing`, each `{ workspace = true }`. Run `cargo build --workspace` and commit `Cargo.lock` with the manifest.
+4. Add to `crates/bc_project/duet-project/lang_rust/Cargo.toml` the entries this chunk uses: `duet-time`, `duet-session`, `duet-command`, `duet-media`, `serde`, `serde_json`, `thiserror`, and `tracing`, each `{ workspace = true }`. Run `cargo build --workspace` and commit `Cargo.lock` with the manifest.
 5. Write `ProjectError` and `HistoryError` in `src/lib.rs`, with `#[from]` on each wrapping arm, and the `From<ProjectError> for UpstreamFailure` impl.
-6. Write the failing test `atomic_save_completes_a_rename_the_marker_names` in `crates/duet-project/src/save.rs`. Run `cargo nextest run -p duet-project -E 'test(atomic_save)' --no-tests=fail` and confirm that it fails to compile.
+6. Write the failing test `atomic_save_completes_a_rename_the_marker_names` in `crates/bc_project/duet-project/lang_rust/src/save.rs`. Run `cargo nextest run -p duet-project -E 'test(atomic_save)' --no-tests=fail` and confirm that it fails to compile.
 7. Write the five-step save in `src/save.rs`, with every `fsync` the list above names. A single file is written as a temporary file in the same directory, then `fsync` of the file, then `rename`, then `fsync` of the directory. Run the test and confirm that it passes.
 8. Write the failing test for each remaining row of the crash matrix, one test per row. Run each one and confirm that it fails, then implement the recovery in `src/save.rs` and confirm that each one passes.
 9. Write `src/bundle.rs`: bundle creation writes the whole directory layout, `duet.toml`, `.gitattributes`, `.gitignore`, and `media/README.txt`, which states in one line that `git clean -xdf` deletes every take. It initialises the gix repository and writes no `extensions.objectFormat` key.
@@ -253,7 +253,7 @@ All tests of this chunk are unit tests in a `#[cfg(test)] mod tests` at the bott
 3. `cargo clippy -p duet-project --all-targets -- -D warnings` prints nothing.
 4. `cargo doc -p duet-project` is clean with `-D warnings`.
 5. `cargo machete` reports no unused dependency of `duet-project`.
-6. One commit on the branch `chunk/f1-bundle-and-atomic-save` passes the native git hook. The commit carries `crates/duet-project/Cargo.toml` and `Cargo.lock` together.
+6. One commit on the branch `chunk/f1-bundle-and-atomic-save` passes the native git hook. The commit carries `crates/bc_project/duet-project/lang_rust/Cargo.toml` and `Cargo.lock` together.
 
 ## Constraints
 
@@ -262,7 +262,8 @@ All tests of this chunk are unit tests in a `#[cfg(test)] mod tests` at the bott
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

@@ -3,12 +3,12 @@ id: I2
 line: I
 depends_on: [M8, I1]
 write_scope:
-  - crates/duet-core/src/channel/input.rs
-  - crates/duet-core/src/channel/event.rs
-  - crates/duet-core/src/channel/resync.rs
-  - crates/duet-core/src/quit.rs
-  - crates/duet-core/src/job_runner.rs
-  - crates/duet-core/Cargo.toml
+  - crates/bc_gateway/duet-core/lang_rust/src/channel/input.rs
+  - crates/bc_gateway/duet-core/lang_rust/src/channel/event.rs
+  - crates/bc_gateway/duet-core/lang_rust/src/channel/resync.rs
+  - crates/bc_gateway/duet-core/lang_rust/src/quit.rs
+  - crates/bc_gateway/duet-core/lang_rust/src/job_runner.rs
+  - crates/bc_gateway/duet-core/lang_rust/Cargo.toml
   - Cargo.lock
 parallelism: independent
 completion: "cargo nextest run -p duet-core -E 'test(resync) + test(quit_path) + test(quit_save_thread) + test(worker_stopped) + test(take_flag_merge) + test(client_budget)' --no-tests=fail passes; cargo clippy -p duet-core --all-targets -- -D warnings is clean; commit SHA on a branch chunk/i2-structural-channels"
@@ -27,13 +27,13 @@ This chunk modifies five files and creates none. SM2 gave every file to chunk I1
 
 ## Files
 
-- `crates/duet-core/src/channel/input.rs` — modify. The B28 receive loop and the `CoreInput` arms.
-- `crates/duet-core/src/channel/event.rs` — modify. `register_client`, `release_client`, the B29 and
+- `crates/bc_gateway/duet-core/lang_rust/src/channel/input.rs` — modify. The B28 receive loop and the `CoreInput` arms.
+- `crates/bc_gateway/duet-core/lang_rust/src/channel/event.rs` — modify. `register_client`, `release_client`, the B29 and
   B30 send rules, and the `TakeFlags` merge.
-- `crates/duet-core/src/channel/resync.rs` — modify. The snapshot path and the B39 hysteresis.
-- `crates/duet-core/src/quit.rs` — modify. `QuitSave` and the nine steps.
-- `crates/duet-core/src/job_runner.rs` — modify. `JobWorker` and `JobRunner::shut_down`.
-- `crates/duet-core/Cargo.toml` — modify. No new entry is expected; see step 2. Appendix B.3 names
+- `crates/bc_gateway/duet-core/lang_rust/src/channel/resync.rs` — modify. The snapshot path and the B39 hysteresis.
+- `crates/bc_gateway/duet-core/lang_rust/src/quit.rs` — modify. `QuitSave` and the nine steps.
+- `crates/bc_gateway/duet-core/lang_rust/src/job_runner.rs` — modify. `JobWorker` and `JobRunner::shut_down`.
+- `crates/bc_gateway/duet-core/lang_rust/Cargo.toml` — modify. No new entry is expected; see step 2. Appendix B.3 names
   chunk I1 in its "Chunk that needs it" column for `async-channel`, `futures` and `crossbeam-queue`,
   so this chunk adds none of the three.
 - `Cargo.lock` — modify, only when step 2 changes the member manifest (SM5 rule 2).
@@ -46,7 +46,7 @@ This chunk modifies five files and creates none. SM2 gave every file to chunk I1
 `JobRegistry`, `CoreError`. Architecture section 15.14 holds every declaration. This chunk adds no
 field to `DuetCore`: section 15.14 declares one struct and chunk I1 writes it whole.
 
-### Declared by this chunk, in `crates/duet-core/src/quit.rs`
+### Declared by this chunk, in `crates/bc_gateway/duet-core/lang_rust/src/quit.rs`
 
 Copied from architecture section 15.14.
 
@@ -64,7 +64,7 @@ pub struct QuitSave {
 }
 ```
 
-### Implemented by this chunk, in `crates/duet-core/src/channel/event.rs`
+### Implemented by this chunk, in `crates/bc_gateway/duet-core/lang_rust/src/channel/event.rs`
 
 Copied from architecture section 15.14.
 
@@ -105,7 +105,7 @@ impl DuetCore {
 
 1. Read every file of the write scope. Confirm that chunk I1 created each one and that the channel
    files hold the seam declarations and no behaviour. Stop and report a discrepancy.
-2. Read `crates/duet-core/Cargo.toml`. Chunk I1 added `async-channel`, `futures`,
+2. Read `crates/bc_gateway/duet-core/lang_rust/Cargo.toml`. Chunk I1 added `async-channel`, `futures`,
    `crossbeam-queue`, `arrayvec` and `triple_buffer`, because section 15.14 declares one `DuetCore`
    struct whose fields name all five, and Appendix B.3 names I1 for the first three. Add an entry only when a step below names a crate the manifest
    lacks. Run `cargo build --workspace` and commit `Cargo.lock` when the manifest changed.
@@ -213,7 +213,8 @@ Every bound is driven with a plain number, so no test reads a wall clock.
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

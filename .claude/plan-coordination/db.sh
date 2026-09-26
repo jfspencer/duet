@@ -2,9 +2,9 @@
 # db.sh — the single store tool every Hypervisor / Orchestrator / operating agent
 # calls: `.claude/plan-coordination/db.sh <cmd> <plan-dir> [args...]`.
 #
-# It is a thin launcher for the Rust `plan-db` binary (tools/plan-db), the LMDB
+# It is a thin launcher for the Rust `plan-db` binary (tools/bc_plan_store/plan-db/lang_rust), the LMDB
 # plan store CLI. Subcommands, key classes, and the plan-key resolver are
-# documented in tools/plan-db/src/main.rs and README.md in this directory.
+# documented in tools/bc_plan_store/plan-db/lang_rust/src/main.rs and README.md in this directory.
 #
 # Resolution order (fast path first; every path yields the SAME store because the
 # plan key is derived from git, not from where the binary lives):

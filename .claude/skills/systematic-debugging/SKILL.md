@@ -70,7 +70,7 @@ Use for ANY technical issue:
 
    Common boundaries to check:
    - View -> entity -> background task (state owned by the wrong entity, a `notify` on the wrong one)
-   - Crate boundaries across the workspace (`crates/duet`, `tools/plan-db`, `tools/xtask`)
+   - Crate boundaries across the workspace (`crates/bc_app/duet/lang_rust`, `tools/bc_plan_store/plan-db/lang_rust`, `tools/bc_repo_guard/xtask/lang_rust`)
    - Process boundaries (the plan store is written by other processes)
 
 5. **Trace Data Flow**

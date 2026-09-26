@@ -132,11 +132,12 @@ pub(crate) enum Outcome {
     FailClosed,
 }
 
-/// The repository root: two levels above this crate's manifest directory.
+/// The repository root: the nearest ancestor of this crate that holds the
+/// workspace lockfile, so the answer does not depend on how deep the crate sits.
 fn repo_root() -> Option<PathBuf> {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
-        .nth(2)
+        .find(|dir| dir.join("Cargo.lock").is_file())
         .map(Path::to_path_buf)
 }
 

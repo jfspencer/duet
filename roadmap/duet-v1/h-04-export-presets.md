@@ -3,7 +3,7 @@ id: H4
 line: H
 depends_on: [H3]
 write_scope:
-  - crates/duet-export/src/preset.rs
+  - crates/bc_audio/duet-export/lang_rust/src/preset.rs
 parallelism: independent
 completion: "cargo nextest run -p duet-export -E 'test(preset)' --no-tests=fail passes; commit SHA on a branch chunk/h4-export-presets"
 ---
@@ -12,11 +12,11 @@ completion: "cargo nextest run -p duet-export -E 'test(preset)' --no-tests=fail 
 
 Verify the current state of the files in the write scope; report a discrepancy and stop, instead of proceeding. This chunk builds the preset set of architecture section 7.4: Streaming, Broadcast, and Custom, with the two numbers B75 gives each of the first two. It carries MUST story MA-01 (loudness target and true-peak ceiling). The export dialog of chunk K5 reads the preset list at run time, so link `H1 before K5` of section 13.4 states that H4 need not precede K5. Chunk J3 does need this chunk: link `I4 and H4 before J3` states that `export_end_to_end` exports with the Streaming preset.
 
-**This chunk writes no member manifest**, so it names neither `crates/duet-export/Cargo.toml` nor `Cargo.lock` in its write scope, and its Completion command carries no `--locked` flag (SM3 rule 4, SM5). It is the last chunk of line H.
+**This chunk writes no member manifest**, so it names neither `crates/bc_audio/duet-export/lang_rust/Cargo.toml` nor `Cargo.lock` in its write scope, and its Completion command carries no `--locked` flag (SM3 rule 4, SM5). It is the last chunk of line H.
 
 ## Files
 
-- `crates/duet-export/src/preset.rs` — modify. Chunk H1 created the stub.
+- `crates/bc_audio/duet-export/lang_rust/src/preset.rs` — modify. Chunk H1 created the stub.
 
 ## Types and signatures
 
@@ -101,7 +101,7 @@ impl ExportPreset {
 
 ## Steps
 
-1. Read `crates/duet-export/src/preset.rs`. Confirm that chunk H1 left it a stub with a `//!` line and nothing else, and that chunk H3 has landed. Report a discrepancy and stop.
+1. Read `crates/bc_audio/duet-export/lang_rust/src/preset.rs`. Confirm that chunk H1 left it a stub with a `//!` line and nothing else, and that chunk H3 has landed. Report a discrepancy and stop.
 2. Confirm that the workspace constant block holds the B75 values, which chunk M0 or a trunk chunk wrote in `duet-time`. When it does not, report the discrepancy and stop; do not write a literal in this module.
 3. Write the failing test `preset_streaming_targets_minus_fourteen_lufs` in `src/preset.rs`. Run `cargo nextest run -p duet-export -E 'test(preset)' --no-tests=fail` and confirm that it fails to compile.
 4. Write `ExportPreset`, `ExportPreset::normalization`, `ExportPreset::ORDER` and `ExportPreset::label` in `src/preset.rs`, with the declarations above. `normalization` reads the B75 constants and writes no literal. Run the test and confirm that it passes.
@@ -132,7 +132,7 @@ All tests of this chunk are unit tests in a `#[cfg(test)] mod tests` at the bott
 1. `cargo nextest run -p duet-export -E 'test(preset)' --no-tests=fail` passes on macOS and on Linux. It fails before this chunk, because no test of that name exists.
 2. `cargo nextest run -p duet-export --no-tests=fail` passes.
 3. `cargo clippy -p duet-export --all-targets -- -D warnings` prints nothing.
-4. `git status` inside `crates/duet-export` shows no change to `Cargo.toml` and no change to `Cargo.lock`, because this chunk adds no dependency.
+4. `git status` inside `crates/bc_audio/duet-export/lang_rust` shows no change to `Cargo.toml` and no change to `Cargo.lock`, because this chunk adds no dependency.
 5. One commit on the branch `chunk/h4-export-presets` passes the native git hook.
 
 ## Constraints
@@ -142,7 +142,8 @@ All tests of this chunk are unit tests in a `#[cfg(test)] mod tests` at the bott
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

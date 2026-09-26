@@ -40,9 +40,9 @@ None of the Claude hooks gate UX. Your specs reference theme tokens (`cx.theme()
 
 ## What Duet Is
 
-Duet is a native desktop application built on GPUI Kit (`crates/duet`). It runs on macOS, Windows, and Linux, renders through the GPU, and composes its surface from the GPUI Component library (`gpui_kit::component`) with the theme tokens in `cx.theme()`. It is a local application: its data lives on the user's machine unless a feature explicitly adds a network surface.
+Duet is a native desktop application built on GPUI Kit (`crates/bc_app/duet/lang_rust`). It runs on macOS, Windows, and Linux, renders through the GPU, and composes its surface from the GPUI Component library (`gpui_kit::component`) with the theme tokens in `cx.theme()`. It is a local application: its data lives on the user's machine unless a feature explicitly adds a network surface.
 
-The product surface is defined by the views under `crates/duet/src/`. Read them before you spec: the entry window is `src/main.rs` and the root view is `src/app.rs`. The roadmap under `roadmap/<plan>/` names the features in flight.
+The product surface is defined by the views under `crates/bc_app/duet/lang_rust/src/`. Read them before you spec: the entry window is `src/main.rs` and the root view is `src/app.rs`. The roadmap under `roadmap/<plan>/` names the features in flight.
 
 ## User Groups
 
@@ -147,7 +147,7 @@ You also challenge the user when a feature request is underspecified:
 
 ## Plan vs Code Verification
 
-Code is the source of truth — verify current UX state (the views, entities, and actions under `crates/duet/src/`) before specifying against a plan. See the `verification-before-completion` skill. Ground user journeys in the views and components that exist now, not on what a plan says should exist. When plan and code disagree, raise it to the Orchestrator as a question for the human.
+Code is the source of truth — verify current UX state (the views, entities, and actions under `crates/bc_app/duet/lang_rust/src/`) before specifying against a plan. See the `verification-before-completion` skill. Ground user journeys in the views and components that exist now, not on what a plan says should exist. When plan and code disagree, raise it to the Orchestrator as a question for the human.
 
 ## Being Inquisitive
 

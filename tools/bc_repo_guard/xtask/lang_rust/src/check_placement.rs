@@ -1887,7 +1887,7 @@ const DATA_BLOCKS: &[BlockSpec] = &[
         "block-members",
         "Every registered block and its membership rule",
         BlockKind::Text,
-        51,
+        52,
     ),
     block(
         "budget-table",
@@ -1931,7 +1931,7 @@ const DATA_BLOCKS: &[BlockSpec] = &[
         "rule-blocks",
         "Which rule reads which block",
         BlockKind::Table,
-        33,
+        34,
     ),
     block(
         "closure-r16",
@@ -1990,6 +1990,12 @@ const DATA_BLOCKS: &[BlockSpec] = &[
     block(
         "line-map",
         "Every chunk line and the crate it owns",
+        BlockKind::Text,
+        16,
+    ),
+    block(
+        "context-map",
+        "The bounded context map",
         BlockKind::Text,
         16,
     ),
@@ -6875,12 +6881,237 @@ fn rule_index_audit(
     Ok((indexed.len(), failures))
 }
 
-/// PG40. A chunk writes only into the crate its own LINE owns.
+/// One repository path in the unit shape `<root>/bc_<context>/<package>/<rest>`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct UnitPath {
+    /// The bounded context name, without its `bc_` prefix.
+    pub(crate) context: String,
+    /// The Cargo package name, verbatim.
+    pub(crate) package: String,
+    /// Everything after `<package>/`, or the empty string when the path ends at
+    /// the package directory.
+    pub(crate) rest: String,
+}
+
+/// Whether one text is a context name: `[a-z][a-z0-9]*(_[a-z0-9]+)*`.
+fn is_context_name(text: &str) -> bool {
+    let mut parts = text.split('_');
+    let head_holds = parts.next().is_some_and(|head| {
+        head.chars()
+            .next()
+            .is_some_and(|first| first.is_ascii_lowercase())
+            && head
+                .chars()
+                .all(|one| one.is_ascii_lowercase() || one.is_ascii_digit())
+    });
+    head_holds && parts.all(is_name_part)
+}
+
+/// Whether one text is a package name: `[a-z0-9]+(-[a-z0-9]+)*`.
+fn is_package_name(text: &str) -> bool {
+    text.split('-').all(is_name_part)
+}
+
+/// Whether one text is a non-empty run of ASCII lowercase letters and digits.
+fn is_name_part(text: &str) -> bool {
+    !text.is_empty()
+        && text
+            .chars()
+            .all(|one| one.is_ascii_lowercase() || one.is_ascii_digit())
+}
+
+/// One path read as `<root>/bc_<context>/<package>[/<rest>]`, or `None`.
 ///
-/// The rule reads a path that opens `crates/`, so a chunk that writes `tools/`,
-/// `scripts/` or a workflow file is outside it. The M chunks are outside it too,
-/// because a manifest row names several crates by design (critic C22I-W3).
-fn chunk_crate_audit(source: &[char], blocks: &Blocks) -> anyhow::Result<Counted> {
+/// `root` is the first directory, such as `crates` or `tools`. A path whose
+/// context or package breaks its name shape is `None`.
+pub(crate) fn parse_unit_path(path: &str, root: &str) -> Option<UnitPath> {
+    let after_root = path.strip_prefix(root)?.strip_prefix('/')?;
+    let after_bc = after_root.strip_prefix("bc_")?;
+    let (context, after_context) = after_bc.split_once('/')?;
+    let (package, rest) = after_context.split_once('/').unwrap_or((after_context, ""));
+    (is_context_name(context) && is_package_name(package)).then(|| UnitPath {
+        context: context.to_owned(),
+        package: package.to_owned(),
+        rest: rest.to_owned(),
+    })
+}
+
+/// Every directory of a unit that sits beside `lang_rust/`.
+const UNIT_SIBLING_DIRS: [&str; 2] = ["assets/", "packaging/"];
+
+/// Every file of a unit that sits beside `lang_rust/`.
+const UNIT_SIBLING_FILES: [&str; 2] = ["CLAUDE.md", "build.rs"];
+
+/// Whether the path after a unit directory opens `lang_rust/` or a unit sibling.
+///
+/// PG40 and the plan graph check 9 both read this one rule.
+pub(crate) fn unit_rest_holds(rest: &str) -> bool {
+    rest.starts_with("lang_rust/")
+        || UNIT_SIBLING_DIRS.iter().any(|dir| rest.starts_with(dir))
+        || UNIT_SIBLING_FILES.contains(&rest)
+}
+
+/// One path with every leading `./` removed.
+pub(crate) fn without_dot_slash(path: &str) -> &str {
+    path.trim_start_matches("./")
+}
+
+/// Every token of one chunk row that names `crates/`.
+///
+/// A token ends at whitespace or at a markdown or sentence delimiter. Emphasis
+/// marks, a trailing `.` or `:`, and a leading `./` are not part of it. A token
+/// that holds `crates/` at any offset is kept, so a path that does not open with
+/// it fails the shape instead of leaving the rule.
+fn crate_tokens(text: &str) -> Vec<String> {
+    text.split(|one: char| one.is_whitespace() || "`'\"(),;|<>[]".contains(one))
+        .map(|token| without_dot_slash(token.trim_matches('*').trim_end_matches(['.', ':', '*'])))
+        .filter(|token| token.contains("crates/"))
+        .map(str::to_owned)
+        .collect()
+}
+
+/// The `context-map` block, as the context of each crate.
+///
+/// A row that is not one crate and one context name, and a crate the block
+/// names twice, are each a finding (PG40).
+fn context_map(blocks: &Blocks) -> (BTreeMap<String, String>, Pairs) {
+    let mut contexts = BTreeMap::new();
+    let mut failures = Vec::new();
+    for row in blocks.rows("context-map") {
+        let line = row.line();
+        let parts = row.tokens();
+        let (Some(crate_name), Some(context), None) = (parts.first(), parts.get(1), parts.get(2))
+        else {
+            failures.push((
+                CONTEXT_MAP_SUBJECT.to_owned(),
+                format!("the row `{line}` is not one crate and one context (PG40)"),
+            ));
+            continue;
+        };
+        if !is_context_name(context) {
+            failures.push((
+                CONTEXT_MAP_SUBJECT.to_owned(),
+                format!("the row `{line}` names a context outside the name shape (PG40)"),
+            ));
+        }
+        let key = normalize_crate(crate_name);
+        if contexts.insert(key.clone(), context.clone()).is_some() {
+            failures.push((
+                CONTEXT_MAP_SUBJECT.to_owned(),
+                format!("the `context-map` block names `{key}` more than once (PG40)"),
+            ));
+        }
+    }
+    (contexts, failures)
+}
+
+/// The subject every finding about the `context-map` block itself carries.
+const CONTEXT_MAP_SUBJECT: &str = "<context-map>";
+
+/// PG40. The `context-map` block lists every `crate-table` crate once, and no
+/// other crate.
+fn context_map_coverage(blocks: &Blocks, contexts: &BTreeMap<String, String>) -> Pairs {
+    let table: BTreeSet<String> = blocks
+        .rows("crate-table")
+        .iter()
+        .map(|row| normalize_crate(&strip_ticks(&row.cell(0))))
+        .filter(|name| !name.is_empty())
+        .collect();
+    let mapped: BTreeSet<String> = contexts.keys().cloned().collect();
+    let mut failures = Vec::new();
+    for name in table.difference(&mapped) {
+        failures.push((
+            CONTEXT_MAP_SUBJECT.to_owned(),
+            format!(
+                "the `crate-table` block names `{name}` and the `context-map` block carries \
+no row for it (PG40)"
+            ),
+        ));
+    }
+    for name in mapped.difference(&table) {
+        failures.push((
+            CONTEXT_MAP_SUBJECT.to_owned(),
+            format!(
+                "the `context-map` block names `{name}` and the `crate-table` block does not \
+(PG40)"
+            ),
+        ));
+    }
+    failures
+}
+
+/// The line prefix and the crate owner of one chunk row, as PG40 reads them.
+struct RowOwner<'a> {
+    /// The chunk id the row states.
+    chunk: &'a str,
+    /// The line prefix of the chunk id.
+    head: &'a str,
+    /// The crate the line owns, or `None` for a manifest chunk.
+    owner: Option<&'a str>,
+}
+
+/// The PG40 finding for one `crates/` token of one chunk row, or `None`.
+fn chunk_path_finding(
+    token: &str,
+    row: &RowOwner<'_>,
+    contexts: &BTreeMap<String, String>,
+) -> Option<String> {
+    let Some(unit) = parse_unit_path(token, "crates") else {
+        return Some(format!(
+            "the row names `{token}`, a path outside the `crates/bc_<context>/<crate>/` shape \
+(PG40)"
+        ));
+    };
+    if !unit.rest.is_empty() && !unit_rest_holds(&unit.rest) {
+        return Some(format!(
+            "the row names `{token}`, whose path after the crate directory is not \
+`lang_rust/` or a unit sibling (PG40)"
+        ));
+    }
+    let Some(mapped) = contexts.get(&unit.package) else {
+        return Some(format!(
+            "the row names `{token}` and the `context-map` block carries no context for `{}` \
+(PG40)",
+            unit.package
+        ));
+    };
+    if *mapped != unit.context {
+        return Some(format!(
+            "the row names `{token}` under context `bc_{}` and the `context-map` block puts \
+`{}` in `bc_{mapped}` (PG40)",
+            unit.context, unit.package
+        ));
+    }
+    let owner = row.owner.map(normalize_crate)?;
+    (owner != unit.package).then(|| {
+        format!(
+            "the row writes into crate `{}` and line `{}` owns `{owner}` (PG40)",
+            unit.package, row.head
+        )
+    })
+}
+
+/// What PG40 decided over the section 13 chunk rows.
+#[derive(Debug, Default)]
+struct ChunkCrateAudit {
+    /// How many chunk rows carry a line the `line-map` block maps.
+    owned_rows: usize,
+    /// How many `crates/` paths parse in the unit shape.
+    parsed_paths: usize,
+    /// Every finding, as its subject and its reason.
+    failures: Pairs,
+}
+
+/// PG40. A chunk writes only into the crate its own LINE owns, under the
+/// context the `context-map` block gives that crate.
+///
+/// Every `crates/` token of every chunk row must parse as
+/// `crates/bc_<context>/<crate>/`, and `<context>` must be the one the
+/// `context-map` block states. The owner check skips the M chunks, because a
+/// manifest row names several crates by design (critic C22I-W3). A path outside
+/// `crates/` is outside the rule. A run that scans chunk rows and parses no
+/// path is a finding, because a rule with no path to decide passes in silence.
+fn chunk_crate_audit(source: &[char], blocks: &Blocks) -> anyhow::Result<ChunkCrateAudit> {
     let mut owners = BTreeMap::new();
     for row in blocks.rows("line-map") {
         let parts = row.tokens();
@@ -6888,63 +7119,80 @@ fn chunk_crate_audit(source: &[char], blocks: &Blocks) -> anyhow::Result<Counted
             owners.insert(line.clone(), crate_name.clone());
         }
     }
+    let mut audit = ChunkCrateAudit::default();
     if owners.is_empty() {
-        return Ok((
-            0,
-            vec![(
-                "<line-map>".to_owned(),
-                "the line map holds no row, so PG40 has no owner set".to_owned(),
-            )],
+        audit.failures.push((
+            "<line-map>".to_owned(),
+            "the line map holds no row, so PG40 has no owner set".to_owned(),
         ));
+        return Ok(audit);
     }
+    let (contexts, map_failures) = context_map(blocks);
+    audit.failures.extend(map_failures);
+    audit
+        .failures
+        .extend(context_map_coverage(blocks, &contexts));
     let row = pattern::build(r"(?m)^\| ([A-Z]+\d*) \| (\d+) \|(.*)$")?;
     let letters = pattern::build(r"[A-Z]+")?;
     let manifest = pattern::build(r"M\d*")?;
-    let path = pattern::build(r"crates/([a-z0-9-]+)/")?;
-    let mut checked = 0_usize;
-    let mut failures = Vec::new();
+    let mut scanned = 0_usize;
     for one in row.find_iter(source) {
         if cell_count(&one.text(0, source))? != 5 {
             continue;
         }
+        scanned = scanned.saturating_add(1);
         let chunk = one.text(1, source);
-        let rest = one.text(3, source);
         let name = pattern::chars(&chunk);
         let head = letters
             .match_at(&name, 0)
             .map(|found| found.text(0, &name))
             .unwrap_or_default();
-        let Some(owner) = owners.get(&chunk).or_else(|| owners.get(&head)) else {
-            if manifest.full_match(&name).is_none() {
-                failures.push((
-                    chunk,
-                    "the `line-map` block carries no line for this chunk id, so no crate \
-owns its write scope (PG40)"
-                        .to_owned(),
-                ));
-            }
-            continue;
+        let is_manifest = manifest.full_match(&name).is_some();
+        let owner = owners.get(&chunk).or_else(|| owners.get(&head));
+        match owner {
+            Some(_) => audit.owned_rows = audit.owned_rows.saturating_add(1),
+            None if !is_manifest => audit.failures.push((
+                chunk.clone(),
+                "the `line-map` block carries no line for this chunk id, so no crate owns its \
+write scope (PG40)"
+                    .to_owned(),
+            )),
+            None => {},
+        }
+        let row_owner = RowOwner {
+            chunk: &chunk,
+            head: &head,
+            owner: owner.filter(|_| !is_manifest).map(String::as_str),
         };
-        checked = checked.saturating_add(1);
-        let text = pattern::chars(&rest);
-        let written: BTreeSet<String> = path
-            .find_iter(&text)
-            .iter()
-            .map(|found| found.text(1, &text))
-            .collect();
-        for found in written {
-            if found != *owner {
-                failures.push((
-                    chunk.clone(),
-                    format!(
-                        "the row writes under `crates/{found}/` and line `{head}` owns \
-`{owner}` (PG40)"
-                    ),
-                ));
+        audit.scan_row(&one.text(3, source), &row_owner, &contexts);
+    }
+    if scanned > 0 && audit.parsed_paths == 0 {
+        audit.failures.push((
+            "PG40".to_owned(),
+            format!(
+                "the rule scanned {scanned} chunk rows and parsed no `crates/` path; a rule \
+with no path to decide is a silent pass (PG40)"
+            ),
+        ));
+    }
+    Ok(audit)
+}
+
+impl ChunkCrateAudit {
+    /// Decide every `crates/` token of one chunk row.
+    fn scan_row(&mut self, text: &str, row: &RowOwner<'_>, contexts: &BTreeMap<String, String>) {
+        let tokens: BTreeSet<String> = crate_tokens(text).into_iter().collect();
+        for token in tokens {
+            if parse_unit_path(&token, "crates")
+                .is_some_and(|unit| unit.rest.is_empty() || unit_rest_holds(&unit.rest))
+            {
+                self.parsed_paths = self.parsed_paths.saturating_add(1);
+            }
+            if let Some(reason) = chunk_path_finding(&token, row, contexts) {
+                self.failures.push((row.chunk.to_owned(), reason));
             }
         }
     }
-    Ok((checked, failures))
 }
 
 /// Every citation label of this document, as its offset and its label (PG30).
@@ -8225,6 +8473,8 @@ struct Counts {
     index_ids: usize,
     /// How many chunk rows PG40 decided.
     line_chunks: usize,
+    /// How many `crates/` paths of the chunk rows PG40 parsed.
+    chunk_paths: usize,
     /// How many carrier rows the table holds.
     carriers: usize,
     /// How many declared fields hold a carrier end.
@@ -8794,8 +9044,13 @@ set below the floor is a silent shrink of a denominator (critic N21-3)",
     let (table_rows, ragged_bad) = ragged_row_audit(ctx.text)?;
     counts.table_rows = table_rows;
     lists.ragged_bad = ragged_bad;
-    let (chunk_rows, mut chunk_crate_bad) = chunk_crate_audit(ctx.source, &inputs.blocks)?;
+    let ChunkCrateAudit {
+        owned_rows: chunk_rows,
+        parsed_paths,
+        failures: mut chunk_crate_bad,
+    } = chunk_crate_audit(ctx.source, &inputs.blocks)?;
     counts.line_chunks = chunk_rows;
+    counts.chunk_paths = parsed_paths;
     if chunk_rows < LINE_CHUNK_FLOOR {
         chunk_crate_bad.push((
             "PG40".to_owned(),
@@ -9269,8 +9524,9 @@ fn print_plan<W: io::Write>(out: &mut W, counts: &Counts, lists: &Lists) -> anyh
     )?;
     writeln!(
         out,
-        "LINE CHUNKS:     {}     CHUNK CRATE BAD: {}     LINE CHUNK FLOOR: {LINE_CHUNK_FLOOR}     PAIR CEILING: {EXEMPT_CEILING}",
+        "LINE CHUNKS:     {}     CHUNK PATHS: {}     CHUNK CRATE BAD: {}     LINE CHUNK FLOOR: {LINE_CHUNK_FLOOR}     PAIR CEILING: {EXEMPT_CEILING}",
         counts.line_chunks,
+        counts.chunk_paths,
         lists.chunk_crate_bad.len()
     )?;
     writeln!(

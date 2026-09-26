@@ -3,8 +3,8 @@ id: G3
 line: G
 depends_on: [G2]
 write_scope:
-  - crates/duet-midi/src/platform_linux.rs
-  - crates/duet-midi/Cargo.toml
+  - crates/bc_midi/duet-midi/lang_rust/src/platform_linux.rs
+  - crates/bc_midi/duet-midi/lang_rust/Cargo.toml
   - Cargo.lock
 parallelism: independent
 completion: "Linux, on ubuntu-26.04: cargo nextest run -p duet-midi -E 'test(pipewire_presence)' --no-tests=fail passes; commit SHA on a branch chunk/g3-pipewire-presence"
@@ -18,8 +18,8 @@ Verify the current state of the files in the write scope; report a discrepancy a
 
 ## Files
 
-- `crates/duet-midi/src/platform_linux.rs` — modify. Chunk G1 created the stub.
-- `crates/duet-midi/Cargo.toml` — modify. Add the `pipewire` entry under the Linux target table.
+- `crates/bc_midi/duet-midi/lang_rust/src/platform_linux.rs` — modify. Chunk G1 created the stub.
+- `crates/bc_midi/duet-midi/lang_rust/Cargo.toml` — modify. Add the `pipewire` entry under the Linux target table.
 - `Cargo.lock` — modify. Commit it in the same commit as the manifest (SM5).
 
 ## Types and signatures
@@ -98,8 +98,8 @@ When `subscribe_hotplug` fails to open, or when it passes B22, the platform pres
 
 ## Steps
 
-1. Read `crates/duet-midi/src/platform_linux.rs` and `crates/duet-midi/Cargo.toml`. Confirm that chunk G1 left the module a stub with a `//!` line, that the crate root holds the guarded `mod` line, and that chunk G2 has landed. Report a discrepancy and stop.
-2. Add to `crates/duet-midi/Cargo.toml` the Linux target table with `pipewire = { workspace = true }`. Run `cargo build --workspace` on Linux and on macOS, and keep `Cargo.lock` for the same commit. The macOS build must still succeed, because the pin is not a dependency there.
+1. Read `crates/bc_midi/duet-midi/lang_rust/src/platform_linux.rs` and `crates/bc_midi/duet-midi/lang_rust/Cargo.toml`. Confirm that chunk G1 left the module a stub with a `//!` line, that the crate root holds the guarded `mod` line, and that chunk G2 has landed. Report a discrepancy and stop.
+2. Add to `crates/bc_midi/duet-midi/lang_rust/Cargo.toml` the Linux target table with `pipewire = { workspace = true }`. Run `cargo build --workspace` on Linux and on macOS, and keep `Cargo.lock` for the same commit. The macOS build must still succeed, because the pin is not a dependency there.
 3. Run `cargo tree -d` on Linux and confirm that the tree holds one `pipewire` version. Report the result to the Orchestrator.
 4. Write the failing test `pipewire_presence_reports_an_arrival_from_the_registry` in `src/platform_linux.rs`, inside a `#[cfg(test)] mod tests` guarded by `#[cfg(target_os = "linux")]`. Run `cargo nextest run -p duet-midi -E 'test(pipewire_presence)' --no-tests=fail` on Linux and confirm that it fails to compile.
 5. Write `PipeWireRegistryPresence` in `src/platform_linux.rs`. `ports` walks the registry and returns one `PlatformPort::PipeWire { global, name }` per MIDI node and per MIDI port. It mints no identity.
@@ -135,7 +135,7 @@ All tests of this chunk are unit tests in a `#[cfg(test)] mod tests` at the bott
 4. `cargo clippy -p duet-midi --all-targets -- -D warnings` prints nothing on Linux.
 5. `cargo tree -d` on Linux shows one `pipewire` version, and the result is reported to the Orchestrator.
 6. `cargo deny check` passes, and any duplicate `alsa` major is a warning and not a failure.
-7. One commit on the branch `chunk/g3-pipewire-presence` passes the native git hook. The commit carries `crates/duet-midi/Cargo.toml` and `Cargo.lock` together.
+7. One commit on the branch `chunk/g3-pipewire-presence` passes the native git hook. The commit carries `crates/bc_midi/duet-midi/lang_rust/Cargo.toml` and `Cargo.lock` together.
 
 ## Constraints
 
@@ -144,7 +144,8 @@ All tests of this chunk are unit tests in a `#[cfg(test)] mod tests` at the bott
 - No suppression: `#[allow]` is denied; the only accepted form is a single-site `#[expect(lint, reason = "...")]`. Every `#[expect]` site in this chunk is listed in architecture Appendix B.1; a site not on that list is a plan defect that returns to the Architect. `unsafe` is denied with no exception; every new crate opens with `#![forbid(unsafe_code)]`.
 - `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `dbg!`, `println!`, `eprintln!`, slice indexing, integer division with `/`, and `as` casts are denied outside tests; `as` is allowed only inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this repository rule.
 - Before any change: verify the current state of the files listed above. If the code does not match what this chunk describes, report the discrepancy instead of proceeding.
 - Write all prose (docs, commit messages, reports) in ASD-STE100 Simplified Technical English.

@@ -20,7 +20,7 @@ rustup show active-toolchain >/dev/null   # installs the pinned channel + compon
 # Linux system packages. PipeWire is the audio server on Linux (section 11.5);
 # ALSA supplies the client and the sequencer interface that PipeWire presents.
 # The same set the ci.yml `dod` job installs, plus shellcheck. A developer who
-# runs this script on a clean Ubuntu host must be able to build crates/duet,
+# runs this script on a clean Ubuntu host must be able to build the duet crate,
 # which pins gpui-kit.
 LINUX_PACKAGES="libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
 libx11-xcb-dev libxcb1-dev libxcb-shape0-dev libxcb-xfixes0-dev \
@@ -70,6 +70,6 @@ else
   cargo install --locked --version "$NEXTEST_VERSION" cargo-nextest
 fi
 
-cargo install --locked --path tools/plan-db --force
+cargo install --locked --path tools/bc_plan_store/plan-db/lang_rust --force
 scripts/install-hooks.sh
 printf 'bootstrap: done. Run scripts/dod.sh --plan to see the gate.\n'

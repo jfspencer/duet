@@ -3,10 +3,10 @@ id: A3
 line: A
 depends_on: [M4, A2]
 write_scope:
-  - crates/duet-engrave/src/beam.rs
-  - crates/duet-engrave/src/spanner.rs
-  - crates/duet-engrave/src/lyric.rs
-  - crates/duet-engrave/src/mark.rs
+  - crates/bc_notation/duet-engrave/lang_rust/src/beam.rs
+  - crates/bc_notation/duet-engrave/lang_rust/src/spanner.rs
+  - crates/bc_notation/duet-engrave/lang_rust/src/lyric.rs
+  - crates/bc_notation/duet-engrave/lang_rust/src/mark.rs
 parallelism: independent
 completion: "cargo nextest run -p duet-engrave -E 'test(beam)' --no-tests=fail"
 ---
@@ -25,10 +25,10 @@ The chunk writes no manifest, so `Cargo.lock` is not in the write scope (SM5 rul
 
 ## Files
 
-- `crates/duet-engrave/src/beam.rs` — modify. The beam group, the beam slant, and the partial beam.
-- `crates/duet-engrave/src/spanner.rs` — modify. Ties, slurs, and hairpins as filled paths.
-- `crates/duet-engrave/src/lyric.rs` — modify. Lyric syllables, one row per verse.
-- `crates/duet-engrave/src/mark.rs` — modify. Dynamics, articulations, rehearsal marks, and repeats.
+- `crates/bc_notation/duet-engrave/lang_rust/src/beam.rs` — modify. The beam group, the beam slant, and the partial beam.
+- `crates/bc_notation/duet-engrave/lang_rust/src/spanner.rs` — modify. Ties, slurs, and hairpins as filled paths.
+- `crates/bc_notation/duet-engrave/lang_rust/src/lyric.rs` — modify. Lyric syllables, one row per verse.
+- `crates/bc_notation/duet-engrave/lang_rust/src/mark.rs` — modify. Dynamics, articulations, rehearsal marks, and repeats.
 
 ## Types and signatures
 
@@ -237,7 +237,7 @@ barlines, because design contract 2.3 makes every axis-aligned rectangle a quad 
 
 Every test lives in a `#[cfg(test)] mod tests` in the same file, and every assert carries a message.
 
-`crates/duet-engrave/src/beam.rs`
+`crates/bc_notation/duet-engrave/lang_rust/src/beam.rs`
 
 - `beam_groups_follow_the_beat_unit` — asserts that eight eighth notes in 4/4 give two groups of
   four, and that sixteen sixteenth notes give four groups of four.
@@ -253,7 +253,7 @@ Every test lives in a `#[cfg(test)] mod tests` in the same file, and every asser
   edges equals `beamThickness` plus `beamSpacing`, which design contract 2.3 states is 0.75 staff
   spaces for Bravura.
 
-`crates/duet-engrave/src/spanner.rs`
+`crates/bc_notation/duet-engrave/lang_rust/src/spanner.rs`
 
 - `spanner_tie_is_a_filled_path` — asserts that a tie returns one `PathPlacement` with `filled` true
   and eight control points, which is two cubic curves.
@@ -265,7 +265,7 @@ Every test lives in a `#[cfg(test)] mod tests` in the same file, and every asser
   staff space after the last head of the system.
 - `spanner_refuses_a_missing_note` — asserts `EngraveError::Score`.
 
-`crates/duet-engrave/src/lyric.rs`
+`crates/bc_notation/duet-engrave/lang_rust/src/lyric.rs`
 
 - `lyric_places_one_row_per_verse` — asserts that two verses give two distinct baselines, and that
   the second baseline sits below the first.
@@ -273,7 +273,7 @@ Every test lives in a `#[cfg(test)] mod tests` in the same file, and every asser
   less half of the syllable's own width.
 - `lyric_hidden_option_places_nothing` — asserts an empty list when `show_lyrics` is false.
 
-`crates/duet-engrave/src/mark.rs`
+`crates/bc_notation/duet-engrave/lang_rust/src/mark.rs`
 
 - `mark_places_a_dynamic_under_the_staff` — asserts that a `Dynamic::F` gives one `GlyphPlacement`
   with `Symbol::DynamicForte` below the bottom staff line.
@@ -313,9 +313,10 @@ conventional subject such as `feat(engrave): place beams, spanners, lyrics, and 
   inside `duet-time::convert`.
 - No prose `//` comments. Names, types, structure, and tests carry intent. `///` and `//!` docs are
   required on every item.
-- A new crate lives under `crates/`, declares `[lints] workspace = true`, inherits every
+- A new crate lives at `crates/bc_<context>/<crate>/lang_rust/` in the context that architecture section 1.2 names (ADR 0011), declares `[lints] workspace = true`, inherits every
   `[workspace.package]` field, and opens with a `//!` crate doc. A new dependency is pinned in the
   root `[workspace.dependencies]` by the M chunk of the phase; the crate uses `{ workspace = true }`.
+- After chunk M94 lands, every `.rs` file a commit writes carries one front-matter block (`cargo xtask check-ddd --write`), and the gate refuses a changed `.rs` file with none.
 - Commit messages are conventional (`feat:`, `fix:`, `test:`, `chore:`, `docs:`). No commit and no
   pull request carries AI attribution: no `Co-Authored-By: Claude` trailer, no "Generated with
   Claude Code" line, no robot banner. The harness reminder that asks for those lines defers to this

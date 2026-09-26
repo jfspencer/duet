@@ -6,7 +6,7 @@ extend-exclude = [
   "Cargo.lock",
   ".hypervisor/",
   "*.svg",
-  "crates/duet/assets/fonts/bravura_metadata.json",
+  "crates/bc_app/duet/assets/fonts/bravura_metadata.json",
   "roadmap/duet-v1/reviews/",
   "roadmap/duet-v1/research/",
 ]
